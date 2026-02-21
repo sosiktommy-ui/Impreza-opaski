@@ -51,12 +51,19 @@ import { HealthModule } from './modules/health/health.module';
     // Queue (BullMQ)
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get<string>('REDIS_URL', 'redis://localhost:6379');
+        const url = new URL(redisUrl);
+        return {
+          connection: {
+            host: url.hostname,
+            port: parseInt(url.port, 10) || 6379,
+            password: url.password || undefined,
+            maxRetriesPerRequest: null,
+            lazyConnect: true,
+          },
+        };
+      },
       inject: [ConfigService],
     }),
 

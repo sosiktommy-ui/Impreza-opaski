@@ -10,6 +10,14 @@ export class RedisService implements OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {
     this.client = new Redis(
       this.configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
+      {
+        maxRetriesPerRequest: 3,
+        lazyConnect: true,
+        retryStrategy: (times) => {
+          if (times > 5) return null; // stop retrying after 5 attempts
+          return Math.min(times * 200, 2000);
+        },
+      },
     );
 
     this.client.on('connect', () => {
@@ -17,7 +25,12 @@ export class RedisService implements OnModuleDestroy {
     });
 
     this.client.on('error', (err) => {
-      this.logger.error('Redis error', err);
+      this.logger.error('Redis error', err.message);
+    });
+
+    // Connect lazily
+    this.client.connect().catch((err) => {
+      this.logger.warn(`Redis initial connect failed: ${err.message}`);
     });
   }
 
