@@ -169,7 +169,7 @@ async function main() {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       domain_events, audit_logs, notifications, adjustments,
-      acceptance_records, transfer_rejections, transfer_items, transfers,
+      transfer_rejections, transfer_items, transfers,
       inventory, refresh_tokens, users, cities, countries
     CASCADE;
   `);
