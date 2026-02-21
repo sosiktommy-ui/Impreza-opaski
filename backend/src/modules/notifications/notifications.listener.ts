@@ -18,11 +18,15 @@ export class NotificationListener {
   @OnEvent('transfer.sent')
   async handleTransferSent(payload: {
     transferId: string;
+    fromEntityId: string;
+    fromEntityType: string;
     fromEntityName: string;
     toEntityId: string;
     toEntityType: string;
     toEntityName: string;
     items: Array<{ type: string; quantity: number }>;
+    actorId: string;
+    createdByName: string;
   }) {
     this.logger.debug(`Event transfer.sent: ${payload.transferId}`);
 
@@ -38,8 +42,8 @@ export class NotificationListener {
     await this.enqueue({
       userIds,
       type: NotificationType.INCOMING_TRANSFER,
-      title: 'Incoming Transfer',
-      message: `Transfer from ${payload.fromEntityName}: ${itemsSummary}`,
+      title: 'Входящий трансфер',
+      message: `Трансфер от ${payload.fromEntityName} (${payload.createdByName}): ${itemsSummary}`,
       metadata: { transferId: payload.transferId },
     });
   }
@@ -50,7 +54,9 @@ export class NotificationListener {
     fromEntityId: string;
     fromEntityType: string;
     fromEntityName: string;
+    toEntityName: string;
     acceptedByName: string;
+    actorId: string;
   }) {
     this.logger.debug(`Event transfer.accepted: ${payload.transferId}`);
 
@@ -62,8 +68,8 @@ export class NotificationListener {
     await this.enqueue({
       userIds,
       type: NotificationType.TRANSFER_ACCEPTED,
-      title: 'Transfer Accepted',
-      message: `Your transfer to ${payload.acceptedByName} has been accepted`,
+      title: 'Трансфер принят',
+      message: `Трансфер к ${payload.toEntityName} принят (${payload.acceptedByName})`,
       metadata: { transferId: payload.transferId },
     });
   }
@@ -74,6 +80,9 @@ export class NotificationListener {
     fromEntityId: string;
     fromEntityType: string;
     fromEntityName: string;
+    toEntityName: string;
+    acceptedByName: string;
+    actorId: string;
     records: Array<{ itemType: string; sentQuantity: number; receivedQuantity: number; discrepancy: number }>;
   }) {
     this.logger.debug(`Event transfer.discrepancy: ${payload.transferId}`);
@@ -85,14 +94,14 @@ export class NotificationListener {
 
     const discrepancies = payload.records
       .filter((r) => r.discrepancy !== 0)
-      .map((r) => `${r.itemType}: sent ${r.sentQuantity}, received ${r.receivedQuantity} (diff ${r.discrepancy})`)
+      .map((r) => `${r.itemType}: отпр. ${r.sentQuantity}, получ. ${r.receivedQuantity} (разн. ${r.discrepancy})`)
       .join('; ');
 
     await this.enqueue({
       userIds,
       type: NotificationType.DISCREPANCY_ALERT,
-      title: 'Transfer Discrepancy Found',
-      message: `Discrepancy in transfer from ${payload.fromEntityName}: ${discrepancies}`,
+      title: 'Расхождение при приёмке',
+      message: `Расхождение в трансфере от ${payload.fromEntityName} (${payload.acceptedByName}): ${discrepancies}`,
       metadata: { transferId: payload.transferId, records: payload.records },
     });
   }
@@ -105,6 +114,7 @@ export class NotificationListener {
     fromEntityName: string;
     rejectedByName: string;
     reason: string;
+    actorId: string;
   }) {
     this.logger.debug(`Event transfer.rejected: ${payload.transferId}`);
 
@@ -116,8 +126,8 @@ export class NotificationListener {
     await this.enqueue({
       userIds,
       type: NotificationType.TRANSFER_REJECTED,
-      title: 'Transfer Rejected',
-      message: `Your transfer was rejected by ${payload.rejectedByName}: ${payload.reason}`,
+      title: 'Трансфер отклонён',
+      message: `Трансфер отклонён (${payload.rejectedByName}): ${payload.reason}`,
       metadata: { transferId: payload.transferId },
     });
   }

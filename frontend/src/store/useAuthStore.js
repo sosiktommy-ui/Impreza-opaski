@@ -32,7 +32,7 @@ export const useAuthStore = create((set, get) => ({
 
       // Fetch user info
       const { data: meData } = await authApi.me();
-      const userData = meData?.user || meData;
+      const userData = meData?.data?.user || meData?.user || meData;
       set({ user: userData });
     } catch {
       set({ token: null, user: null, loading: false });
@@ -40,6 +40,9 @@ export const useAuthStore = create((set, get) => ({
   },
 
   isAdmin: () => get().user?.role === 'ADMIN',
+  isOffice: () => get().user?.role === 'OFFICE',
   isCountry: () => get().user?.role === 'COUNTRY',
   isCity: () => get().user?.role === 'CITY',
+  isAdminOrOffice: () => ['ADMIN', 'OFFICE'].includes(get().user?.role),
+  canManage: () => ['ADMIN', 'OFFICE', 'COUNTRY'].includes(get().user?.role),
 }));

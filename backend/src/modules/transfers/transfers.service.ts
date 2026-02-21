@@ -126,18 +126,29 @@ export class TransfersService {
       this.logger.log(`Transfer ${transfer.id} created and sent`);
 
       const fromName = transfer.senderType === EntityType.ADMIN
-        ? 'Admin'
-        : (transfer.senderCountry?.name || transfer.senderCity?.name || 'Unknown');
+        ? 'Админ'
+        : (transfer.senderCity?.name || transfer.senderCountry?.name || 'Unknown');
+      const toName = transfer.receiverCity?.name || transfer.receiverCountry?.name || 'Unknown';
+      const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
       const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+
+      // Fetch creator name for display
+      const creator = await this.prisma.user.findUnique({
+        where: { id: input.createdBy },
+        select: { displayName: true, username: true },
+      });
 
       this.eventEmitter.emit('transfer.sent', {
         transferId: transfer.id,
+        fromEntityId,
+        fromEntityType: transfer.senderType,
         fromEntityName: fromName,
         toEntityId,
         toEntityType: transfer.receiverType,
-        toEntityName: transfer.receiverCountry?.name || transfer.receiverCity?.name || 'Unknown',
+        toEntityName: toName,
         items: transfer.items.map((i) => ({ type: i.itemType, quantity: i.quantity })),
-        userId: input.createdBy,
+        actorId: input.createdBy,
+        createdByName: creator?.displayName || creator?.username || 'Unknown',
       });
 
       return transfer;
@@ -297,17 +308,55 @@ export class TransfersService {
 
         this.logger.log(`Transfer ${transferId} ${newStatus}`);
 
+        // Fetch names for event payloads
+        const acceptor = await tx.user.findUnique({
+          where: { id: actorId },
+          select: { displayName: true, username: true },
+        });
+        const acceptedByName = acceptor?.displayName || acceptor?.username || 'Unknown';
+
+        const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
+        const fromEntityType = transfer.senderType;
+        const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+        const toEntityType = transfer.receiverType;
+
+        // Resolve entity names
+        let fromEntityName = 'Админ';
+        if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
+          const c = await tx.country.findUnique({ where: { id: transfer.senderCountryId }, select: { name: true } });
+          fromEntityName = c?.name || 'Unknown';
+        } else if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
+          const c = await tx.city.findUnique({ where: { id: transfer.senderCityId }, select: { name: true } });
+          fromEntityName = c?.name || 'Unknown';
+        }
+        let toEntityName = 'Unknown';
+        if (transfer.receiverType === EntityType.COUNTRY && transfer.receiverCountryId) {
+          const c = await tx.country.findUnique({ where: { id: transfer.receiverCountryId }, select: { name: true } });
+          toEntityName = c?.name || 'Unknown';
+        } else if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
+          const c = await tx.city.findUnique({ where: { id: transfer.receiverCityId }, select: { name: true } });
+          toEntityName = c?.name || 'Unknown';
+        }
+
+        const eventBase = {
+          transferId,
+          fromEntityId,
+          fromEntityType,
+          fromEntityName,
+          toEntityId,
+          toEntityType,
+          toEntityName,
+          actorId,
+          acceptedByName,
+        };
+
         if (hasDiscrepancy) {
           this.eventEmitter.emit('transfer.discrepancy', {
-            transfer,
+            ...eventBase,
             records,
-            actorId,
           });
         } else {
-          this.eventEmitter.emit('transfer.accepted', {
-            transfer,
-            actorId,
-          });
+          this.eventEmitter.emit('transfer.accepted', eventBase);
         }
 
         return tx.transfer.findUnique({
@@ -397,8 +446,29 @@ export class TransfersService {
 
       this.logger.log(`Transfer ${transferId} REJECTED: ${reason}`);
 
+      // Resolve names for event
+      const rejector = await tx.user.findUnique({
+        where: { id: actorId },
+        select: { displayName: true, username: true },
+      });
+      const rejectedByName = rejector?.displayName || rejector?.username || 'Unknown';
+      const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
+      const fromEntityType = transfer.senderType;
+      let fromEntityName = 'Админ';
+      if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
+        const c = await tx.country.findUnique({ where: { id: transfer.senderCountryId }, select: { name: true } });
+        fromEntityName = c?.name || 'Unknown';
+      } else if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
+        const c = await tx.city.findUnique({ where: { id: transfer.senderCityId }, select: { name: true } });
+        fromEntityName = c?.name || 'Unknown';
+      }
+
       this.eventEmitter.emit('transfer.rejected', {
-        transfer,
+        transferId,
+        fromEntityId,
+        fromEntityType,
+        fromEntityName,
+        rejectedByName,
         reason,
         actorId,
       });
@@ -455,9 +525,22 @@ export class TransfersService {
 
       this.logger.log(`Transfer ${transferId} CANCELLED`);
 
+      // Resolve names for event
+      const canceller = await tx.user.findUnique({
+        where: { id: actorId },
+        select: { displayName: true, username: true },
+      });
+      const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
+      const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+
       this.eventEmitter.emit('transfer.cancelled', {
-        transfer,
+        transferId,
+        fromEntityId,
+        fromEntityType: transfer.senderType,
+        toEntityId,
+        toEntityType: transfer.receiverType,
         actorId,
+        cancelledByName: canceller?.displayName || canceller?.username || 'Unknown',
       });
 
       return tx.transfer.findUnique({
@@ -478,6 +561,7 @@ export class TransfersService {
     userRole?: string;
     userCountryId?: string;
     userCityId?: string;
+    userOfficeId?: string;
   }) {
     const {
       status,
@@ -486,6 +570,7 @@ export class TransfersService {
       userRole,
       userCountryId,
       userCityId,
+      userOfficeId,
     } = params;
     const skip = (page - 1) * limit;
 
@@ -512,20 +597,41 @@ export class TransfersService {
         { senderType: EntityType.CITY, senderCityId: userCityId },
         { receiverType: EntityType.CITY, receiverCityId: userCityId },
       ];
+    } else if (userRole === 'OFFICE' && userOfficeId) {
+      // OFFICE sees transfers for countries assigned to their office
+      const officeCountries = await this.prisma.country.findMany({
+        where: { officeId: userOfficeId },
+        select: { id: true },
+      });
+      const countryIds = officeCountries.map((c) => c.id);
+      if (countryIds.length > 0) {
+        where.OR = [
+          { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
+          { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
+          { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
+          { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
+        ];
+      }
     }
+
+    const includeRelations = {
+      items: true,
+      rejection: true,
+      acceptanceRecords: {
+        include: {
+          acceptedBy: { select: { id: true, displayName: true, username: true, role: true } },
+        },
+      },
+      senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+      senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
+      receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+      receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
+    };
 
     const [transfers, total] = await Promise.all([
       this.prisma.transfer.findMany({
         where,
-        include: {
-          items: true,
-          rejection: true,
-          acceptanceRecords: true,
-          senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-          senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
-          receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-          receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
-        },
+        include: includeRelations,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -533,8 +639,21 @@ export class TransfersService {
       this.prisma.transfer.count({ where }),
     ]);
 
+    // Enrich with creator info
+    const creatorIds = [...new Set(transfers.map((t) => t.createdBy))];
+    const creators = await this.prisma.user.findMany({
+      where: { id: { in: creatorIds } },
+      select: { id: true, displayName: true, username: true, role: true },
+    });
+    const creatorsMap = new Map(creators.map((c) => [c.id, c]));
+
+    const enriched = transfers.map((t) => ({
+      ...t,
+      createdByUser: creatorsMap.get(t.createdBy) || null,
+    }));
+
     return {
-      data: transfers,
+      data: enriched,
       meta: {
         total,
         page,
@@ -550,33 +669,44 @@ export class TransfersService {
       include: {
         items: true,
         rejection: true,
-        acceptanceRecords: true,
+        acceptanceRecords: {
+          include: {
+            acceptedBy: { select: { id: true, displayName: true, username: true, role: true } },
+          },
+        },
         senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
         receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
       },
     });
 
     if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
 
+    // Enrich with creator info
+    const creator = await this.prisma.user.findUnique({
+      where: { id: transfer.createdBy },
+      select: { id: true, displayName: true, username: true, role: true },
+    });
+    const enrichedTransfer = { ...transfer, createdByUser: creator || null };
+
     // Blind acceptance: if transfer is SENT and current user is the receiver,
     // hide the sent quantities (they should only enter what they received)
     if (
       currentUser &&
-      transfer.status === TransferStatus.SENT &&
-      this.isReceiver(transfer, currentUser)
+      enrichedTransfer.status === TransferStatus.SENT &&
+      this.isReceiver(enrichedTransfer, currentUser)
     ) {
       return {
-        ...transfer,
-        items: transfer.items.map((item) => ({
+        ...enrichedTransfer,
+        items: enrichedTransfer.items.map((item) => ({
           ...item,
           quantity: undefined, // hide sent quantity from receiver
         })),
       };
     }
 
-    return transfer;
+    return enrichedTransfer;
   }
 
   async getPendingIncoming(params: {
@@ -610,12 +740,109 @@ export class TransfersService {
       include: {
         items: true,
         senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
         receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // ──────────────────────────────────────────────
+  // PROBLEMATIC TRANSFERS (DISCREPANCY_FOUND)
+  // ──────────────────────────────────────────────
+
+  async findProblematic(params: {
+    page?: number;
+    limit?: number;
+    userRole?: string;
+    userCountryId?: string;
+    userCityId?: string;
+    userOfficeId?: string;
+  }) {
+    const { page = 1, limit = 20, userRole, userCountryId, userCityId, userOfficeId } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.TransferWhereInput = {
+      status: TransferStatus.DISCREPANCY_FOUND,
+    };
+
+    // RBAC scope
+    if (userRole === 'COUNTRY' && userCountryId) {
+      where.OR = [
+        { senderType: EntityType.COUNTRY, senderCountryId: userCountryId },
+        { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
+        { senderType: EntityType.CITY, senderCity: { countryId: userCountryId } },
+        { receiverType: EntityType.CITY, receiverCity: { countryId: userCountryId } },
+      ];
+    } else if (userRole === 'CITY' && userCityId) {
+      where.OR = [
+        { senderType: EntityType.CITY, senderCityId: userCityId },
+        { receiverType: EntityType.CITY, receiverCityId: userCityId },
+      ];
+    } else if (userRole === 'OFFICE' && userOfficeId) {
+      // OFFICE sees transfers for countries assigned to their office
+      const officeCountries = await this.prisma.country.findMany({
+        where: { officeId: userOfficeId },
+        select: { id: true },
+      });
+      const countryIds = officeCountries.map((c) => c.id);
+      if (countryIds.length > 0) {
+        where.OR = [
+          { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
+          { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
+          { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
+          { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
+        ];
+      }
+    }
+
+    const includeRelations = {
+      items: true,
+      acceptanceRecords: {
+        include: {
+          acceptedBy: { select: { id: true, displayName: true, username: true, role: true } },
+        },
+      },
+      senderCountry: { select: { id: true, name: true, code: true } },
+      senderCity: { select: { id: true, name: true, slug: true, country: { select: { id: true, name: true } } } },
+      receiverCountry: { select: { id: true, name: true, code: true } },
+      receiverCity: { select: { id: true, name: true, slug: true, country: { select: { id: true, name: true } } } },
+    };
+
+    const [transfers, total] = await Promise.all([
+      this.prisma.transfer.findMany({
+        where,
+        include: includeRelations,
+        orderBy: { acceptedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.transfer.count({ where }),
+    ]);
+
+    // Enrich with creator info
+    const creatorIds = [...new Set(transfers.map((t) => t.createdBy))];
+    const creators = await this.prisma.user.findMany({
+      where: { id: { in: creatorIds } },
+      select: { id: true, displayName: true, username: true, role: true },
+    });
+    const creatorsMap = new Map(creators.map((c) => [c.id, c]));
+
+    const enriched = transfers.map((t) => ({
+      ...t,
+      createdByUser: creatorsMap.get(t.createdBy) || null,
+    }));
+
+    return {
+      data: enriched,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   // ──────────────────────────────────────────────

@@ -37,6 +37,10 @@ class CreateUserDto {
 
   @IsString()
   @IsOptional()
+  officeId?: string;
+
+  @IsString()
+  @IsOptional()
   countryId?: string;
 
   @IsString()
@@ -56,7 +60,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   findAll(
     @Query('role') role?: Role,
     @Query('countryId') countryId?: string,
@@ -72,25 +76,31 @@ export class UsersController {
     return this.usersService.getCountries();
   }
 
+  @Get('offices')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getOffices() {
+    return this.usersService.getOffices();
+  }
+
   @Get('cities')
   getCities(@Query('countryId') countryId?: string) {
     return this.usersService.getCities(countryId);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   findById(@Param('id') id: string) {
     return this.usersService.findById(id);
   }
 
   @Post()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   createUser(@Body() dto: CreateUserDto) {
     return this.usersService.createUser(dto);
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   update(
     @Param('id') id: string,
     @Body() data: { displayName?: string; isActive?: boolean; email?: string },
@@ -99,7 +109,7 @@ export class UsersController {
   }
 
   @Patch(':id/password')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   resetPassword(
     @Param('id') id: string,
     @Body() dto: ResetPasswordDto,
@@ -108,7 +118,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   deleteUser(@Param('id') id: string) {
     return this.usersService.deleteUser(id);
   }

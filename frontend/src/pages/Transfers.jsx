@@ -8,7 +8,8 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { BraceletRow } from '../components/ui/BraceletBadge';
+import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
+import Pagination from '../components/ui/Pagination';
 import { Plus, Send, X, Search, Filter, ArrowUpDown } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
@@ -24,6 +25,8 @@ export default function Transfers() {
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,10 +43,15 @@ export default function Transfers() {
     loadTransfers();
   }, []);
 
-  const loadTransfers = async () => {
+  const loadTransfers = async (p = 1) => {
+    setLoading(true);
     try {
-      const { data } = await transfersApi.getAll();
-      setTransfers(Array.isArray(data) ? data : []);
+      const { data } = await transfersApi.getAll({ page: p, limit: 30, status: statusFilter !== 'all' ? statusFilter : undefined });
+      const result = data.data || data;
+      const list = result.data || (Array.isArray(result) ? result : []);
+      setTransfers(list);
+      setTotalPages(result.meta?.totalPages || 1);
+      setPage(result.meta?.page || p);
     } catch (err) {
       console.error(err);
     } finally {
@@ -96,10 +104,11 @@ export default function Transfers() {
     setError('');
     resetForm();
 
-    if (user.role === 'ADMIN') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       try {
         const { data } = await usersApi.getCountries();
-        setCountries(Array.isArray(data) ? data : []);
+        const result = data.data || data;
+        setCountries(Array.isArray(result) ? result : []);
       } catch (err) {
         console.error(err);
       }
@@ -148,7 +157,7 @@ export default function Transfers() {
 
     let receiverType, receiverCountryId, receiverCityId;
 
-    if (user.role === 'ADMIN') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       if (!toCountryId) {
         setError('Выберите страну-получателя');
         return;
@@ -171,7 +180,7 @@ export default function Transfers() {
     }
 
     const payload = {
-      senderType: user.role === 'ADMIN' ? 'ADMIN' : user.role,
+      senderType: (user.role === 'ADMIN' || user.role === 'OFFICE') ? 'ADMIN' : user.role,
       senderCountryId: user.role === 'COUNTRY' ? user.countryId : undefined,
       senderCityId: user.role === 'CITY' ? user.cityId : undefined,
       receiverType,
@@ -215,7 +224,7 @@ export default function Transfers() {
 
   // Receiver label for the summary hint
   const receiverLabel = useMemo(() => {
-    if (user.role === 'ADMIN') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       const country = countries.find((c) => c.id === toCountryId);
       const city = cities.find((c) => c.id === toCityId);
       if (city && country) return `${city.name} (${country.name})`;
@@ -246,7 +255,7 @@ export default function Transfers() {
             Всего: {transfers.length} • На карте маршрутов
           </p>
         </div>
-        {(user.role === 'ADMIN' || user.role === 'COUNTRY') && (
+        {['ADMIN', 'OFFICE', 'COUNTRY'].includes(user.role) && (
           <Button onClick={openCreate} size="sm">
             <Plus size={18} /> Новая
           </Button>
@@ -303,10 +312,18 @@ export default function Transfers() {
           {filteredTransfers.map((t) => {
             const from =
               t.senderType === 'ADMIN'
-                ? 'Админ'
-                : (t.senderCity?.name || t.senderCountry?.name || t.senderType);
-            const to = t.receiverCity?.name || t.receiverCountry?.name || t.receiverType;
+                ? 'Склад'
+                : t.senderType === 'CITY'
+                  ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                  : t.senderCountry?.name || t.senderType;
+            const to =
+              t.receiverType === 'ADMIN'
+                ? 'Склад'
+                : t.receiverType === 'CITY'
+                  ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
+                  : t.receiverCountry?.name || t.receiverType;
             const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+            const senderName = t.createdByUser?.displayName;
 
             return (
               <div
@@ -335,8 +352,18 @@ export default function Transfers() {
                       <span className="font-medium text-gray-800 truncate">{to}</span>
                     </div>
 
+                    {senderName && (
+                      <p className="text-xs text-gray-400">
+                        Отправитель: <span className="text-gray-600 font-medium">{senderName}</span>
+                      </p>
+                    )}
+
                     <div className="flex items-center gap-3">
-                      <BraceletRow items={t.items} size="sm" />
+                      <div className="flex items-center gap-1">
+                        {(t.items || []).map((item) => (
+                          <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} />
+                        ))}
+                      </div>
                       <span className="text-xs text-gray-400 flex-shrink-0">
                         Итого: {totalQty} шт
                       </span>
@@ -366,8 +393,11 @@ export default function Transfers() {
 
       {/* ── Summary Footer ────────────────────────────── */}
       {transfers.length > 0 && (
-        <div className="text-xs text-gray-400 text-right">
-          Показано {filteredTransfers.length} из {transfers.length} отправок
+        <div className="space-y-2">
+          <Pagination page={page} totalPages={totalPages} onPageChange={(p) => loadTransfers(p)} />
+          <div className="text-xs text-gray-400 text-right">
+            Показано {filteredTransfers.length} из {transfers.length} отправок
+          </div>
         </div>
       )}
 
@@ -378,8 +408,8 @@ export default function Transfers() {
         title="Новая отправка"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* ADMIN: country → city (cascading) */}
-          {user.role === 'ADMIN' && (
+          {/* ADMIN/OFFICE: country → city (cascading) */}
+          {(user.role === 'ADMIN' || user.role === 'OFFICE') && (
             <>
               <Select
                 label="Страна-получатель"

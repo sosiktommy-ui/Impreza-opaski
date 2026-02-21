@@ -8,5 +8,5 @@ export const authApi = {
 
   logout: () => api.post('/auth/logout'),
 
-  me: () => api.post('/auth/me'),
+  me: () => api.get('/auth/me'),
 };

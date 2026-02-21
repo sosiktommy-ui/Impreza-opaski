@@ -7,6 +7,8 @@ export const transfersApi = {
 
   getPending: () => api.get('/transfers/pending'),
 
+  getProblematic: (params) => api.get('/transfers/problematic', { params }),
+
   create: (data) => api.post('/transfers', data),
   // data: { senderType, senderCountryId?, senderCityId?, receiverType, receiverCountryId?, receiverCityId?, items: [{itemType, quantity}], notes? }
 

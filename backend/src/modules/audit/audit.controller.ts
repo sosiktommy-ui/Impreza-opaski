@@ -9,11 +9,11 @@ import { AuditService } from './audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { AuditAction } from '@prisma/client';
+import { Role, AuditAction } from '@prisma/client';
 
 @Controller('audit')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles(Role.ADMIN, Role.OFFICE)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

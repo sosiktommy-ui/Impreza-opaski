@@ -97,7 +97,7 @@ export class TransfersController {
   constructor(private readonly transfersService: TransfersService) {}
 
   @Post()
-  @Roles(Role.ADMIN, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
   sendTransfer(
     @Body() dto: CreateTransferDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -109,7 +109,7 @@ export class TransfersController {
   }
 
   @Patch(':id/accept')
-  @Roles(Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   acceptTransfer(
     @Param('id') id: string,
     @Body() dto: AcceptTransferDto,
@@ -119,7 +119,7 @@ export class TransfersController {
   }
 
   @Patch(':id/reject')
-  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   rejectTransfer(
     @Param('id') id: string,
     @Body() dto: RejectTransferDto,
@@ -129,7 +129,7 @@ export class TransfersController {
   }
 
   @Patch(':id/cancel')
-  @Roles(Role.ADMIN, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
   cancelTransfer(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -138,7 +138,7 @@ export class TransfersController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   findAll(
     @Query('status') status: TransferStatus | undefined,
     @Query('page') page?: number,
@@ -152,16 +152,18 @@ export class TransfersController {
       userRole: user?.role,
       userCountryId: user?.countryId ?? undefined,
       userCityId: user?.cityId ?? undefined,
+      userOfficeId: (user as any)?.officeId ?? undefined,
     });
   }
 
+  // Static routes MUST come before parameterised :id route
   @Get('pending')
-  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   getPendingIncoming(@CurrentUser() user: AuthenticatedUser) {
     let entityType: EntityType;
     let entityId: string;
 
-    if (user.role === Role.ADMIN) {
+    if (user.role === Role.ADMIN || user.role === Role.OFFICE) {
       entityType = EntityType.ADMIN;
       entityId = user.id;
     } else if (user.role === Role.CITY && user.cityId) {
@@ -181,8 +183,26 @@ export class TransfersController {
     });
   }
 
+  @Get('problematic')
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  findProblematic(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.transfersService.findProblematic({
+      page,
+      limit,
+      userRole: user?.role,
+      userCountryId: user?.countryId ?? undefined,
+      userCityId: user?.cityId ?? undefined,
+      userOfficeId: (user as any)?.officeId ?? undefined,
+    });
+  }
+
+  // Parameterised route MUST be last
   @Get(':id')
-  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   findById(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,

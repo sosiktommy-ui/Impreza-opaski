@@ -1,5 +1,8 @@
 version: '3.9'
 
+# Только для локальной разработки — запуск PostgreSQL + Redis
+# Приложение деплоится на Railway, НЕ локально!
+
 services:
   postgres:
     image: postgres:16-alpine

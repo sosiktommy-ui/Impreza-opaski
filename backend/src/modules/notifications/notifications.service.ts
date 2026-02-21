@@ -88,7 +88,7 @@ export class NotificationsService {
       // Get country for this city
       const city = await this.prisma.city.findUnique({
         where: { id: entityId },
-        select: { countryId: true },
+        select: { countryId: true, country: { select: { officeId: true } } },
       });
       if (city) {
         const countryUsers = await this.prisma.user.findMany({
@@ -100,6 +100,19 @@ export class NotificationsService {
           select: { id: true },
         });
         userIds.push(...countryUsers.map((u) => u.id));
+
+        // Notify office users managing this country
+        if (city.country?.officeId) {
+          const officeUsers = await this.prisma.user.findMany({
+            where: {
+              officeId: city.country.officeId,
+              role: 'OFFICE',
+              isActive: true,
+            },
+            select: { id: true },
+          });
+          userIds.push(...officeUsers.map((u) => u.id));
+        }
       }
     } else if (entityType === 'COUNTRY') {
       const countryUsers = await this.prisma.user.findMany({
@@ -111,6 +124,23 @@ export class NotificationsService {
         select: { id: true },
       });
       userIds.push(...countryUsers.map((u) => u.id));
+
+      // Notify office users managing this country
+      const country = await this.prisma.country.findUnique({
+        where: { id: entityId },
+        select: { officeId: true },
+      });
+      if (country?.officeId) {
+        const officeUsers = await this.prisma.user.findMany({
+          where: {
+            officeId: country.officeId,
+            role: 'OFFICE',
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        userIds.push(...officeUsers.map((u) => u.id));
+      }
     }
 
     // Always notify admins

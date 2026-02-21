@@ -1,12 +1,12 @@
 import api from './axios';
 
 export const usersApi = {
-  getAll: () => api.get('/users'),
+  getAll: (params) => api.get('/users', { params }),
 
   getById: (id) => api.get(`/users/${id}`),
 
   create: (data) => api.post('/users', data),
-  // data: { username, password, email, role, displayName, countryId?, cityId? }
+  // data: { username, password, email, role, displayName, officeId?, countryId?, cityId? }
 
   update: (id, data) => api.patch(`/users/${id}`, data),
 
@@ -16,6 +16,8 @@ export const usersApi = {
     api.patch(`/users/${id}/password`, { newPassword }),
 
   getCountries: () => api.get('/users/countries'),
+
+  getOffices: () => api.get('/users/offices'),
 
   getCities: (countryId) =>
     api.get('/users/cities', { params: { countryId } }),

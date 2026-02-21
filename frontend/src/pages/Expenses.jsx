@@ -55,7 +55,7 @@ export default function Expenses() {
   };
 
   const loadCities = async () => {
-    if (user.role === 'ADMIN' || user.role === 'COUNTRY') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'COUNTRY') {
       try {
         const { data } = await usersApi.getCities(
           user.role === 'COUNTRY' ? user.countryId : undefined,

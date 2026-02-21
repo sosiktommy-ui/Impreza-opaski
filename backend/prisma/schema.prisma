@@ -13,6 +13,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  OFFICE
   COUNTRY
   CITY
 }
@@ -40,6 +41,7 @@ enum CityStatus {
 
 enum EntityType {
   ADMIN
+  OFFICE
   COUNTRY
   CITY
 }
@@ -86,9 +88,11 @@ model User {
   isActive      Boolean  @default(true) @map("is_active")
 
   // Scope — determines what this user manages
+  officeId      String?  @map("office_id")
   countryId     String?  @map("country_id")
   cityId        String?  @map("city_id")
 
+  office        Office?  @relation(fields: [officeId], references: [id])
   country       Country? @relation(fields: [countryId], references: [id])
   city          City?    @relation(fields: [cityId], references: [id])
 
@@ -119,6 +123,23 @@ model RefreshToken {
 }
 
 // ──────────────────────────────────────────────
+// OFFICES
+// ──────────────────────────────────────────────
+
+model Office {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique // e.g. "office-1", "office-2"
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  users     User[]
+  countries Country[]
+
+  @@map("offices")
+}
+
+// ──────────────────────────────────────────────
 // GEOGRAPHY
 // ──────────────────────────────────────────────
 
@@ -128,9 +149,11 @@ model Country {
   code      String   @unique // ISO-like: de, pl, nl, etc.
   latitude  Float    @default(0)
   longitude Float    @default(0)
+  officeId  String?  @map("office_id")
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
+  office    Office?  @relation(fields: [officeId], references: [id])
   cities    City[]
   users     User[]
   inventory Inventory[]

@@ -14,6 +14,7 @@ export interface JwtPayload {
   sub: string;
   username: string;
   role: Role;
+  officeId: string | null;
   countryId: string | null;
   cityId: string | null;
 }
@@ -29,6 +30,7 @@ export interface AuthenticatedUser {
   email: string;
   role: Role;
   displayName: string;
+  officeId: string | null;
   countryId: string | null;
   cityId: string | null;
 }
@@ -66,6 +68,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       displayName: user.displayName,
+      officeId: user.officeId,
       countryId: user.countryId,
       cityId: user.cityId,
     };
@@ -119,6 +122,7 @@ export class AuthService {
       email: storedToken.user.email,
       role: storedToken.user.role,
       displayName: storedToken.user.displayName,
+      officeId: storedToken.user.officeId,
       countryId: storedToken.user.countryId,
       cityId: storedToken.user.cityId,
     };
@@ -145,6 +149,7 @@ export class AuthService {
       sub: user.id,
       username: user.username,
       role: user.role,
+      officeId: user.officeId,
       countryId: user.countryId,
       cityId: user.cityId,
     };
@@ -183,6 +188,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       displayName: user.displayName,
+      officeId: user.officeId,
       countryId: user.countryId,
       cityId: user.cityId,
     };

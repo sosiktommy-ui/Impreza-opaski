@@ -79,7 +79,7 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   getAllBalances() {
     return this.inventoryService.getAllBalances();
   }
@@ -92,20 +92,47 @@ export class InventoryController {
     if (user.role === Role.COUNTRY && user.countryId) {
       return this.inventoryService.getBalancesByCountry(user.countryId);
     }
-    if (user.role === Role.ADMIN) {
+    if (user.role === Role.ADMIN || user.role === Role.OFFICE) {
       return this.inventoryService.getAllBalances();
     }
     return {};
   }
 
   @Get('country/:countryId')
-  @Roles(Role.ADMIN, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
   getByCountry(@Param('countryId') countryId: string) {
     return this.inventoryService.getBalancesByCountry(countryId);
   }
 
+  // Static routes MUST come before parameterised routes
+  @Get('expenses')
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  getExpenses(
+    @Query('cityId') cityId?: string,
+    @Query('countryId') countryId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    let scopedCityId = cityId;
+    let scopedCountryId = countryId;
+
+    if (user?.role === Role.CITY && user.cityId) {
+      scopedCityId = user.cityId;
+    } else if (user?.role === Role.COUNTRY && user.countryId) {
+      scopedCountryId = user.countryId;
+    }
+
+    return this.inventoryService.getExpenses({
+      cityId: scopedCityId,
+      countryId: scopedCountryId,
+      page,
+      limit,
+    });
+  }
+
   @Get(':entityType/:entityId')
-  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   getBalance(
     @Param('entityType') entityType: EntityType,
     @Param('entityId') entityId: string,
@@ -114,7 +141,7 @@ export class InventoryController {
   }
 
   @Post('adjust')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.OFFICE)
   adjustBalance(
     @Body() dto: AdjustBalanceDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -134,33 +161,6 @@ export class InventoryController {
     return this.inventoryService.createExpense({
       ...dto,
       actorId: user.id,
-    });
-  }
-
-  @Get('expenses')
-  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
-  getExpenses(
-    @Query('cityId') cityId?: string,
-    @Query('countryId') countryId?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-    @CurrentUser() user?: AuthenticatedUser,
-  ) {
-    // Auto-scope based on role
-    let scopedCityId = cityId;
-    let scopedCountryId = countryId;
-
-    if (user?.role === Role.CITY && user.cityId) {
-      scopedCityId = user.cityId;
-    } else if (user?.role === Role.COUNTRY && user.countryId) {
-      scopedCountryId = user.countryId;
-    }
-
-    return this.inventoryService.getExpenses({
-      cityId: scopedCityId,
-      countryId: scopedCountryId,
-      page,
-      limit,
     });
   }
 }

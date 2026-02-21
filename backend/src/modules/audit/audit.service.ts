@@ -96,22 +96,11 @@ export class AuditService {
   }
 
   // Event listeners for automatic audit logging
-  @OnEvent('transfer.created')
-  async onTransferCreated(payload: { transferId: string; userId: string }) {
-    await this.log({
-      actorId: payload.userId,
-      action: AuditAction.TRANSFER_CREATED,
-      entityType: 'Transfer',
-      entityId: payload.transferId,
-      metadata: { event: 'transfer.created' },
-    });
-  }
-
   @OnEvent('transfer.sent')
-  async onTransferSent(payload: { transferId: string; userId: string }) {
-    if (!payload.userId) return;
+  async onTransferSent(payload: { transferId: string; actorId: string }) {
+    if (!payload.actorId) return;
     await this.log({
-      actorId: payload.userId,
+      actorId: payload.actorId,
       action: AuditAction.TRANSFER_SENT,
       entityType: 'Transfer',
       entityId: payload.transferId,
@@ -120,10 +109,10 @@ export class AuditService {
   }
 
   @OnEvent('transfer.accepted')
-  async onTransferAccepted(payload: { transferId: string; userId: string }) {
-    if (!payload.userId) return;
+  async onTransferAccepted(payload: { transferId: string; actorId: string }) {
+    if (!payload.actorId) return;
     await this.log({
-      actorId: payload.userId,
+      actorId: payload.actorId,
       action: AuditAction.TRANSFER_ACCEPTED,
       entityType: 'Transfer',
       entityId: payload.transferId,
@@ -151,10 +140,10 @@ export class AuditService {
   }
 
   @OnEvent('transfer.rejected')
-  async onTransferRejected(payload: { transferId: string; userId: string; reason: string }) {
-    if (!payload.userId) return;
+  async onTransferRejected(payload: { transferId: string; actorId: string; reason: string }) {
+    if (!payload.actorId) return;
     await this.log({
-      actorId: payload.userId,
+      actorId: payload.actorId,
       action: AuditAction.TRANSFER_REJECTED,
       entityType: 'Transfer',
       entityId: payload.transferId,
@@ -163,10 +152,10 @@ export class AuditService {
   }
 
   @OnEvent('transfer.cancelled')
-  async onTransferCancelled(payload: { transferId: string; userId: string }) {
-    if (!payload.userId) return;
+  async onTransferCancelled(payload: { transferId: string; actorId: string }) {
+    if (!payload.actorId) return;
     await this.log({
-      actorId: payload.userId,
+      actorId: payload.actorId,
       action: AuditAction.TRANSFER_CANCELLED,
       entityType: 'Transfer',
       entityId: payload.transferId,
@@ -176,7 +165,7 @@ export class AuditService {
 
   @OnEvent('inventory.adjusted')
   async onInventoryAdjusted(payload: {
-    userId: string;
+    actorId: string;
     entityType: string;
     entityId: string;
     itemType: string;
@@ -184,8 +173,9 @@ export class AuditService {
     newQuantity: number;
     reason: string;
   }) {
+    if (!payload.actorId) return;
     await this.log({
-      actorId: payload.userId,
+      actorId: payload.actorId,
       action: AuditAction.INVENTORY_ADJUSTED,
       entityType: 'Inventory',
       entityId: payload.entityId,

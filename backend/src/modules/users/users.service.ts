@@ -41,8 +41,10 @@ export class UsersService {
           role: true,
           displayName: true,
           isActive: true,
+          officeId: true,
           countryId: true,
           cityId: true,
+          office: { select: { id: true, name: true, code: true } },
           country: { select: { id: true, name: true, code: true } },
           city: { select: { id: true, name: true, slug: true } },
           createdAt: true,
@@ -75,8 +77,10 @@ export class UsersService {
         role: true,
         displayName: true,
         isActive: true,
+        officeId: true,
         countryId: true,
         cityId: true,
+        office: { select: { id: true, name: true, code: true } },
         country: { select: { id: true, name: true, code: true } },
         city: { select: { id: true, name: true, slug: true } },
         createdAt: true,
@@ -109,6 +113,7 @@ export class UsersService {
         role: true,
         displayName: true,
         isActive: true,
+        officeId: true,
         countryId: true,
         cityId: true,
       },
@@ -118,7 +123,20 @@ export class UsersService {
   async getCountries() {
     return this.prisma.country.findMany({
       include: {
+        office: { select: { id: true, name: true, code: true } },
         cities: {
+          orderBy: { name: 'asc' },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async getOffices() {
+    return this.prisma.office.findMany({
+      include: {
+        countries: {
+          select: { id: true, name: true, code: true },
           orderBy: { name: 'asc' },
         },
       },
@@ -145,6 +163,7 @@ export class UsersService {
     email: string;
     role: Role;
     displayName: string;
+    officeId?: string;
     countryId?: string;
     cityId?: string;
   }) {
@@ -173,6 +192,7 @@ export class UsersService {
         email: data.email,
         role: data.role,
         displayName: data.displayName,
+        officeId: data.officeId || null,
         countryId: data.countryId || null,
         cityId: data.cityId || null,
       },
@@ -183,6 +203,7 @@ export class UsersService {
         role: true,
         displayName: true,
         isActive: true,
+        officeId: true,
         countryId: true,
         cityId: true,
         createdAt: true,

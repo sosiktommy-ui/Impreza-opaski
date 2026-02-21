@@ -65,10 +65,20 @@ function aggregateItems(transfersList) {
 
 function getLocationLabel(t, direction) {
   if (direction === 'from') {
-    if (t.senderType === 'ADMIN') return 'Админ';
-    return t.senderCity?.name || t.senderCountry?.name || '—';
+    if (t.senderType === 'ADMIN') return 'Склад';
+    if (t.senderType === 'CITY') {
+      const city = t.senderCity?.name || '—';
+      const country = t.senderCity?.country?.name;
+      return country ? `${city} (${country})` : city;
+    }
+    return t.senderCountry?.name || '—';
   }
-  return t.receiverCity?.name || t.receiverCountry?.name || '—';
+  if (t.receiverType === 'CITY') {
+    const city = t.receiverCity?.name || '—';
+    const country = t.receiverCity?.country?.name;
+    return country ? `${city} (${country})` : city;
+  }
+  return t.receiverCountry?.name || '—';
 }
 
 // ── FlyTo helper ─────────────────────────────

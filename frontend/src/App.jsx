@@ -11,6 +11,7 @@ import Inventory from './pages/Inventory';
 import Users from './pages/Users';
 import History from './pages/History';
 import MapPage from './pages/Map';
+import ProblematicTransfers from './pages/ProblematicTransfers';
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuthStore();
@@ -54,7 +55,7 @@ export default function App() {
         <Route
           path="transfers"
           element={
-            <PrivateRoute roles={['ADMIN', 'COUNTRY', 'CITY']}>
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
               <Transfers />
             </PrivateRoute>
           }
@@ -63,8 +64,17 @@ export default function App() {
         <Route
           path="acceptance"
           element={
-            <PrivateRoute roles={['ADMIN', 'COUNTRY', 'CITY']}>
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
               <Acceptance />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="problematic"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
+              <ProblematicTransfers />
             </PrivateRoute>
           }
         />
@@ -75,7 +85,7 @@ export default function App() {
         <Route
           path="users"
           element={
-            <PrivateRoute roles={['ADMIN']}>
+            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
               <Users />
             </PrivateRoute>
           }

@@ -170,7 +170,7 @@ async function main() {
     TRUNCATE TABLE
       domain_events, audit_logs, notifications, adjustments, expenses,
       transfer_rejections, transfer_items, transfers,
-      acceptance_records, inventory, refresh_tokens, users, cities, countries
+      acceptance_records, inventory, refresh_tokens, users, cities, countries, offices
     CASCADE;
   `);
 
@@ -226,6 +226,45 @@ async function main() {
     },
   });
   console.log(`   ✅ admin / admin_2025!Imp (ADMIN)\n`);
+
+  // ───── 4b. Create Offices ─────
+  console.log('🏢 Creating offices...');
+  const OFFICES = [
+    { name: 'Офис Европа', code: 'eu' },
+    { name: 'Офис Запад', code: 'west' },
+    { name: 'Офис Восток', code: 'east' },
+  ];
+  const officeMap: Record<string, string> = {};
+
+  for (const o of OFFICES) {
+    const office = await prisma.office.create({
+      data: { name: o.name, code: o.code },
+    });
+    officeMap[o.code] = office.id;
+    console.log(`   ✅ ${o.name} (${o.code})`);
+  }
+
+  // ───── 4c. Create Office accounts ─────
+  console.log('\n👤 Creating office accounts...');
+  const officeAccounts = [
+    { username: 'office_eu', displayName: 'Офис Европа', officeCode: 'eu' },
+    { username: 'office_west', displayName: 'Офис Запад', officeCode: 'west' },
+    { username: 'office_east', displayName: 'Офис Восток', officeCode: 'east' },
+  ];
+  for (const oa of officeAccounts) {
+    const password = `${oa.username}_2025!Imp`;
+    await prisma.user.create({
+      data: {
+        email: `${oa.username}@impreza.io`,
+        username: oa.username,
+        passwordHash: hashPw(password),
+        role: Role.OFFICE,
+        displayName: oa.displayName,
+        officeId: officeMap[oa.officeCode],
+      },
+    });
+    console.log(`   ✅ ${oa.username} / ${password} → ${oa.displayName}`);
+  }
 
   // ───── 5. Create Country accounts ─────
   console.log('🏳️  Creating country accounts...');
@@ -306,14 +345,17 @@ async function main() {
   const userCount = await prisma.user.count();
   const countryCount = await prisma.country.count();
   const cityCount = await prisma.city.count();
+  const officeCount = await prisma.office.count();
 
   console.log('\n' + '═'.repeat(60));
   console.log('🎉 Seed complete!');
   console.log('═'.repeat(60));
-  console.log(`   Users:      ${userCount} (1 admin + ${countryCount} countries + ${cityCount} cities)`);
+  console.log(`   Users:      ${userCount} (1 admin + ${officeCount} offices + ${countryCount} countries + ${cityCount} cities)`);
+  console.log(`   Offices:    ${officeCount}`);
   console.log(`   Countries:  ${countryCount}`);
   console.log(`   Cities:     ${cityCount}`);
   console.log(`\n   🔐 Admin login: admin / admin_2025!Imp`);
+  console.log(`   🔐 Office login: office_{code} / office_{code}_2025!Imp (e.g. office_eu / office_eu_2025!Imp)`);
   console.log(`   🔐 Country login: {code} / {code}_2025!Imp (e.g. de / de_2025!Imp)`);
   console.log(`   🔐 City login: {slug} / {slug}_2025!Imp (e.g. berlin / berlin_2025!Imp)`);
   console.log('═'.repeat(60));

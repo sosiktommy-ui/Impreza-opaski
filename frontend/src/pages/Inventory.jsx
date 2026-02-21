@@ -4,11 +4,14 @@ import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
 import Card from '../components/ui/Card';
 import Select from '../components/ui/Select';
-import { BraceletRow } from '../components/ui/BraceletBadge';
-import { Boxes } from 'lucide-react';
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
+import { Boxes, Plus, Minus } from 'lucide-react';
 
 export default function Inventory() {
   const { user } = useAuthStore();
+  const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
   const [balances, setBalances] = useState([]);
   const [countries, setCountries] = useState([]);
   const [cities, setCities] = useState([]);
@@ -16,16 +19,20 @@ export default function Inventory() {
   const [selectedCity, setSelectedCity] = useState('');
   const [viewEntity, setViewEntity] = useState({ type: '', id: '' });
   const [loading, setLoading] = useState(true);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [adjustForm, setAdjustForm] = useState({ itemType: 'BLACK', delta: 0, reason: '' });
+  const [adjusting, setAdjusting] = useState(false);
 
   useEffect(() => {
     init();
   }, []);
 
   const init = async () => {
-    if (user.role === 'ADMIN') {
-      // Admin can view any entity
+    if (isAdminOrOffice) {
+      // Admin/Office can view any entity
       const { data } = await usersApi.getCountries();
-      setCountries(Array.isArray(data) ? data : (data?.data || data || []));
+      const payload = data?.data || data;
+      setCountries(Array.isArray(payload) ? payload : []);
       setLoading(false);
     } else if (user.role === 'COUNTRY') {
       // Load own balance + list cities
@@ -34,7 +41,8 @@ export default function Inventory() {
         loadBalance('COUNTRY', user.countryId),
         usersApi.getCities(user.countryId),
       ]);
-      setCities(citiesRes.data?.data || citiesRes.data || []);
+      const citiesPayload = citiesRes.data?.data || citiesRes.data;
+      setCities(Array.isArray(citiesPayload) ? citiesPayload : []);
     } else {
       // City — just load own balance
       setViewEntity({ type: 'CITY', id: user.cityId });
@@ -45,11 +53,12 @@ export default function Inventory() {
   const loadBalance = async (entityType, entityId) => {
     try {
       const { data } = await inventoryApi.getBalance(entityType, entityId);
+      const payload = data?.data || data;
       // Backend returns { BLACK: 0, WHITE: 0, ... } object, not array
-      if (data && typeof data === 'object' && !Array.isArray(data)) {
-        setBalances(Object.entries(data).map(([itemType, quantity]) => ({ itemType, quantity })));
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        setBalances(Object.entries(payload).map(([itemType, quantity]) => ({ itemType, quantity })));
       } else {
-        setBalances(Array.isArray(data) ? data : []);
+        setBalances(Array.isArray(payload) ? payload : []);
       }
     } catch (err) {
       console.error(err);
@@ -67,7 +76,8 @@ export default function Inventory() {
       setViewEntity({ type: 'COUNTRY', id: cId });
       await loadBalance('COUNTRY', cId);
       const { data } = await usersApi.getCities(cId);
-      setCities(Array.isArray(data) ? data : (data?.data || data || []));
+      const payload = data?.data || data;
+      setCities(Array.isArray(payload) ? payload : []);
     } else {
       setBalances([]);
       setCities([]);
@@ -96,6 +106,27 @@ export default function Inventory() {
     }
   };
 
+  const handleAdjust = async () => {
+    if (!viewEntity.type || !viewEntity.id) return;
+    setAdjusting(true);
+    try {
+      await inventoryApi.adjust({
+        entityType: viewEntity.type,
+        entityId: viewEntity.id,
+        itemType: adjustForm.itemType,
+        delta: parseInt(adjustForm.delta, 10),
+        reason: adjustForm.reason || undefined,
+      });
+      setShowAdjust(false);
+      setAdjustForm({ itemType: 'BLACK', delta: 0, reason: '' });
+      await loadBalance(viewEntity.type, viewEntity.id);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Ошибка корректировки');
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -106,13 +137,21 @@ export default function Inventory() {
 
   const balanceMap = {};
   balances.forEach((b) => { balanceMap[b.itemType] = b.quantity; });
+  const totalBracelets = balances.reduce((sum, b) => sum + (b.quantity || 0), 0);
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-gray-800">Остатки</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-800">Остатки</h2>
+        {isAdminOrOffice && viewEntity.type && viewEntity.id && (
+          <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline">
+            <Plus size={16} /> Корректировка
+          </Button>
+        )}
+      </div>
 
-      {/* Admin filters */}
-      {user.role === 'ADMIN' && (
+      {/* Admin/Office filters */}
+      {isAdminOrOffice && (
         <Card>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
@@ -156,7 +195,7 @@ export default function Inventory() {
 
       {/* Balance display */}
       {balances.length > 0 ? (
-        <Card title="Текущий баланс">
+        <Card title={`Текущий баланс — ${totalBracelets} шт всего`}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
               const colors = {
@@ -181,10 +220,62 @@ export default function Inventory() {
       ) : (
         <Card>
           <p className="text-sm text-gray-500 text-center py-8">
-            {user.role === 'ADMIN' ? 'Выберите страну или город' : 'Нет данных'}
+            {isAdminOrOffice ? 'Выберите страну или город' : 'Нет данных'}
           </p>
         </Card>
       )}
+
+      {/* Adjust balance modal */}
+      <Modal open={showAdjust} onClose={() => setShowAdjust(false)} title="Корректировка остатков">
+        <div className="space-y-4">
+          <div className="text-sm text-gray-500">
+            {viewEntity.type === 'COUNTRY' ? 'Страна' : 'Город'}:{' '}
+            {viewEntity.type === 'COUNTRY'
+              ? countries.find((c) => c.id === viewEntity.id)?.name || selectedCountry
+              : cities.find((c) => c.id === viewEntity.id)?.name || selectedCity}
+          </div>
+          <Select
+            label="Тип браслета"
+            value={adjustForm.itemType}
+            onChange={(e) => setAdjustForm((p) => ({ ...p, itemType: e.target.value }))}
+            options={[
+              { value: 'BLACK', label: 'Чёрный' },
+              { value: 'WHITE', label: 'Белый' },
+              { value: 'RED', label: 'Красный' },
+              { value: 'BLUE', label: 'Синий' },
+            ]}
+          />
+          <Input
+            label="Количество (+ добавить, - убрать)"
+            type="number"
+            value={adjustForm.delta}
+            onChange={(e) => setAdjustForm((p) => ({ ...p, delta: e.target.value }))}
+          />
+          <Input
+            label="Причина (необязательно)"
+            value={adjustForm.reason}
+            onChange={(e) => setAdjustForm((p) => ({ ...p, reason: e.target.value }))}
+            placeholder="Инвентаризация, списание и т.д."
+          />
+          <div className="flex gap-2">
+            <Button
+              onClick={() => { setAdjustForm((p) => ({ ...p, delta: Math.abs(p.delta || 0) })); handleAdjust(); }}
+              loading={adjusting}
+              className="flex-1"
+            >
+              <Plus size={16} /> Добавить
+            </Button>
+            <Button
+              onClick={() => { setAdjustForm((p) => ({ ...p, delta: -Math.abs(p.delta || 0) })); handleAdjust(); }}
+              loading={adjusting}
+              variant="outline"
+              className="flex-1"
+            >
+              <Minus size={16} /> Списать
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

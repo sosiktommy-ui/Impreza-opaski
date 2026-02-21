@@ -5,7 +5,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { BraceletRow } from '../components/ui/BraceletBadge';
+import BraceletBadge from '../components/ui/BraceletBadge';
 import { CheckCircle, XCircle } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
@@ -28,7 +28,8 @@ export default function Acceptance() {
   const loadPending = async () => {
     try {
       const { data } = await transfersApi.getPending();
-      setPending(Array.isArray(data) ? data : []);
+      const result = data.data || data;
+      setPending(Array.isArray(result) ? result : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -113,22 +114,48 @@ export default function Acceptance() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {pending.map((t) => (
-            <Card key={t.id}>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">
-                      От: {t.senderType === 'ADMIN' ? 'Админ' : (t.senderCity?.name || t.senderCountry?.name || 'Отправитель')}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {new Date(t.createdAt).toLocaleDateString('ru-RU')}
-                    </div>
-                  </div>
-                  <Badge status={t.status} />
-                </div>
+          {pending.map((t) => {
+            const senderLabel =
+              t.senderType === 'ADMIN'
+                ? 'Склад'
+                : t.senderType === 'CITY'
+                  ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                  : t.senderCountry?.name || '—';
+            const senderName = t.createdByUser?.displayName;
+            const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
 
-                <div className="text-sm text-gray-500">Получена отправка — пересчитайте и примите</div>
+            return (
+              <Card key={t.id}>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium">
+                        От: {senderLabel}
+                      </div>
+                      {senderName && (
+                        <div className="text-xs text-gray-500">
+                          Отправитель: <span className="font-medium text-gray-700">{senderName}</span>
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {new Date(t.createdAt).toLocaleDateString('ru-RU', {
+                          day: '2-digit', month: 'long', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                    <Badge status={t.status} />
+                  </div>
+
+                  {/* Color breakdown */}
+                  <div className="flex items-center gap-1.5">
+                    {(t.items || []).map((item) => (
+                      <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} />
+                    ))}
+                    <span className="text-xs text-gray-400 ml-2">Итого: {totalQty} шт</span>
+                  </div>
+
+                  <div className="text-sm text-gray-500">Пересчитайте и примите</div>
 
                 {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
 

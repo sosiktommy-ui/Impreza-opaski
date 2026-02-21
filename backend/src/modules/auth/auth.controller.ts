@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Res,
   Req,
@@ -105,9 +106,8 @@ export class AuthController {
     return { message: 'All sessions revoked' };
   }
 
-  @Post('me')
+  @Get('me')
   @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.OK)
   async me(@CurrentUser() user: AuthenticatedUser) {
     return { user };
   }

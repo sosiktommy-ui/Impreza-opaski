@@ -6,11 +6,11 @@ import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
-import { BraceletRow } from '../components/ui/BraceletBadge';
+import BraceletBadge from '../components/ui/BraceletBadge';
 import {
   Send, PackageCheck, Globe, MapPin,
   ArrowRight, Package, Clock, Activity,
-  CalendarDays, Boxes, Map as MapIcon,
+  CalendarDays, Boxes, Map as MapIcon, AlertTriangle,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [balance, setBalance] = useState(null);
   const [pending, setPending] = useState([]);
   const [transfers, setTransfers] = useState([]);
+  const [problematicCount, setProblematicCount] = useState(0);
   const [stats, setStats] = useState({ countries: 0, cities: 0 });
   const [loading, setLoading] = useState(true);
 
@@ -28,13 +29,15 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
+      const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
       const promises = [
         transfersApi.getAll(),
         transfersApi.getPending(),
         usersApi.getCountries(),
+        transfersApi.getProblematic({ page: 1, limit: 1 }),
       ];
 
-      if (user.role !== 'ADMIN') {
+      if (!isAdminOrOffice) {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
         promises.push(inventoryApi.getBalance(entityType, entityId));
@@ -44,26 +47,35 @@ export default function Dashboard() {
 
       // All transfers
       const allData = results[0].data;
-      const allTransfers = Array.isArray(allData) ? allData : [];
+      const allPayload = allData?.data || allData;
+      const allTransfers = Array.isArray(allPayload) ? allPayload : (allPayload?.items || []);
       setTransfers(allTransfers);
 
       // Pending incoming
       const pendData = results[1].data;
-      setPending(Array.isArray(pendData) ? pendData : []);
+      const pendPayload = pendData?.data || pendData;
+      setPending(Array.isArray(pendPayload) ? pendPayload : []);
 
       // Countries & cities count
       const countriesData = results[2].data;
-      const countriesList = Array.isArray(countriesData) ? countriesData : [];
+      const countriesPayload = countriesData?.data || countriesData;
+      const countriesList = Array.isArray(countriesPayload) ? countriesPayload : [];
       const totalCities = countriesList.reduce((sum, c) => sum + (c.cities?.length || 0), 0);
       setStats({ countries: countriesList.length, cities: totalCities });
 
-      // Balance (non-admin)
-      if (results[3]) {
-        const d = results[3].data;
-        if (d && typeof d === 'object' && !Array.isArray(d)) {
-          setBalance(Object.entries(d).map(([itemType, quantity]) => ({ itemType, quantity })));
+      // Problematic count
+      const probData = results[3].data;
+      const probPayload = probData?.data || probData;
+      setProblematicCount(probPayload?.total || probPayload?.length || 0);
+
+      // Balance (non-admin/office)
+      if (results[4]) {
+        const d = results[4].data;
+        const dPayload = d?.data || d;
+        if (dPayload && typeof dPayload === 'object' && !Array.isArray(dPayload)) {
+          setBalance(Object.entries(dPayload).map(([itemType, quantity]) => ({ itemType, quantity })));
         } else {
-          setBalance(Array.isArray(d) ? d : []);
+          setBalance(Array.isArray(dPayload) ? dPayload : []);
         }
       }
     } catch (err) {
@@ -83,8 +95,9 @@ export default function Dashboard() {
 
   const entityLabel =
     user.role === 'ADMIN' ? 'Администратор' :
-    user.role === 'COUNTRY' ? user.country?.name || 'Страна' :
-    user.city?.name || 'Город';
+    user.role === 'OFFICE' ? (user.office?.name || 'Офис') :
+    user.role === 'COUNTRY' ? (user.country?.name || 'Страна') :
+    (user.city?.name || 'Город');
 
   const totalBracelets = transfers.reduce((sum, t) =>
     sum + (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
@@ -97,12 +110,13 @@ export default function Dashboard() {
     .slice(0, 5);
 
   const quickActions = [
-    { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'COUNTRY'] },
-    { label: 'Приёмка', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
+    { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
+    { label: 'Приёмка', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['CITY', 'COUNTRY'] },
-    { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
-    { label: 'Карта', icon: MapIcon, path: '/map', color: 'bg-teal-500', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
-    { label: 'История', icon: Clock, path: '/history', color: 'bg-slate-500', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
+    { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Карта', icon: MapIcon, path: '/map', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'История', icon: Clock, path: '/history', color: 'bg-slate-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   ].filter((a) => a.roles.includes(user.role));
 
   return (
@@ -115,7 +129,7 @@ export default function Dashboard() {
               Привет, {user.displayName}!
             </h1>
             <p className="text-brand-100 mt-1 text-sm flex items-center gap-1.5">
-              {user.role === 'ADMIN' ? <Globe size={14} /> : <MapPin size={14} />}
+              {(user.role === 'ADMIN' || user.role === 'OFFICE') ? <Globe size={14} /> : <MapPin size={14} />}
               {entityLabel}
             </p>
           </div>
@@ -130,10 +144,11 @@ export default function Dashboard() {
       </div>
 
       {/* ── Stats Grid ───────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-500', bg: 'bg-blue-50' },
           { value: totalBracelets, label: 'Браслетов', icon: Package, iconColor: 'text-emerald-500', bg: 'bg-emerald-50' },
+          { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-500', bg: 'bg-orange-50' },
           { value: stats.countries, label: 'Стран', icon: Globe, iconColor: 'text-violet-500', bg: 'bg-violet-50' },
           { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-amber-500', bg: 'bg-amber-50' },
         ].map(({ value, label, icon: Icon, iconColor, bg }) => (
@@ -209,9 +224,16 @@ export default function Dashboard() {
                 <div>
                   <div className="text-sm font-medium text-gray-700">
                     От: {t.senderType === 'ADMIN'
-                      ? 'Админ'
-                      : (t.senderCity?.name || t.senderCountry?.name || 'Отправитель')}
+                      ? 'Склад'
+                      : t.senderType === 'CITY'
+                        ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                        : (t.senderCountry?.name || 'Отправитель')}
                   </div>
+                  {t.createdByUser?.displayName && (
+                    <div className="text-[10px] text-gray-400">
+                      {t.createdByUser.displayName}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-400 mt-0.5">
                     Пересчитайте и примите
                   </div>
@@ -314,9 +336,14 @@ export default function Dashboard() {
               {recentTransfers.map((t) => {
                 const from =
                   t.senderType === 'ADMIN'
-                    ? 'Админ'
-                    : (t.senderCity?.name || t.senderCountry?.name || '—');
-                const to = t.receiverCity?.name || t.receiverCountry?.name || '—';
+                    ? 'Склад'
+                    : t.senderType === 'CITY'
+                      ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                      : (t.senderCountry?.name || '—');
+                const to =
+                  t.receiverType === 'CITY'
+                    ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
+                    : (t.receiverCountry?.name || '—');
                 const totalQty = (t.items || []).reduce(
                   (s, i) => s + (i.quantity || 0),
                   0,
@@ -330,7 +357,11 @@ export default function Dashboard() {
                       <div className="text-sm text-gray-700 truncate">
                         {from} → {to}
                       </div>
-                      <div className="text-xs text-gray-400">{totalQty} шт</div>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        {(t.items || []).map((item) => (
+                          <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity} size="sm" />
+                        ))}
+                      </div>
                     </div>
                     <Badge status={t.status} />
                     <span className="text-[10px] text-gray-300 flex-shrink-0">
