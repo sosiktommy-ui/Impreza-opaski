@@ -15,7 +15,7 @@ import {
   Prisma,
 } from '@prisma/client';
 
-export interface CreateTransferInput {
+export interface SendTransferInput {
   senderType: EntityType;
   senderCountryId?: string;
   senderCityId?: string;
@@ -23,6 +23,7 @@ export interface CreateTransferInput {
   receiverCountryId?: string;
   receiverCityId?: string;
   items: Array<{ itemType: ItemType; quantity: number }>;
+  notes?: string;
   createdBy: string;
 }
 
@@ -42,16 +43,16 @@ export class TransfersService {
   ) {}
 
   // ──────────────────────────────────────────────
-  // CREATE TRANSFER (DRAFT)
+  // SEND TRANSFER (create + send in one step)
+  // Admin creates bracelets from nothing (no inventory deduction)
+  // Country/City deducts from own inventory
   // ──────────────────────────────────────────────
 
-  async createTransfer(input: CreateTransferInput) {
-    // Validate: cannot send to self
+  async sendTransfer(input: SendTransferInput) {
     if (this.isSameEntity(input)) {
-      throw new BadRequestException('Cannot create a transfer to yourself');
+      throw new BadRequestException('Cannot send to yourself');
     }
 
-    // Validate items
     if (!input.items || input.items.length === 0) {
       throw new BadRequestException('At least one item is required');
     }
@@ -62,114 +63,97 @@ export class TransfersService {
       }
     }
 
-    const transfer = await this.prisma.transfer.create({
-      data: {
-        senderType: input.senderType,
-        senderCountryId: input.senderCountryId || null,
-        senderCityId: input.senderCityId || null,
-        receiverType: input.receiverType,
-        receiverCountryId: input.receiverCountryId || null,
-        receiverCityId: input.receiverCityId || null,
-        status: TransferStatus.DRAFT,
-        createdBy: input.createdBy,
-        items: {
-          create: input.items.map((item) => ({
-            itemType: item.itemType,
-            quantity: item.quantity,
-          })),
-        },
-      },
-      include: { items: true },
-    });
+    const isAdminSender = input.senderType === EntityType.ADMIN;
 
-    // Store domain event
-    await this.storeDomainEvent(transfer.id, 'TransferCreated', {
-      transfer,
-    });
-
-    this.logger.log(`Transfer ${transfer.id} created (DRAFT)`);
-    return transfer;
-  }
-
-  // ──────────────────────────────────────────────
-  // SEND TRANSFER (DRAFT → SENT)
-  // Deducts from sender immediately upon sending
-  // ──────────────────────────────────────────────
-
-  async sendTransfer(transferId: string, actorId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const transfer = await tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true },
-      });
+      // For non-admin senders: check and deduct inventory
+      if (!isAdminSender) {
+        for (const item of input.items) {
+          const balance = await this.getEntityBalance(
+            tx,
+            input.senderType,
+            input.senderCountryId || null,
+            input.senderCityId || null,
+            item.itemType,
+          );
+          if (balance < item.quantity) {
+            throw new BadRequestException(
+              `Insufficient ${item.itemType} balance: have ${balance}, need ${item.quantity}`,
+            );
+          }
+        }
 
-      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-      if (transfer.status !== TransferStatus.DRAFT) {
-        throw new BadRequestException(
-          `Cannot send transfer in status ${transfer.status}. Must be DRAFT.`,
-        );
-      }
-
-      // Check sender has sufficient balance for ALL items
-      for (const item of transfer.items) {
-        const balance = await this.getEntityBalance(
-          tx,
-          transfer.senderType,
-          transfer.senderCountryId,
-          transfer.senderCityId,
-          item.itemType,
-        );
-
-        if (balance < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient ${item.itemType} balance: have ${balance}, need ${item.quantity}`,
+        for (const item of input.items) {
+          await this.deductInventory(
+            tx,
+            input.senderType,
+            input.senderCountryId || null,
+            input.senderCityId || null,
+            item.itemType,
+            item.quantity,
           );
         }
       }
 
-      // Deduct from sender immediately
-      for (const item of transfer.items) {
-        await this.deductInventory(
-          tx,
-          transfer.senderType,
-          transfer.senderCountryId,
-          transfer.senderCityId,
-          item.itemType,
-          item.quantity,
-        );
-      }
-
-      const updated = await tx.transfer.update({
-        where: { id: transferId },
+      const transfer = await tx.transfer.create({
         data: {
+          senderType: input.senderType,
+          senderCountryId: input.senderCountryId || null,
+          senderCityId: input.senderCityId || null,
+          receiverType: input.receiverType,
+          receiverCountryId: input.receiverCountryId || null,
+          receiverCityId: input.receiverCityId || null,
           status: TransferStatus.SENT,
+          createdBy: input.createdBy,
           sentAt: new Date(),
+          notes: input.notes || null,
+          items: {
+            create: input.items.map((item) => ({
+              itemType: item.itemType,
+              quantity: item.quantity,
+            })),
+          },
         },
-        include: { items: true },
+        include: {
+          items: true,
+          senderCountry: { select: { id: true, name: true, code: true } },
+          senderCity: { select: { id: true, name: true, slug: true } },
+          receiverCountry: { select: { id: true, name: true, code: true } },
+          receiverCity: { select: { id: true, name: true, slug: true } },
+        },
       });
 
-      // Invalidate sender cache
-      const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+      // Invalidate sender cache (for non-admin)
+      if (!isAdminSender) {
+        const senderEntityId = input.senderCityId || input.senderCountryId;
+        if (senderEntityId) {
+          await this.redis.invalidateInventory(input.senderType, senderEntityId);
+        }
       }
 
-      await this.storeDomainEvent(transferId, 'TransferSent', {
-        previousStatus: TransferStatus.DRAFT,
-        newStatus: TransferStatus.SENT,
-        actorId,
+      await this.storeDomainEvent(transfer.id, 'TransferSent', {
+        transfer,
+        actorId: input.createdBy,
       });
 
-      this.logger.log(`Transfer ${transferId} sent (SENT)`);
+      this.logger.log(`Transfer ${transfer.id} created and sent`);
 
-      // Emit notification event
+      const fromName = transfer.senderType === EntityType.ADMIN
+        ? 'Admin'
+        : (transfer.senderCountry?.name || transfer.senderCity?.name || 'Unknown');
+      const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+
       this.eventEmitter.emit('transfer.sent', {
-        transfer: updated,
-        actorId,
+        transferId: transfer.id,
+        fromEntityName: fromName,
+        toEntityId,
+        toEntityType: transfer.receiverType,
+        toEntityName: transfer.receiverCountry?.name || transfer.receiverCity?.name || 'Unknown',
+        items: transfer.items.map((i) => ({ type: i.itemType, quantity: i.quantity })),
+        userId: input.createdBy,
       });
 
-      return updated;
+      return transfer;
     });
   }
 
@@ -378,22 +362,25 @@ export class TransfersService {
         },
       });
 
-      // Return items to sender (they were deducted on send)
-      for (const item of transfer.items) {
-        await this.creditInventory(
-          tx,
-          transfer.senderType,
-          transfer.senderCountryId,
-          transfer.senderCityId,
-          item.itemType,
-          item.quantity,
-        );
-      }
+      // Return items to sender ONLY if sender is not ADMIN
+      // (Admin creates from nothing, so nothing to return)
+      if (transfer.senderType !== EntityType.ADMIN) {
+        for (const item of transfer.items) {
+          await this.creditInventory(
+            tx,
+            transfer.senderType,
+            transfer.senderCountryId,
+            transfer.senderCityId,
+            item.itemType,
+            item.quantity,
+          );
+        }
 
-      // Invalidate sender cache
-      const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+        // Invalidate sender cache
+        const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
+        if (senderEntityId) {
+          await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+        }
       }
 
       await this.storeDomainEvent(transferId, 'TransferRejected', {
@@ -444,8 +431,8 @@ export class TransfersService {
         );
       }
 
-      // If it was already SENT, return items to sender
-      if (transfer.status === TransferStatus.SENT) {
+      // Return items to sender only if not admin
+      if (transfer.status === TransferStatus.SENT && transfer.senderType !== EntityType.ADMIN) {
         for (const item of transfer.items) {
           await this.creditInventory(
             tx,
@@ -658,7 +645,7 @@ export class TransfersService {
     return false;
   }
 
-  private isSameEntity(input: CreateTransferInput): boolean {
+  private isSameEntity(input: SendTransferInput): boolean {
     if (input.senderType === input.receiverType) {
       if (input.senderType === EntityType.COUNTRY) {
         return input.senderCountryId === input.receiverCountryId;

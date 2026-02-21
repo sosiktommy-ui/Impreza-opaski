@@ -1,7 +1,9 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -12,6 +14,41 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsEmail, MinLength } from 'class-validator';
+
+class CreateUserDto {
+  @IsString()
+  @IsNotEmpty()
+  username!: string;
+
+  @IsString()
+  @MinLength(6)
+  password!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsEnum(Role)
+  role!: Role;
+
+  @IsString()
+  @IsNotEmpty()
+  displayName!: string;
+
+  @IsString()
+  @IsOptional()
+  countryId?: string;
+
+  @IsString()
+  @IsOptional()
+  cityId?: string;
+}
+
+class ResetPasswordDto {
+  @IsString()
+  @MinLength(6)
+  newPassword!: string;
+}
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -46,6 +83,12 @@ export class UsersController {
     return this.usersService.findById(id);
   }
 
+  @Post()
+  @Roles(Role.ADMIN)
+  createUser(@Body() dto: CreateUserDto) {
+    return this.usersService.createUser(dto);
+  }
+
   @Patch(':id')
   @Roles(Role.ADMIN)
   update(
@@ -53,5 +96,20 @@ export class UsersController {
     @Body() data: { displayName?: string; isActive?: boolean; email?: string },
   ) {
     return this.usersService.update(id, data);
+  }
+
+  @Patch(':id/password')
+  @Roles(Role.ADMIN)
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+  ) {
+    return this.usersService.resetPassword(id, dto.newPassword);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  deleteUser(@Param('id') id: string) {
+    return this.usersService.deleteUser(id);
   }
 }

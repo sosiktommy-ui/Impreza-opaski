@@ -182,30 +182,131 @@ export class InventoryService {
   }
 
   // ──────────────────────────────────────────────
-  // CREATE EXPENSE (City only)
+  // CREATE EXPENSE (City only — event/мероприятие)
   // ──────────────────────────────────────────────
 
   async createExpense(params: {
     cityId: string;
-    itemType: ItemType;
-    quantity: number;
-    reason: string;
+    eventName: string;
+    eventDate: string;
+    location?: string;
+    black: number;
+    white: number;
+    red: number;
+    blue: number;
+    notes?: string;
     actorId: string;
   }) {
-    const { cityId, itemType, quantity, reason, actorId } = params;
+    const {
+      cityId, eventName, eventDate, location,
+      black, white, red, blue, notes, actorId,
+    } = params;
 
-    if (quantity <= 0) {
-      throw new BadRequestException('Quantity must be positive');
+    // Validate at least one color has quantity
+    if (black <= 0 && white <= 0 && red <= 0 && blue <= 0) {
+      throw new BadRequestException('At least one bracelet color must have quantity > 0');
     }
 
-    return this.adjustBalance({
-      entityType: EntityType.CITY,
-      entityId: cityId,
-      itemType,
-      delta: -quantity,
-      reason: `EXPENSE: ${reason}`,
-      actorId,
+    // Validate city exists
+    const city = await this.prisma.city.findUnique({ where: { id: cityId } });
+    if (!city) throw new NotFoundException(`City ${cityId} not found`);
+
+    return this.prisma.$transaction(async (tx) => {
+      // Check and deduct balance for each color
+      const colors = [
+        { type: ItemType.BLACK, qty: black },
+        { type: ItemType.WHITE, qty: white },
+        { type: ItemType.RED, qty: red },
+        { type: ItemType.BLUE, qty: blue },
+      ];
+
+      for (const { type, qty } of colors) {
+        if (qty > 0) {
+          const where = { entityType: EntityType.CITY, cityId, itemType: type };
+          const inventory = await tx.inventory.findFirst({ where });
+          if (!inventory || inventory.quantity < qty) {
+            throw new BadRequestException(
+              `Insufficient ${type} stock: have ${inventory?.quantity ?? 0}, need ${qty}`,
+            );
+          }
+          await tx.inventory.update({
+            where: { id: inventory.id },
+            data: { quantity: inventory.quantity - qty },
+          });
+        }
+      }
+
+      // Create expense record
+      const expense = await tx.expense.create({
+        data: {
+          cityId,
+          eventName,
+          eventDate: new Date(eventDate),
+          location: location || null,
+          black,
+          white,
+          red,
+          blue,
+          notes: notes || null,
+          createdBy: actorId,
+        },
+        include: {
+          city: { select: { id: true, name: true, slug: true } },
+        },
+      });
+
+      // Update city status
+      await this.updateCityStatus(tx, cityId);
+
+      // Invalidate cache
+      await this.redis.invalidateInventory(EntityType.CITY, cityId);
+
+      this.logger.log(
+        `Expense created: ${eventName} in ${city.name} — B:${black} W:${white} R:${red} BL:${blue}`,
+      );
+
+      return expense;
     });
+  }
+
+  // Get expenses (for events list)
+  async getExpenses(params: {
+    cityId?: string;
+    countryId?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { cityId, countryId, page = 1, limit = 20 } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ExpenseWhereInput = {};
+    if (cityId) where.cityId = cityId;
+    if (countryId) where.city = { countryId };
+
+    const [expenses, total] = await Promise.all([
+      this.prisma.expense.findMany({
+        where,
+        include: {
+          city: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              country: { select: { id: true, name: true, code: true } },
+            },
+          },
+        },
+        orderBy: { eventDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.expense.count({ where }),
+    ]);
+
+    return {
+      data: expenses,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   // ──────────────────────────────────────────────

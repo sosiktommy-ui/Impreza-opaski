@@ -14,7 +14,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { Role, EntityType, ItemType } from '@prisma/client';
-import { IsEnum, IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 class AdjustBalanceDto {
   @IsEnum(EntityType)
@@ -40,16 +40,37 @@ class CreateExpenseDto {
   @IsNotEmpty()
   cityId!: string;
 
-  @IsEnum(ItemType)
-  itemType!: ItemType;
-
-  @IsInt()
-  @Min(1)
-  quantity!: number;
+  @IsString()
+  @IsNotEmpty()
+  eventName!: string;
 
   @IsString()
   @IsNotEmpty()
-  reason!: string;
+  eventDate!: string;
+
+  @IsString()
+  @IsOptional()
+  location?: string;
+
+  @IsInt()
+  @Min(0)
+  black!: number;
+
+  @IsInt()
+  @Min(0)
+  white!: number;
+
+  @IsInt()
+  @Min(0)
+  red!: number;
+
+  @IsInt()
+  @Min(0)
+  blue!: number;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 
 @Controller('inventory')
@@ -113,6 +134,33 @@ export class InventoryController {
     return this.inventoryService.createExpense({
       ...dto,
       actorId: user.id,
+    });
+  }
+
+  @Get('expenses')
+  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
+  getExpenses(
+    @Query('cityId') cityId?: string,
+    @Query('countryId') countryId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    // Auto-scope based on role
+    let scopedCityId = cityId;
+    let scopedCountryId = countryId;
+
+    if (user?.role === Role.CITY && user.cityId) {
+      scopedCityId = user.cityId;
+    } else if (user?.role === Role.COUNTRY && user.countryId) {
+      scopedCountryId = user.countryId;
+    }
+
+    return this.inventoryService.getExpenses({
+      cityId: scopedCityId,
+      countryId: scopedCountryId,
+      page,
+      limit,
     });
   }
 }

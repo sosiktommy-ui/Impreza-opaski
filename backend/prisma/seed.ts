@@ -168,9 +168,9 @@ async function main() {
   console.log('🗑️  Cleaning existing data...');
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
-      domain_events, audit_logs, notifications, adjustments,
+      domain_events, audit_logs, notifications, adjustments, expenses,
       transfer_rejections, transfer_items, transfers,
-      inventory, refresh_tokens, users, cities, countries
+      acceptance_records, inventory, refresh_tokens, users, cities, countries
     CASCADE;
   `);
 
@@ -270,27 +270,7 @@ async function main() {
     console.log(`   ✅ ${c.name}: ${c.cities.length} city accounts`);
   }
 
-  // ───── 7. Seed Admin inventory (general stock) ─────
-  console.log('\n📦 Setting up admin inventory (general stock)...');
-  const ADMIN_STOCK: Record<string, number> = {
-    BLACK: 100000,
-    WHITE: 100000,
-    RED: 100000,
-    BLUE: 100000,
-  };
-
-  for (const [itemType, qty] of Object.entries(ADMIN_STOCK)) {
-    await prisma.inventory.create({
-      data: {
-        entityType: EntityType.ADMIN,
-        itemType: itemType as ItemType,
-        quantity: qty,
-      },
-    });
-  }
-  console.log(`   ✅ Admin stock: ${Object.entries(ADMIN_STOCK).map(([k, v]) => `${k}=${v}`).join(', ')}`);
-
-  // ───── 8. Initialize empty inventory for countries and cities ─────
+  // ───── 7. Initialize empty inventory for countries and cities ─────
   console.log('\n📋 Initializing country/city inventories (all at 0)...');
   const itemTypes: ItemType[] = [ItemType.BLACK, ItemType.WHITE, ItemType.RED, ItemType.BLUE];
 
@@ -322,135 +302,10 @@ async function main() {
   }
   console.log(`   ✅ All ${COUNTRIES.length} countries + ${totalCities} cities initialized at 0`);
 
-  // ───── 9. Create sample transfers to demo blind acceptance ─────
-  console.log('\n📤 Creating sample transfers...');
-
-  // Transfer 1: Admin → Germany (SENT, awaiting acceptance)
-  await prisma.transfer.create({
-    data: {
-      senderType: EntityType.ADMIN,
-      receiverType: EntityType.COUNTRY,
-      receiverCountryId: countryMap['de'],
-      status: TransferStatus.SENT,
-      createdBy: admin.id,
-      sentAt: new Date(),
-      notes: 'Начальная поставка для Германии',
-      items: {
-        create: [
-          { itemType: ItemType.BLACK, quantity: 1000 },
-          { itemType: ItemType.WHITE, quantity: 500 },
-          { itemType: ItemType.RED, quantity: 500 },
-          { itemType: ItemType.BLUE, quantity: 500 },
-        ],
-      },
-    },
-  });
-
-  // Deduct from admin stock
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.BLACK }, data: { quantity: { decrement: 1000 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.WHITE }, data: { quantity: { decrement: 500 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.RED }, data: { quantity: { decrement: 500 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.BLUE }, data: { quantity: { decrement: 500 } } });
-  console.log('   ✅ Admin → Germany: 1000B + 500W + 500R + 500BL (SENT)');
-
-  // Transfer 2: Admin → Poland (SENT, awaiting acceptance)
-  await prisma.transfer.create({
-    data: {
-      senderType: EntityType.ADMIN,
-      receiverType: EntityType.COUNTRY,
-      receiverCountryId: countryMap['pl'],
-      status: TransferStatus.SENT,
-      createdBy: admin.id,
-      sentAt: new Date(),
-      notes: 'Начальная поставка для Польши',
-      items: {
-        create: [
-          { itemType: ItemType.BLACK, quantity: 800 },
-          { itemType: ItemType.WHITE, quantity: 600 },
-          { itemType: ItemType.RED, quantity: 400 },
-          { itemType: ItemType.BLUE, quantity: 300 },
-        ],
-      },
-    },
-  });
-
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.BLACK }, data: { quantity: { decrement: 800 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.WHITE }, data: { quantity: { decrement: 600 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.RED }, data: { quantity: { decrement: 400 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.BLUE }, data: { quantity: { decrement: 300 } } });
-  console.log('   ✅ Admin → Poland: 800B + 600W + 400R + 300BL (SENT)');
-
-  // Transfer 3: Admin → Netherlands (ACCEPTED — completed example)
-  const transfer3 = await prisma.transfer.create({
-    data: {
-      senderType: EntityType.ADMIN,
-      receiverType: EntityType.COUNTRY,
-      receiverCountryId: countryMap['nl'],
-      status: TransferStatus.ACCEPTED,
-      createdBy: admin.id,
-      sentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      acceptedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      notes: 'Поставка для Нидерландов',
-      items: {
-        create: [
-          { itemType: ItemType.BLACK, quantity: 500 },
-          { itemType: ItemType.WHITE, quantity: 500 },
-        ],
-      },
-    },
-  });
-
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.COUNTRY, countryId: countryMap['nl'], itemType: ItemType.BLACK }, data: { quantity: 500 } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.COUNTRY, countryId: countryMap['nl'], itemType: ItemType.WHITE }, data: { quantity: 500 } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.BLACK }, data: { quantity: { decrement: 500 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.WHITE }, data: { quantity: { decrement: 500 } } });
-
-  await prisma.acceptanceRecord.createMany({
-    data: [
-      { transferId: transfer3.id, itemType: ItemType.BLACK, sentQuantity: 500, receivedQuantity: 500, discrepancy: 0, acceptedById: countryUserMap['nl'] },
-      { transferId: transfer3.id, itemType: ItemType.WHITE, sentQuantity: 500, receivedQuantity: 500, discrepancy: 0, acceptedById: countryUserMap['nl'] },
-    ],
-  });
-  console.log('   ✅ Admin → Netherlands: 500B + 500W (ACCEPTED, no discrepancy)');
-
-  // Transfer 4: Admin → Bulgaria (DISCREPANCY_FOUND)
-  const transfer4 = await prisma.transfer.create({
-    data: {
-      senderType: EntityType.ADMIN,
-      receiverType: EntityType.COUNTRY,
-      receiverCountryId: countryMap['bg'],
-      status: TransferStatus.DISCREPANCY_FOUND,
-      createdBy: admin.id,
-      sentAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-      acceptedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
-      notes: 'Поставка для Болгарии',
-      items: {
-        create: [
-          { itemType: ItemType.RED, quantity: 300 },
-          { itemType: ItemType.BLUE, quantity: 200 },
-        ],
-      },
-    },
-  });
-
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.COUNTRY, countryId: countryMap['bg'], itemType: ItemType.RED }, data: { quantity: 280 } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.COUNTRY, countryId: countryMap['bg'], itemType: ItemType.BLUE }, data: { quantity: 200 } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.RED }, data: { quantity: { decrement: 300 } } });
-  await prisma.inventory.updateMany({ where: { entityType: EntityType.ADMIN, itemType: ItemType.BLUE }, data: { quantity: { decrement: 200 } } });
-
-  await prisma.acceptanceRecord.createMany({
-    data: [
-      { transferId: transfer4.id, itemType: ItemType.RED, sentQuantity: 300, receivedQuantity: 280, discrepancy: 20, acceptedById: countryUserMap['bg'] },
-      { transferId: transfer4.id, itemType: ItemType.BLUE, sentQuantity: 200, receivedQuantity: 200, discrepancy: 0, acceptedById: countryUserMap['bg'] },
-    ],
-  });
-  console.log('   ✅ Admin → Bulgaria: 300R(got 280, -20!) + 200BL (DISCREPANCY_FOUND)');
-
-  // ───── 10. Summary ─────
+  // ───── 8. Summary ─────
   const userCount = await prisma.user.count();
   const countryCount = await prisma.country.count();
   const cityCount = await prisma.city.count();
-  const transferCount = await prisma.transfer.count();
 
   console.log('\n' + '═'.repeat(60));
   console.log('🎉 Seed complete!');
@@ -458,7 +313,6 @@ async function main() {
   console.log(`   Users:      ${userCount} (1 admin + ${countryCount} countries + ${cityCount} cities)`);
   console.log(`   Countries:  ${countryCount}`);
   console.log(`   Cities:     ${cityCount}`);
-  console.log(`   Transfers:  ${transferCount}`);
   console.log(`\n   🔐 Admin login: admin / admin_2025!Imp`);
   console.log(`   🔐 Country login: {code} / {code}_2025!Imp (e.g. de / de_2025!Imp)`);
   console.log(`   🔐 City login: {slug} / {slug}_2025!Imp (e.g. berlin / berlin_2025!Imp)`);

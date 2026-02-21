@@ -63,6 +63,10 @@ class CreateTransferDto {
   @ValidateNested({ each: true })
   @Type(() => TransferItemDto)
   items!: TransferItemDto[];
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 
 class RejectTransferDto {
@@ -94,23 +98,14 @@ export class TransfersController {
 
   @Post()
   @Roles(Role.ADMIN, Role.COUNTRY)
-  createTransfer(
+  sendTransfer(
     @Body() dto: CreateTransferDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.transfersService.createTransfer({
+    return this.transfersService.sendTransfer({
       ...dto,
       createdBy: user.id,
     });
-  }
-
-  @Patch(':id/send')
-  @Roles(Role.ADMIN, Role.COUNTRY)
-  sendTransfer(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.transfersService.sendTransfer(id, user.id);
   }
 
   @Patch(':id/accept')

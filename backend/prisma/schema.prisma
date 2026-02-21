@@ -25,9 +25,7 @@ enum ItemType {
 }
 
 enum TransferStatus {
-  DRAFT
   SENT
-  AWAITING_ACCEPTANCE
   ACCEPTED
   DISCREPANCY_FOUND
   REJECTED
@@ -156,6 +154,7 @@ model City {
   // Relations
   users     User[]
   inventory Inventory[]
+  expenses  Expense[]
   transfersSent     Transfer[] @relation("SenderCity")
   transfersReceived Transfer[] @relation("ReceiverCity")
 
@@ -204,7 +203,7 @@ model Transfer {
   receiverCountryId String?      @map("receiver_country_id")
   receiverCityId  String?        @map("receiver_city_id")
 
-  status          TransferStatus @default(DRAFT)
+  status          TransferStatus @default(SENT)
   version         Int            @default(0) // Optimistic locking
   notes           String?
 
@@ -292,6 +291,31 @@ model Adjustment {
   @@index([entityType, countryId])
   @@index([entityType, cityId])
   @@map("adjustments")
+}
+
+// ──────────────────────────────────────────────
+// EXPENSES (Events / Мероприятия)
+// ──────────────────────────────────────────────
+
+model Expense {
+  id          String   @id @default(uuid())
+  cityId      String   @map("city_id")
+  city        City     @relation(fields: [cityId], references: [id])
+  eventName   String   @map("event_name")
+  eventDate   DateTime @map("event_date")
+  location    String?
+  black       Int      @default(0)
+  white       Int      @default(0)
+  red         Int      @default(0)
+  blue        Int      @default(0)
+  notes       String?
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([cityId])
+  @@index([eventDate])
+  @@index([createdBy])
+  @@map("expenses")
 }
 
 // ──────────────────────────────────────────────

@@ -1,8 +1,8 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { TransfersService, CreateTransferInput } from '../transfers.service';
+import { TransfersService, SendTransferInput } from '../transfers.service';
 
 export class CreateTransferCommand {
-  constructor(public readonly input: CreateTransferInput) {}
+  constructor(public readonly input: SendTransferInput) {}
 }
 
 @CommandHandler(CreateTransferCommand)
@@ -12,6 +12,6 @@ export class CreateTransferHandler
   constructor(private readonly transfersService: TransfersService) {}
 
   async execute(command: CreateTransferCommand) {
-    return this.transfersService.createTransfer(command.input);
+    return this.transfersService.sendTransfer(command.input);
   }
 }

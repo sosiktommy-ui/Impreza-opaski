@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Role, Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -136,5 +137,105 @@ export class UsersService {
       },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async createUser(data: {
+    username: string;
+    password: string;
+    email: string;
+    role: Role;
+    displayName: string;
+    countryId?: string;
+    cityId?: string;
+  }) {
+    // Check username uniqueness
+    const existingUsername = await this.prisma.user.findUnique({
+      where: { username: data.username },
+    });
+    if (existingUsername) throw new ConflictException('Username already exists');
+
+    // Check email uniqueness
+    const existingEmail = await this.prisma.user.findFirst({
+      where: { email: data.email },
+    });
+    if (existingEmail) throw new ConflictException('Email already in use');
+
+    if (data.password.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
+
+    const passwordHash = await bcrypt.hash(data.password, 12);
+
+    const user = await this.prisma.user.create({
+      data: {
+        username: data.username,
+        passwordHash,
+        email: data.email,
+        role: data.role,
+        displayName: data.displayName,
+        countryId: data.countryId || null,
+        cityId: data.cityId || null,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        displayName: true,
+        isActive: true,
+        countryId: true,
+        cityId: true,
+        createdAt: true,
+      },
+    });
+
+    this.logger.log(`User created: ${user.username} (${user.role})`);
+    return user;
+  }
+
+  async deleteUser(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+
+    if (user.role === Role.ADMIN) {
+      // Don't allow deleting the last admin
+      const adminCount = await this.prisma.user.count({ where: { role: Role.ADMIN } });
+      if (adminCount <= 1) {
+        throw new BadRequestException('Cannot delete the last admin user');
+      }
+    }
+
+    // Delete related data first
+    await this.prisma.refreshToken.deleteMany({ where: { userId: id } });
+    await this.prisma.notification.deleteMany({ where: { userId: id } });
+
+    await this.prisma.user.delete({ where: { id } });
+    this.logger.log(`User deleted: ${user.username}`);
+    return { success: true, message: `User ${user.username} deleted` };
+  }
+
+  async resetPassword(id: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+
+    if (newPassword.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+
+    // Revoke all refresh tokens
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    this.logger.log(`Password reset for user: ${user.username}`);
+    return { success: true, message: `Password reset for ${user.username}` };
   }
 }
