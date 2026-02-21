@@ -5,10 +5,10 @@ export const transfersApi = {
 
   getById: (id) => api.get(`/transfers/${id}`),
 
-  getPendingIncoming: () => api.get('/transfers/pending-incoming'),
+  getPending: () => api.get('/transfers/pending'),
 
   create: (data) => api.post('/transfers', data),
-  // data: { fromType, fromId, toType, toId, items: [{itemType, quantity}], notes }
+  // data: { senderType, senderCountryId?, senderCityId?, receiverType, receiverCountryId?, receiverCityId?, items: [{itemType, quantity}], notes? }
 
   accept: (id, items) =>
     api.patch(`/transfers/${id}/accept`, { items }),

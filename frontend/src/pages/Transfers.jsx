@@ -103,18 +103,30 @@ export default function Transfers() {
       return;
     }
 
-    const fromType = user.role === 'ADMIN' ? 'ADMIN' : user.role;
-    const fromId = user.role === 'ADMIN' ? user.id : (user.role === 'COUNTRY' ? user.countryId : user.cityId);
-    const toId = toType === 'COUNTRY' ? toCountryId : toCityId;
+    const senderType = user.role === 'ADMIN' ? 'ADMIN' : user.role;
+    const payload = {
+      senderType,
+      senderCountryId: user.role === 'COUNTRY' ? user.countryId : undefined,
+      senderCityId: user.role === 'CITY' ? user.cityId : undefined,
+      receiverType: toType,
+      receiverCountryId: toType === 'COUNTRY' ? toCountryId : undefined,
+      receiverCityId: toType === 'CITY' ? toCityId : undefined,
+      items,
+      notes: notes || undefined,
+    };
 
-    if (!toId) {
+    if (toType === 'COUNTRY' && !toCountryId) {
+      setError('Выберите получателя');
+      return;
+    }
+    if (toType === 'CITY' && !toCityId) {
       setError('Выберите получателя');
       return;
     }
 
     setSending(true);
     try {
-      await transfersApi.create({ fromType, fromId, toType, toId, items, notes: notes || undefined });
+      await transfersApi.create(payload);
       setShowCreate(false);
       resetForm();
       await loadTransfers();

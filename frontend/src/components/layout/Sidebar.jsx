@@ -7,6 +7,7 @@ import {
   Boxes,
   Users,
   History,
+  MapPin,
   X,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -14,12 +15,13 @@ import { useAppStore } from '../../store/useAppStore';
 
 const allLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Главная', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
-  { to: '/transfers', icon: Send, label: 'Отправки', roles: ['ADMIN', 'COUNTRY'] },
-  { to: '/acceptance', icon: PackageCheck, label: 'Приёмка', roles: ['COUNTRY', 'CITY'] },
+  { to: '/transfers', icon: Send, label: 'Отправки', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
+  { to: '/acceptance', icon: PackageCheck, label: 'Приёмка', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
   { to: '/expenses', icon: CalendarDays, label: 'Мероприятия', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
   { to: '/inventory', icon: Boxes, label: 'Остатки', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
   { to: '/users', icon: Users, label: 'Пользователи', roles: ['ADMIN'] },
   { to: '/history', icon: History, label: 'История', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
+  { to: '/map', icon: MapPin, label: 'Карта', roles: ['ADMIN', 'COUNTRY', 'CITY'] },
 ];
 
 export default function Sidebar() {

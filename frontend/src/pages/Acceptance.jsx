@@ -27,7 +27,7 @@ export default function Acceptance() {
 
   const loadPending = async () => {
     try {
-      const { data } = await transfersApi.getPendingIncoming();
+      const { data } = await transfersApi.getPending();
       setPending(data.data || data || []);
     } catch (err) {
       console.error(err);

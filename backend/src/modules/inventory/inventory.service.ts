@@ -333,7 +333,10 @@ export class InventoryService {
       newStatus = CityStatus.ACTIVE;
     }
 
-    const city = await tx.city.findUnique({ where: { id: cityId } });
+    const city = await tx.city.findUnique({
+      where: { id: cityId },
+      include: { country: { select: { name: true } } },
+    });
     if (city && city.status !== newStatus) {
       await tx.city.update({
         where: { id: cityId },
@@ -342,11 +345,23 @@ export class InventoryService {
 
       this.logger.log(`City ${cityId} status changed: ${city.status} → ${newStatus}`);
 
+      const totalBalance = inventories.reduce((sum, i) => sum + i.quantity, 0);
+
       // Emit notification events for LOW / INACTIVE
       if (newStatus === CityStatus.LOW) {
-        this.eventEmitter.emit('city.lowStock', { cityId, inventories });
+        this.eventEmitter.emit('city.lowStock', {
+          cityId,
+          cityName: city.name,
+          countryName: city.country?.name || '',
+          totalBalance,
+          inventories,
+        });
       } else if (newStatus === CityStatus.INACTIVE) {
-        this.eventEmitter.emit('city.zeroStock', { cityId });
+        this.eventEmitter.emit('city.zeroStock', {
+          cityId,
+          cityName: city.name,
+          countryName: city.country?.name || '',
+        });
       }
     }
   }

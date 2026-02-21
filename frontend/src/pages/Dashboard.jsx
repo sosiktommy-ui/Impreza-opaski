@@ -31,11 +31,7 @@ export default function Dashboard() {
       }
 
       // Pending incoming
-      if (user.role !== 'ADMIN') {
-        promises.push(transfersApi.getPendingIncoming());
-      } else {
-        promises.push(Promise.resolve(null));
-      }
+      promises.push(transfersApi.getPending());
 
       const [balRes, pendRes] = await Promise.all(promises);
       if (balRes) {

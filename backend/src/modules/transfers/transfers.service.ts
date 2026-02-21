@@ -14,6 +14,7 @@ import {
   ItemType,
   Prisma,
 } from '@prisma/client';
+import { InventoryService } from '../inventory/inventory.service';
 
 export interface SendTransferInput {
   senderType: EntityType;
@@ -40,6 +41,7 @@ export class TransfersService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -66,7 +68,8 @@ export class TransfersService {
     const isAdminSender = input.senderType === EntityType.ADMIN;
 
     return this.prisma.$transaction(async (tx) => {
-      // For non-admin senders: check and deduct inventory
+      // For non-admin senders: just CHECK that inventory exists (don't deduct yet)
+      // Actual deduction happens when receiver confirms (acceptTransfer)
       if (!isAdminSender) {
         for (const item of input.items) {
           const balance = await this.getEntityBalance(
@@ -82,17 +85,7 @@ export class TransfersService {
             );
           }
         }
-
-        for (const item of input.items) {
-          await this.deductInventory(
-            tx,
-            input.senderType,
-            input.senderCountryId || null,
-            input.senderCityId || null,
-            item.itemType,
-            item.quantity,
-          );
-        }
+        // NOTE: No deduction here! Deduction happens on accept.
       }
 
       const transfer = await tx.transfer.create({
@@ -123,13 +116,7 @@ export class TransfersService {
         },
       });
 
-      // Invalidate sender cache (for non-admin)
-      if (!isAdminSender) {
-        const senderEntityId = input.senderCityId || input.senderCountryId;
-        if (senderEntityId) {
-          await this.redis.invalidateInventory(input.senderType, senderEntityId);
-        }
-      }
+      // No sender cache to invalidate (inventory not changed on send)
 
       await this.storeDomainEvent(transfer.id, 'TransferSent', {
         transfer,
@@ -264,6 +251,25 @@ export class TransfersService {
           );
         }
 
+        // DEDUCT from sender (deduction happens on accept, not on send)
+        if (transfer.senderType !== EntityType.ADMIN) {
+          for (const item of transfer.items) {
+            await this.deductInventory(
+              tx,
+              transfer.senderType,
+              transfer.senderCountryId,
+              transfer.senderCityId,
+              item.itemType,
+              item.quantity,
+            );
+          }
+          // Invalidate sender cache
+          const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
+          if (senderEntityId) {
+            await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+          }
+        }
+
         // Credit receiver with RECEIVED quantities (not sent!)
         for (const ri of receivedItems) {
           if (ri.receivedQuantity > 0) {
@@ -282,6 +288,14 @@ export class TransfersService {
         const receiverEntityId = transfer.receiverCityId || transfer.receiverCountryId;
         if (receiverEntityId) {
           await this.redis.invalidateInventory(transfer.receiverType, receiverEntityId);
+        }
+
+        // Update city status for low stock / zero stock notifications
+        if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
+          await this.inventoryService.updateCityStatus(tx, transfer.senderCityId);
+        }
+        if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
+          await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
         }
 
         await this.storeDomainEvent(transferId, 'TransferAccepted', {
@@ -362,26 +376,8 @@ export class TransfersService {
         },
       });
 
-      // Return items to sender ONLY if sender is not ADMIN
-      // (Admin creates from nothing, so nothing to return)
-      if (transfer.senderType !== EntityType.ADMIN) {
-        for (const item of transfer.items) {
-          await this.creditInventory(
-            tx,
-            transfer.senderType,
-            transfer.senderCountryId,
-            transfer.senderCityId,
-            item.itemType,
-            item.quantity,
-          );
-        }
-
-        // Invalidate sender cache
-        const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
-        if (senderEntityId) {
-          await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-        }
-      }
+      // NOTE: No return-to-sender needed — inventory is NOT deducted on send.
+      // Deduction only happens on accept.
 
       await this.storeDomainEvent(transferId, 'TransferRejected', {
         previousStatus: TransferStatus.SENT,
@@ -431,23 +427,8 @@ export class TransfersService {
         );
       }
 
-      // Return items to sender only if not admin
-      if (transfer.status === TransferStatus.SENT && transfer.senderType !== EntityType.ADMIN) {
-        for (const item of transfer.items) {
-          await this.creditInventory(
-            tx,
-            transfer.senderType,
-            transfer.senderCountryId,
-            transfer.senderCityId,
-            item.itemType,
-            item.quantity,
-          );
-        }
-        const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
-        if (senderEntityId) {
-          await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-        }
-      }
+      // NOTE: No return-to-sender needed — inventory is NOT deducted on send.
+      // Deduction only happens on accept.
 
       await tx.transfer.update({
         where: { id: transferId },
@@ -531,10 +512,10 @@ export class TransfersService {
           items: true,
           rejection: true,
           acceptanceRecords: true,
-          senderCountry: { select: { id: true, name: true, code: true } },
-          senderCity: { select: { id: true, name: true, slug: true } },
-          receiverCountry: { select: { id: true, name: true, code: true } },
-          receiverCity: { select: { id: true, name: true, slug: true } },
+          senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+          senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+          receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+          receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -561,10 +542,10 @@ export class TransfersService {
         items: true,
         rejection: true,
         acceptanceRecords: true,
-        senderCountry: { select: { id: true, name: true, code: true } },
-        senderCity: { select: { id: true, name: true, slug: true } },
-        receiverCountry: { select: { id: true, name: true, code: true } },
-        receiverCity: { select: { id: true, name: true, slug: true } },
+        senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+        receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
       },
     });
 
@@ -619,10 +600,10 @@ export class TransfersService {
       where,
       include: {
         items: true,
-        senderCountry: { select: { id: true, name: true, code: true } },
-        senderCity: { select: { id: true, name: true, slug: true } },
-        receiverCountry: { select: { id: true, name: true, code: true } },
-        receiverCity: { select: { id: true, name: true, slug: true } },
+        senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
+        receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
+        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

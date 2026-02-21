@@ -92,10 +92,10 @@ export default function History() {
 
                 <div className="text-sm">
                   <span className="text-gray-500">
-                    {t.fromType === 'ADMIN' ? 'Админ' : t.fromEntity?.name || t.fromType}
+                    {t.senderType === 'ADMIN' ? 'Админ' : (t.senderCity?.name || t.senderCountry?.name || t.senderType)}
                   </span>
                   <span className="mx-2 text-gray-300">→</span>
-                  <span className="font-medium">{t.toEntity?.name || t.toType}</span>
+                  <span className="font-medium">{t.receiverCity?.name || t.receiverCountry?.name || t.receiverType}</span>
                 </div>
 
                 <BraceletRow items={t.items} size="sm" />
