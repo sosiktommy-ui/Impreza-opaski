@@ -45,8 +45,8 @@ class CreateExpenseDto {
   eventName!: string;
 
   @IsString()
-  @IsNotEmpty()
-  eventDate!: string;
+  @IsOptional()
+  eventDate?: string;
 
   @IsString()
   @IsOptional()
@@ -105,7 +105,7 @@ export class InventoryController {
   }
 
   @Get(':entityType/:entityId')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.COUNTRY, Role.CITY)
   getBalance(
     @Param('entityType') entityType: EntityType,
     @Param('entityId') entityId: string,
@@ -126,7 +126,7 @@ export class InventoryController {
   }
 
   @Post('expense')
-  @Roles(Role.CITY)
+  @Roles(Role.CITY, Role.COUNTRY)
   createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,

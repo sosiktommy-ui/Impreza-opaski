@@ -35,12 +35,16 @@ export default function Dashboard() {
 
       const [balRes, pendRes] = await Promise.all(promises);
       if (balRes) {
-        const data = balRes.data?.data || balRes.data;
-        setBalance(Array.isArray(data) ? data : []);
+        const d = balRes.data;
+        if (d && typeof d === 'object' && !Array.isArray(d)) {
+          setBalance(Object.entries(d).map(([itemType, quantity]) => ({ itemType, quantity })));
+        } else {
+          setBalance(Array.isArray(d) ? d : []);
+        }
       }
       if (pendRes) {
-        const data = pendRes.data?.data || pendRes.data;
-        setPending(Array.isArray(data) ? data : []);
+        const pData = pendRes.data;
+        setPending(Array.isArray(pData) ? pData : []);
       }
     } catch (err) {
       console.error('Dashboard load error:', err);
@@ -104,7 +108,7 @@ export default function Dashboard() {
               >
                 <div>
                   <div className="text-sm font-medium">
-                    От: {t.sender?.displayName || 'Админ'}
+                    От: {t.senderType === 'ADMIN' ? 'Админ' : (t.senderCity?.name || t.senderCountry?.name || 'Отправитель')}
                   </div>
                   <div className="mt-1">
                     <BraceletRow items={t.items} size="sm" />

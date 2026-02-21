@@ -36,7 +36,8 @@ export default function Expenses() {
   const loadExpenses = async () => {
     try {
       const { data } = await inventoryApi.getExpenses();
-      setExpenses(data.data || data || []);
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      setExpenses(list);
     } catch (err) {
       console.error(err);
     } finally {
@@ -57,7 +58,7 @@ export default function Expenses() {
         const { data } = await usersApi.getCities(
           user.role === 'COUNTRY' ? user.countryId : undefined,
         );
-        setCities(data.data || data || []);
+        setCities(Array.isArray(data) ? data : (data?.data || data || []));
       } catch (err) {
         console.error(err);
       }

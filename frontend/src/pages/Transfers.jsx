@@ -38,7 +38,8 @@ export default function Transfers() {
   const loadTransfers = async () => {
     try {
       const { data } = await transfersApi.getAll();
-      setTransfers(data.data || data || []);
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      setTransfers(list);
     } catch (err) {
       console.error(err);
     } finally {
@@ -51,7 +52,7 @@ export default function Transfers() {
     setError('');
     try {
       const { data } = await usersApi.getCountries();
-      setCountries(data.data || data || []);
+      setCountries(Array.isArray(data) ? data : (data?.data || data || []));
     } catch (err) {
       console.error(err);
     }
@@ -68,7 +69,7 @@ export default function Transfers() {
   const loadCitiesForCountry = async (countryId) => {
     try {
       const { data } = await usersApi.getCities(countryId);
-      setCities(data.data || data || []);
+      setCities(Array.isArray(data) ? data : (data?.data || data || []));
     } catch (err) {
       console.error(err);
     }
@@ -192,16 +193,16 @@ export default function Transfers() {
                   </div>
                   <div className="text-sm">
                     <span className="text-gray-500">
-                      {t.fromType === 'ADMIN' ? 'Админ' : t.fromEntity?.name || t.fromType}
+                      {t.senderType === 'ADMIN' ? 'Админ' : (t.senderCity?.name || t.senderCountry?.name || t.senderType)}
                     </span>
                     <span className="mx-2 text-gray-300">→</span>
-                    <span className="font-medium">{t.toEntity?.name || t.toType}</span>
+                    <span className="font-medium">{t.receiverCity?.name || t.receiverCountry?.name || t.receiverType}</span>
                   </div>
                   <BraceletRow items={t.items} size="sm" />
                   {t.notes && <p className="text-xs text-gray-400 mt-1">{t.notes}</p>}
                 </div>
 
-                {t.status === 'SENT' && t.senderId === user.id && (
+                {t.status === 'SENT' && t.createdBy === user.id && (
                   <Button variant="ghost" size="sm" onClick={() => handleCancel(t.id)}>
                     <X size={16} /> Отменить
                   </Button>

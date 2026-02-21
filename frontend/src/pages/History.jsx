@@ -18,7 +18,8 @@ export default function History() {
   const loadHistory = async () => {
     try {
       const { data } = await transfersApi.getAll();
-      setTransfers(data.data || data || []);
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      setTransfers(list);
     } catch (err) {
       console.error(err);
     } finally {

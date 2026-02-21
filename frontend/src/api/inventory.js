@@ -2,7 +2,7 @@ import api from './axios';
 
 export const inventoryApi = {
   getBalance: (entityType, entityId) =>
-    api.get(`/inventory/balance/${entityType}/${entityId}`),
+    api.get(`/inventory/${entityType}/${entityId}`),
 
   adjust: (data) => api.post('/inventory/adjust', data),
   // data: { entityType, entityId, itemType, quantity, reason }

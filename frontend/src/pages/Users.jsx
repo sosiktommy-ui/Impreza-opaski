@@ -37,8 +37,10 @@ export default function Users() {
         usersApi.getAll(),
         usersApi.getCountries(),
       ]);
-      setUsers(usersRes.data?.data || usersRes.data || []);
-      setCountries(countriesRes.data?.data || countriesRes.data || []);
+      const uData = usersRes.data;
+      setUsers(Array.isArray(uData) ? uData : (uData?.data || []));
+      const cData = countriesRes.data;
+      setCountries(Array.isArray(cData) ? cData : (cData?.data || cData || []));
     } catch (err) {
       console.error(err);
     } finally {
@@ -57,7 +59,7 @@ export default function Users() {
     setForm((p) => ({ ...p, countryId: cId, cityId: '' }));
     if (cId && form.role === 'CITY') {
       const { data } = await usersApi.getCities(cId);
-      setCities(data.data || data || []);
+      setCities(Array.isArray(data) ? data : (data?.data || data || []));
     }
   };
 

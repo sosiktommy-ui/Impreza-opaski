@@ -32,8 +32,8 @@ export const useAuthStore = create((set, get) => ({
 
       // Fetch user info
       const { data: meData } = await authApi.me();
-      const user = meData.data || meData;
-      set({ user });
+      const userData = meData?.user || meData;
+      set({ user: userData });
     } catch {
       set({ token: null, user: null, loading: false });
     }

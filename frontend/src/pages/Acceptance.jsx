@@ -28,7 +28,7 @@ export default function Acceptance() {
   const loadPending = async () => {
     try {
       const { data } = await transfersApi.getPending();
-      setPending(data.data || data || []);
+      setPending(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -119,7 +119,7 @@ export default function Acceptance() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium">
-                      От: {t.sender?.displayName || 'Админ'}
+                      От: {t.senderType === 'ADMIN' ? 'Админ' : (t.senderCity?.name || t.senderCountry?.name || 'Отправитель')}
                     </div>
                     <div className="text-xs text-gray-400">
                       {new Date(t.createdAt).toLocaleDateString('ru-RU')}

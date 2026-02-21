@@ -188,7 +188,7 @@ export class InventoryService {
   async createExpense(params: {
     cityId: string;
     eventName: string;
-    eventDate: string;
+    eventDate?: string;
     location?: string;
     black: number;
     white: number;
@@ -241,7 +241,7 @@ export class InventoryService {
         data: {
           cityId,
           eventName,
-          eventDate: new Date(eventDate),
+          eventDate: eventDate ? new Date(eventDate) : new Date(),
           location: location || null,
           black,
           white,

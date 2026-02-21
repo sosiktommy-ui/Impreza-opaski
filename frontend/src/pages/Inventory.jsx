@@ -25,7 +25,7 @@ export default function Inventory() {
     if (user.role === 'ADMIN') {
       // Admin can view any entity
       const { data } = await usersApi.getCountries();
-      setCountries(data.data || data || []);
+      setCountries(Array.isArray(data) ? data : (data?.data || data || []));
       setLoading(false);
     } else if (user.role === 'COUNTRY') {
       // Load own balance + list cities
@@ -45,7 +45,12 @@ export default function Inventory() {
   const loadBalance = async (entityType, entityId) => {
     try {
       const { data } = await inventoryApi.getBalance(entityType, entityId);
-      setBalances(data.data || data || []);
+      // Backend returns { BLACK: 0, WHITE: 0, ... } object, not array
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        setBalances(Object.entries(data).map(([itemType, quantity]) => ({ itemType, quantity })));
+      } else {
+        setBalances(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
       console.error(err);
       setBalances([]);
@@ -62,7 +67,7 @@ export default function Inventory() {
       setViewEntity({ type: 'COUNTRY', id: cId });
       await loadBalance('COUNTRY', cId);
       const { data } = await usersApi.getCities(cId);
-      setCities(data.data || data || []);
+      setCities(Array.isArray(data) ? data : (data?.data || data || []));
     } else {
       setBalances([]);
       setCities([]);
