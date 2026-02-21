@@ -40,10 +40,10 @@ export default function Acceptance() {
     setSelected(transfer);
     setShowReject(false);
     setError('');
-    // Pre-fill with sent quantities
+    // Do NOT pre-fill — receiver must count and enter actual quantity
     const qty = {};
     transfer.items?.forEach((item) => {
-      qty[item.itemType] = String(item.quantity);
+      qty[item.itemType] = '';
     });
     setReceivedQty(qty);
   };
@@ -128,8 +128,7 @@ export default function Acceptance() {
                   <Badge status={t.status} />
                 </div>
 
-                <div className="text-sm text-gray-600">Отправлено:</div>
-                <BraceletRow items={t.items} size="sm" />
+                <div className="text-sm text-gray-500">Получена отправка — пересчитайте и примите</div>
 
                 {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
 
@@ -164,7 +163,6 @@ export default function Acceptance() {
                 <div key={item.itemType} className="flex items-center justify-between gap-4">
                   <div className="text-sm">
                     <span className="font-medium">{ITEM_LABELS[item.itemType]}</span>
-                    <span className="text-gray-400 ml-2">(отпр: {item.quantity})</span>
                   </div>
                   <Input
                     type="number"

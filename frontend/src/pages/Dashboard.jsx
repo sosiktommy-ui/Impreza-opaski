@@ -212,8 +212,8 @@ export default function Dashboard() {
                       ? 'Админ'
                       : (t.senderCity?.name || t.senderCountry?.name || 'Отправитель')}
                   </div>
-                  <div className="mt-1">
-                    <BraceletRow items={t.items} size="sm" />
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    Пересчитайте и примите
                   </div>
                 </div>
                 <Badge status={t.status} />

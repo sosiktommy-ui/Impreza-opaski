@@ -155,7 +155,7 @@ export class TransfersService {
     receivedItems: AcceptanceItem[],
     actorId: string,
   ) {
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         const transfer = await tx.transfer.findUnique({
           where: { id: transferId },
@@ -263,11 +263,6 @@ export class TransfersService {
               item.quantity,
             );
           }
-          // Invalidate sender cache
-          const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
-          if (senderEntityId) {
-            await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-          }
         }
 
         // Credit receiver with RECEIVED quantities (not sent!)
@@ -282,12 +277,6 @@ export class TransfersService {
               ri.receivedQuantity,
             );
           }
-        }
-
-        // Invalidate receiver cache
-        const receiverEntityId = transfer.receiverCityId || transfer.receiverCountryId;
-        if (receiverEntityId) {
-          await this.redis.invalidateInventory(transfer.receiverType, receiverEntityId);
         }
 
         // Update city status for low stock / zero stock notifications
@@ -331,6 +320,26 @@ export class TransfersService {
         timeout: 10000,
       },
     );
+
+    // Invalidate caches AFTER the transaction commits
+    // so that getBalance never caches stale pre-commit zeros
+    const transfer = await this.prisma.transfer.findUnique({
+      where: { id: transferId },
+    });
+    if (transfer) {
+      if (transfer.senderType !== EntityType.ADMIN) {
+        const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
+        if (senderEntityId) {
+          await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+        }
+      }
+      const receiverEntityId = transfer.receiverCityId || transfer.receiverCountryId;
+      if (receiverEntityId) {
+        await this.redis.invalidateInventory(transfer.receiverType, receiverEntityId);
+      }
+    }
+
+    return result;
   }
 
   // ──────────────────────────────────────────────
