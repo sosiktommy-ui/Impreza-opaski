@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  COUNTRY
+  CITY
+}
+
+enum ItemType {
+  BLACK
+  WHITE
+  RED
+  BLUE
+}
+
+enum TransferStatus {
+  DRAFT
+  SENT
+  AWAITING_ACCEPTANCE
+  ACCEPTED
+  DISCREPANCY_FOUND
+  REJECTED
+  CANCELLED
+}
+
+enum CityStatus {
+  ACTIVE
+  LOW
+  INACTIVE
+}
+
+enum EntityType {
+  ADMIN
+  COUNTRY
+  CITY
+}
+
+enum NotificationType {
+  INCOMING_TRANSFER
+  ACCEPTANCE_REQUIRED
+  TRANSFER_ACCEPTED
+  TRANSFER_REJECTED
+  TRANSFER_CANCELLED
+  DISCREPANCY_ALERT
+  LOW_STOCK
+  ZERO_STOCK
+}
+
+enum AuditAction {
+  USER_LOGIN
+  USER_LOGOUT
+  TRANSFER_CREATED
+  TRANSFER_SENT
+  ACCEPTANCE_SUBMITTED
+  DISCREPANCY_DETECTED
+  TRANSFER_ACCEPTED
+  TRANSFER_REJECTED
+  TRANSFER_CANCELLED
+  INVENTORY_ADJUSTED
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  EXPENSE_CREATED
+}
+
+// ──────────────────────────────────────────────
+// AUTH & USERS
+// ──────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String   @map("password_hash")
+  role          Role
+  displayName   String   @map("display_name")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  // Scope — determines what this user manages
+  countryId     String?  @map("country_id")
+  cityId        String?  @map("city_id")
+
+  country       Country? @relation(fields: [countryId], references: [id])
+  city          City?    @relation(fields: [cityId], references: [id])
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  refreshTokens    RefreshToken[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]          @relation("AuditActor")
+  acceptanceRecords AcceptanceRecord[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  token       String   @unique
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  revokedAt   DateTime? @map("revoked_at")
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ──────────────────────────────────────────────
+// GEOGRAPHY
+// ──────────────────────────────────────────────
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique // ISO-like: de, pl, nl, etc.
+  latitude  Float    @default(0)
+  longitude Float    @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  cities    City[]
+  users     User[]
+  inventory Inventory[]
+  transfersSent     Transfer[] @relation("SenderCountry")
+  transfersReceived Transfer[] @relation("ReceiverCountry")
+
+  @@map("countries")
+}
+
+model City {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique // berlin, warsaw, etc.
+  status    CityStatus @default(ACTIVE)
+  latitude  Float      @default(0)
+  longitude Float      @default(0)
+  countryId String     @map("country_id")
+  country   Country    @relation(fields: [countryId], references: [id])
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  users     User[]
+  inventory Inventory[]
+  transfersSent     Transfer[] @relation("SenderCity")
+  transfersReceived Transfer[] @relation("ReceiverCity")
+
+  @@unique([countryId, slug])
+  @@map("cities")
+}
+
+// ──────────────────────────────────────────────
+// INVENTORY
+// ──────────────────────────────────────────────
+
+model Inventory {
+  id         String     @id @default(uuid())
+  entityType EntityType @map("entity_type")
+  countryId  String?    @map("country_id")
+  cityId     String?    @map("city_id")
+  itemType   ItemType   @map("item_type")
+  quantity   Int        @default(0)
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  country    Country?   @relation(fields: [countryId], references: [id])
+  city       City?      @relation(fields: [cityId], references: [id])
+
+  // Unique per entity+item combination
+  @@unique([entityType, countryId, cityId, itemType], name: "unique_inventory_entry")
+  @@index([itemType])
+  @@index([entityType, countryId])
+  @@index([entityType, cityId])
+  @@map("inventory")
+}
+
+// ──────────────────────────────────────────────
+// TRANSFERS
+// ──────────────────────────────────────────────
+
+model Transfer {
+  id              String         @id @default(uuid())
+
+  // Sender
+  senderType      EntityType     @map("sender_type")
+  senderCountryId String?        @map("sender_country_id")
+  senderCityId    String?        @map("sender_city_id")
+
+  // Receiver
+  receiverType    EntityType     @map("receiver_type")
+  receiverCountryId String?      @map("receiver_country_id")
+  receiverCityId  String?        @map("receiver_city_id")
+
+  status          TransferStatus @default(DRAFT)
+  version         Int            @default(0) // Optimistic locking
+  notes           String?
+
+  createdBy       String         @map("created_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  sentAt          DateTime?      @map("sent_at")
+  acceptedAt      DateTime?      @map("accepted_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  senderCountry   Country?       @relation("SenderCountry", fields: [senderCountryId], references: [id])
+  senderCity      City?          @relation("SenderCity", fields: [senderCityId], references: [id])
+  receiverCountry Country?       @relation("ReceiverCountry", fields: [receiverCountryId], references: [id])
+  receiverCity    City?          @relation("ReceiverCity", fields: [receiverCityId], references: [id])
+  items           TransferItem[]
+  rejection       TransferRejection?
+  acceptanceRecords AcceptanceRecord[]
+
+  @@index([status])
+  @@index([senderType, senderCountryId])
+  @@index([senderType, senderCityId])
+  @@index([receiverType, receiverCountryId])
+  @@index([receiverType, receiverCityId])
+  @@index([createdBy])
+  @@map("transfers")
+}
+
+model TransferItem {
+  id         String   @id @default(uuid())
+  transferId String   @map("transfer_id")
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  itemType   ItemType @map("item_type")
+  quantity   Int
+
+  @@map("transfer_items")
+}
+
+model TransferRejection {
+  id         String   @id @default(uuid())
+  transferId String   @unique @map("transfer_id")
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  reason     String
+  rejectedBy String   @map("rejected_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("transfer_rejections")
+}
+
+// ──────────────────────────────────────────────
+// ACCEPTANCE (Blind acceptance records)
+// ──────────────────────────────────────────────
+
+model AcceptanceRecord {
+  id               String   @id @default(uuid())
+  transferId       String   @map("transfer_id")
+  transfer         Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  itemType         ItemType @map("item_type")
+  sentQuantity     Int      @map("sent_quantity")     // What was actually sent (hidden from receiver until accepted)
+  receivedQuantity Int      @map("received_quantity") // What receiver counted
+  discrepancy      Int      @default(0)               // sent - received (positive = shortage, negative = surplus)
+  acceptedById     String   @map("accepted_by_id")
+  acceptedBy       User     @relation(fields: [acceptedById], references: [id])
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([transferId, itemType], name: "unique_acceptance_per_item")
+  @@index([transferId])
+  @@map("acceptance_records")
+}
+
+// ──────────────────────────────────────────────
+// ADJUSTMENTS (Admin manual changes)
+// ──────────────────────────────────────────────
+
+model Adjustment {
+  id         String     @id @default(uuid())
+  entityType EntityType @map("entity_type")
+  countryId  String?    @map("country_id")
+  cityId     String?    @map("city_id")
+  itemType   ItemType   @map("item_type")
+  delta      Int        // positive = add, negative = deduct
+  reason     String
+  createdBy  String     @map("created_by")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@index([entityType, countryId])
+  @@index([entityType, cityId])
+  @@map("adjustments")
+}
+
+// ──────────────────────────────────────────────
+// NOTIFICATIONS
+// ──────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ──────────────────────────────────────────────
+// AUDIT LOG (IMMUTABLE)
+// ──────────────────────────────────────────────
+
+model AuditLog {
+  id          String      @id @default(uuid())
+  actorId     String      @map("actor_id")
+  actor       User        @relation("AuditActor", fields: [actorId], references: [id])
+  action      AuditAction
+  entityType  String      @map("entity_type")
+  entityId    String      @map("entity_id")
+  metadata    Json?       // before/after snapshots
+  ipAddress   String?     @map("ip_address")
+  userAgent   String?     @map("user_agent")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ──────────────────────────────────────────────
+// EVENT STORE (CQRS / Event Sourcing)
+// ──────────────────────────────────────────────
+
+model DomainEvent {
+  id            String   @id @default(uuid())
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  eventType     String   @map("event_type")
+  version       Int
+  payload       Json
+  metadata      Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([aggregateId, version])
+  @@index([aggregateType, aggregateId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("domain_events")
+}
