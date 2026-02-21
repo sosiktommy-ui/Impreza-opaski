@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
@@ -8,9 +8,13 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import { BraceletRow } from '../components/ui/BraceletBadge';
-import { CalendarDays, Plus } from 'lucide-react';
+import {
+  CalendarDays, Plus, Search, TrendingDown,
+  MapPin, BarChart3, Package,
+} from 'lucide-react';
 
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
+const BRACELET_KEYS = ['black', 'white', 'red', 'blue'];
 
 export default function Expenses() {
   const { user } = useAuthStore();
@@ -20,6 +24,11 @@ export default function Expenses() {
   const [cities, setCities] = useState([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCity, setFilterCity] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
 
   // Form
   const [cityId, setCityId] = useState('');
@@ -31,13 +40,13 @@ export default function Expenses() {
 
   useEffect(() => {
     loadExpenses();
+    loadCities();
   }, []);
 
   const loadExpenses = async () => {
     try {
       const { data } = await inventoryApi.getExpenses();
-      const list = Array.isArray(data) ? data : (data?.data || []);
-      setExpenses(list);
+      setExpenses(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -45,23 +54,79 @@ export default function Expenses() {
     }
   };
 
-  const openCreate = async () => {
-    setShowCreate(true);
-    setError('');
-
-    // Pre-fill cityId for CITY users
-    if (user.role === 'CITY') {
-      setCityId(user.cityId);
-    } else {
-      // Load cities for selection
+  const loadCities = async () => {
+    if (user.role === 'ADMIN' || user.role === 'COUNTRY') {
       try {
         const { data } = await usersApi.getCities(
           user.role === 'COUNTRY' ? user.countryId : undefined,
         );
-        setCities(Array.isArray(data) ? data : (data?.data || data || []));
+        setCities(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error(err);
       }
+    }
+  };
+
+  // ── Computed stats ─────────────────────────────
+  const stats = useMemo(() => {
+    const totalEvents = expenses.length;
+    let totalBracelets = 0;
+    const byColor = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+
+    expenses.forEach((ex) => {
+      const b = (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0);
+      totalBracelets += b;
+      byColor.BLACK += ex.black || 0;
+      byColor.WHITE += ex.white || 0;
+      byColor.RED += ex.red || 0;
+      byColor.BLUE += ex.blue || 0;
+    });
+
+    const avg = totalEvents > 0 ? Math.round(totalBracelets / totalEvents) : 0;
+
+    return { totalEvents, totalBracelets, avg, byColor };
+  }, [expenses]);
+
+  // ── Filtered & sorted expenses ─────────────────
+  const filteredExpenses = useMemo(() => {
+    let list = [...expenses];
+
+    if (filterCity !== 'all') {
+      list = list.filter((ex) => ex.city?.name === filterCity || ex.cityId === filterCity);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((ex) =>
+        (ex.eventName || '').toLowerCase().includes(q) ||
+        (ex.location || '').toLowerCase().includes(q) ||
+        (ex.city?.name || '').toLowerCase().includes(q),
+      );
+    }
+
+    list.sort((a, b) => {
+      if (sortOrder === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortOrder === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+      const at = (a.black || 0) + (a.white || 0) + (a.red || 0) + (a.blue || 0);
+      const bt = (b.black || 0) + (b.white || 0) + (b.red || 0) + (b.blue || 0);
+      return sortOrder === 'most' ? bt - at : at - bt;
+    });
+
+    return list;
+  }, [expenses, filterCity, searchQuery, sortOrder]);
+
+  // Available city names for filter
+  const cityNames = useMemo(() => {
+    const names = new Set();
+    expenses.forEach((ex) => { if (ex.city?.name) names.add(ex.city.name); });
+    return [...names].sort();
+  }, [expenses]);
+
+  const openCreate = async () => {
+    setShowCreate(true);
+    setError('');
+    if (user.role === 'CITY') {
+      setCityId(user.cityId);
     }
   };
 
@@ -70,14 +135,8 @@ export default function Expenses() {
     setError('');
 
     const targetCityId = user.role === 'CITY' ? user.cityId : cityId;
-    if (!targetCityId) {
-      setError('Выберите город');
-      return;
-    }
-    if (!eventName.trim()) {
-      setError('Укажите название мероприятия');
-      return;
-    }
+    if (!targetCityId) { setError('Выберите город'); return; }
+    if (!eventName.trim()) { setError('Укажите название мероприятия'); return; }
 
     const black = parseInt(quantities.black) || 0;
     const white = parseInt(quantities.white) || 0;
@@ -96,10 +155,7 @@ export default function Expenses() {
         eventName: eventName.trim(),
         eventDate: eventDate || undefined,
         location: location.trim() || undefined,
-        black,
-        white,
-        red,
-        blue,
+        black, white, red, blue,
         notes: notes.trim() || undefined,
       });
       setShowCreate(false);
@@ -132,8 +188,12 @@ export default function Expenses() {
 
   return (
     <div className="space-y-4">
+      {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Мероприятия</h2>
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Мероприятия</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Учёт расхода браслетов</p>
+        </div>
         {(user.role === 'CITY' || user.role === 'COUNTRY') && (
           <Button onClick={openCreate} size="sm">
             <Plus size={18} /> Новое
@@ -141,49 +201,211 @@ export default function Expenses() {
         )}
       </div>
 
-      {expenses.length === 0 ? (
-        <Card>
-          <p className="text-sm text-gray-500 text-center py-8">Нет мероприятий</p>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {expenses.map((ex) => (
-            <Card key={ex.id}>
-              <div className="space-y-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-medium text-gray-800 flex items-center gap-2">
-                      <CalendarDays size={16} className="text-brand-500" />
-                      {ex.eventName}
-                    </div>
-                    {ex.location && (
-                      <div className="text-xs text-gray-400 mt-0.5">{ex.location}</div>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-400">
-                    {ex.eventDate
-                      ? new Date(ex.eventDate).toLocaleDateString('ru-RU')
-                      : new Date(ex.createdAt).toLocaleDateString('ru-RU')}
-                  </div>
-                </div>
+      {/* ── Statistics Cards ──────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+              <CalendarDays size={18} className="text-purple-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-800">{stats.totalEvents}</div>
+              <div className="text-xs text-gray-400">Мероприятий</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+              <TrendingDown size={18} className="text-red-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-800">{stats.totalBracelets}</div>
+              <div className="text-xs text-gray-400">Израсходовано</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+              <BarChart3 size={18} className="text-blue-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-800">{stats.avg}</div>
+              <div className="text-xs text-gray-400">Среднее</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+              <MapPin size={18} className="text-amber-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-800">{cityNames.length}</div>
+              <div className="text-xs text-gray-400">Городов</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-                <BraceletRow
-                  items={{ BLACK: ex.black, WHITE: ex.white, RED: ex.red, BLUE: ex.blue }}
-                  size="sm"
-                />
-
-                <div className="text-xs text-gray-400">
-                  {ex.city?.name || 'Город'}
-                  {ex.notes && ` • ${ex.notes}`}
-                </div>
-              </div>
-            </Card>
-          ))}
+      {/* ── Color breakdown bar ───────────────────────── */}
+      {stats.totalBracelets > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+          <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
+            {[
+              { key: 'BLACK', color: 'bg-gray-900', val: stats.byColor.BLACK },
+              { key: 'WHITE', color: 'bg-gray-300', val: stats.byColor.WHITE },
+              { key: 'RED', color: 'bg-red-500', val: stats.byColor.RED },
+              { key: 'BLUE', color: 'bg-blue-500', val: stats.byColor.BLUE },
+            ].filter((c) => c.val > 0).map((c) => (
+              <div
+                key={c.key}
+                className={`${c.color} transition-all rounded-full`}
+                style={{ width: `${(c.val / stats.totalBracelets) * 100}%` }}
+                title={`${ITEM_LABELS[c.key]}: ${c.val}`}
+              />
+            ))}
+          </div>
+          <div className="flex justify-between mt-2 text-[11px] text-gray-500">
+            {[
+              { key: 'BLACK', dot: 'bg-gray-900' },
+              { key: 'WHITE', dot: 'bg-gray-300' },
+              { key: 'RED', dot: 'bg-red-500' },
+              { key: 'BLUE', dot: 'bg-blue-500' },
+            ].map((c) => (
+              <span key={c.key} className="flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                {ITEM_LABELS[c.key]}: {stats.byColor[c.key]}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Create expense modal */}
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); resetForm(); }} title="Новое мероприятие">
+      {/* ── Filters ───────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Поиск по названию, месту, городу..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2">
+          {cityNames.length > 1 && (
+            <select
+              value={filterCity}
+              onChange={(e) => setFilterCity(e.target.value)}
+              className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+            >
+              <option value="all">Все города</option>
+              {cityNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          )}
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+          >
+            <option value="newest">Новые ↓</option>
+            <option value="oldest">Старые ↑</option>
+            <option value="most">Больше шт</option>
+            <option value="least">Меньше шт</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ── Expenses List ─────────────────────────────── */}
+      {filteredExpenses.length === 0 ? (
+        <Card>
+          <p className="text-sm text-gray-500 text-center py-8">
+            {expenses.length === 0 ? 'Нет мероприятий' : 'Ничего не найдено'}
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {filteredExpenses.map((ex) => {
+            const total = (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0);
+            return (
+              <div
+                key={ex.id}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+              >
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                        <CalendarDays size={16} className="text-purple-500 flex-shrink-0" />
+                        <span className="truncate">{ex.eventName}</span>
+                      </h3>
+                      {ex.location && (
+                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 ml-6">
+                          <MapPin size={11} />
+                          {ex.location}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs text-gray-400">
+                        {ex.eventDate
+                          ? new Date(ex.eventDate).toLocaleDateString('ru-RU')
+                          : new Date(ex.createdAt).toLocaleDateString('ru-RU')}
+                      </div>
+                      <div className="text-sm font-bold text-red-500 flex items-center gap-1 justify-end mt-0.5">
+                        <TrendingDown size={13} />
+                        {total} шт
+                      </div>
+                    </div>
+                  </div>
+
+                  <BraceletRow
+                    items={{ BLACK: ex.black, WHITE: ex.white, RED: ex.red, BLUE: ex.blue }}
+                    size="sm"
+                  />
+
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <MapPin size={11} />
+                      {ex.city?.name || 'Город'}
+                    </span>
+                    {ex.notes && (
+                      <span className="truncate max-w-[200px] italic">{ex.notes}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Summary Footer ────────────────────────────── */}
+      {filteredExpenses.length > 0 && (
+        <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+          <span className="text-xs text-gray-500">
+            Показано {filteredExpenses.length} из {expenses.length} мероприятий
+          </span>
+          <span className="text-sm font-semibold text-gray-700">
+            Итого: {filteredExpenses.reduce(
+              (s, ex) => s + (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0),
+              0,
+            )} браслетов
+          </span>
+        </div>
+      )}
+
+      {/* ── Create Expense Modal ──────────────────────── */}
+      <Modal
+        open={showCreate}
+        onClose={() => { setShowCreate(false); resetForm(); }}
+        title="Новое мероприятие"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           {user.role !== 'CITY' && (
             <Select
@@ -223,38 +445,17 @@ export default function Expenses() {
           <div>
             <p className="text-sm font-medium text-gray-700 mb-2">Израсходовано браслетов</p>
             <div className="grid grid-cols-2 gap-3">
-              <Input
-                label={ITEM_LABELS.BLACK}
-                type="number"
-                min="0"
-                value={quantities.black}
-                onChange={(e) => setQuantities((p) => ({ ...p, black: e.target.value }))}
-                placeholder="0"
-              />
-              <Input
-                label={ITEM_LABELS.WHITE}
-                type="number"
-                min="0"
-                value={quantities.white}
-                onChange={(e) => setQuantities((p) => ({ ...p, white: e.target.value }))}
-                placeholder="0"
-              />
-              <Input
-                label={ITEM_LABELS.RED}
-                type="number"
-                min="0"
-                value={quantities.red}
-                onChange={(e) => setQuantities((p) => ({ ...p, red: e.target.value }))}
-                placeholder="0"
-              />
-              <Input
-                label={ITEM_LABELS.BLUE}
-                type="number"
-                min="0"
-                value={quantities.blue}
-                onChange={(e) => setQuantities((p) => ({ ...p, blue: e.target.value }))}
-                placeholder="0"
-              />
+              {BRACELET_KEYS.map((key) => (
+                <Input
+                  key={key}
+                  label={ITEM_LABELS[key.toUpperCase()]}
+                  type="number"
+                  min="0"
+                  value={quantities[key]}
+                  onChange={(e) => setQuantities((p) => ({ ...p, [key]: e.target.value }))}
+                  placeholder="0"
+                />
+              ))}
             </div>
           </div>
 
@@ -270,7 +471,7 @@ export default function Expenses() {
           )}
 
           <Button type="submit" loading={sending} className="w-full">
-            Записать расход
+            <TrendingDown size={18} /> Записать расход
           </Button>
         </form>
       </Modal>

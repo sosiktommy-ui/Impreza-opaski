@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
@@ -9,7 +9,7 @@ import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import { BraceletRow } from '../components/ui/BraceletBadge';
-import { Plus, Send, X } from 'lucide-react';
+import { Plus, Send, X, Search, Filter, ArrowUpDown } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -21,11 +21,16 @@ export default function Transfers() {
   const [showCreate, setShowCreate] = useState(false);
   const [countries, setCountries] = useState([]);
   const [cities, setCities] = useState([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
-  // Form state
-  const [toType, setToType] = useState('');
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
+
+  // Form state — cascading: country → city (optional)
   const [toCountryId, setToCountryId] = useState('');
   const [toCityId, setToCityId] = useState('');
   const [quantities, setQuantities] = useState({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
@@ -38,8 +43,7 @@ export default function Transfers() {
   const loadTransfers = async () => {
     try {
       const { data } = await transfersApi.getAll();
-      const list = Array.isArray(data) ? data : (data?.data || []);
-      setTransfers(list);
+      setTransfers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -47,47 +51,85 @@ export default function Transfers() {
     }
   };
 
+  // Filtered & sorted transfers
+  const filteredTransfers = useMemo(() => {
+    let list = [...transfers];
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      list = list.filter((t) => t.status === statusFilter);
+    }
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((t) => {
+        const from = t.senderType === 'ADMIN'
+          ? 'админ'
+          : (t.senderCity?.name || t.senderCountry?.name || '');
+        const to = t.receiverCity?.name || t.receiverCountry?.name || '';
+        return from.toLowerCase().includes(q) || to.toLowerCase().includes(q);
+      });
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      if (sortOrder === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortOrder === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+      const aTot = (a.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+      const bTot = (b.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+      return sortOrder === 'most' ? bTot - aTot : aTot - bTot;
+    });
+
+    return list;
+  }, [transfers, statusFilter, searchQuery, sortOrder]);
+
+  // Status counts
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    transfers.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
+    return counts;
+  }, [transfers]);
+
   const openCreate = async () => {
     setShowCreate(true);
     setError('');
-    try {
-      const { data } = await usersApi.getCountries();
-      setCountries(Array.isArray(data) ? data : (data?.data || data || []));
-    } catch (err) {
-      console.error(err);
-    }
+    resetForm();
 
-    // Determine available target types
     if (user.role === 'ADMIN') {
-      setToType('COUNTRY'); // Admin can send to COUNTRY or CITY
+      try {
+        const { data } = await usersApi.getCountries();
+        setCountries(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error(err);
+      }
     } else if (user.role === 'COUNTRY') {
-      setToType('CITY'); // Country can send to its cities
-      loadCitiesForCountry(user.countryId);
+      try {
+        const { data } = await usersApi.getCities(user.countryId);
+        setCities(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
-  const loadCitiesForCountry = async (countryId) => {
-    try {
-      const { data } = await usersApi.getCities(countryId);
-      setCities(Array.isArray(data) ? data : (data?.data || data || []));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleToTypeChange = (e) => {
-    setToType(e.target.value);
-    setToCountryId('');
-    setToCityId('');
-    setCities([]);
-  };
-
+  // Cascading: when country selected → load its cities
   const handleCountryChange = async (e) => {
     const cId = e.target.value;
     setToCountryId(cId);
     setToCityId('');
-    if (toType === 'CITY' && cId) {
-      await loadCitiesForCountry(cId);
+    setCities([]);
+
+    if (cId) {
+      setCitiesLoading(true);
+      try {
+        const { data } = await usersApi.getCities(cId);
+        setCities(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setCitiesLoading(false);
+      }
     }
   };
 
@@ -104,26 +146,40 @@ export default function Transfers() {
       return;
     }
 
-    const senderType = user.role === 'ADMIN' ? 'ADMIN' : user.role;
+    let receiverType, receiverCountryId, receiverCityId;
+
+    if (user.role === 'ADMIN') {
+      if (!toCountryId) {
+        setError('Выберите страну-получателя');
+        return;
+      }
+      // Cascading: if city selected → send to city, otherwise → to country
+      if (toCityId) {
+        receiverType = 'CITY';
+        receiverCityId = toCityId;
+      } else {
+        receiverType = 'COUNTRY';
+        receiverCountryId = toCountryId;
+      }
+    } else if (user.role === 'COUNTRY') {
+      if (!toCityId) {
+        setError('Выберите город-получатель');
+        return;
+      }
+      receiverType = 'CITY';
+      receiverCityId = toCityId;
+    }
+
     const payload = {
-      senderType,
+      senderType: user.role === 'ADMIN' ? 'ADMIN' : user.role,
       senderCountryId: user.role === 'COUNTRY' ? user.countryId : undefined,
       senderCityId: user.role === 'CITY' ? user.cityId : undefined,
-      receiverType: toType,
-      receiverCountryId: toType === 'COUNTRY' ? toCountryId : undefined,
-      receiverCityId: toType === 'CITY' ? toCityId : undefined,
+      receiverType,
+      receiverCountryId,
+      receiverCityId,
       items,
       notes: notes || undefined,
     };
-
-    if (toType === 'COUNTRY' && !toCountryId) {
-      setError('Выберите получателя');
-      return;
-    }
-    if (toType === 'CITY' && !toCityId) {
-      setError('Выберите получателя');
-      return;
-    }
 
     setSending(true);
     try {
@@ -149,13 +205,28 @@ export default function Transfers() {
   };
 
   const resetForm = () => {
-    setToType(user.role === 'ADMIN' ? 'COUNTRY' : 'CITY');
     setToCountryId('');
     setToCityId('');
+    setCities([]);
     setQuantities({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
     setNotes('');
     setError('');
   };
+
+  // Receiver label for the summary hint
+  const receiverLabel = useMemo(() => {
+    if (user.role === 'ADMIN') {
+      const country = countries.find((c) => c.id === toCountryId);
+      const city = cities.find((c) => c.id === toCityId);
+      if (city && country) return `${city.name} (${country.name})`;
+      if (country) return country.name;
+    }
+    if (user.role === 'COUNTRY') {
+      const city = cities.find((c) => c.id === toCityId);
+      if (city) return city.name;
+    }
+    return null;
+  }, [user.role, toCountryId, toCityId, countries, cities]);
 
   if (loading) {
     return (
@@ -167,83 +238,184 @@ export default function Transfers() {
 
   return (
     <div className="space-y-4">
+      {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Отправки</h2>
-        <Button onClick={openCreate} size="sm">
-          <Plus size={18} /> Новая
-        </Button>
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Отправки</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Всего: {transfers.length} • На карте маршрутов
+          </p>
+        </div>
+        {(user.role === 'ADMIN' || user.role === 'COUNTRY') && (
+          <Button onClick={openCreate} size="sm">
+            <Plus size={18} /> Новая
+          </Button>
+        )}
       </div>
 
-      {/* Transfers list */}
-      {transfers.length === 0 ? (
+      {/* ── Filters Row ───────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Поиск по отправителю, получателю..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+          >
+            <option value="all">Все статусы ({transfers.length})</option>
+            <option value="SENT">Отправлено ({statusCounts.SENT || 0})</option>
+            <option value="ACCEPTED">Принято ({statusCounts.ACCEPTED || 0})</option>
+            <option value="DISCREPANCY_FOUND">Расхождение ({statusCounts.DISCREPANCY_FOUND || 0})</option>
+            <option value="REJECTED">Отклонено ({statusCounts.REJECTED || 0})</option>
+            <option value="CANCELLED">Отменено ({statusCounts.CANCELLED || 0})</option>
+          </select>
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+          >
+            <option value="newest">Новые ↓</option>
+            <option value="oldest">Старые ↑</option>
+            <option value="most">Больше шт</option>
+            <option value="least">Меньше шт</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ── Transfers List ────────────────────────────── */}
+      {filteredTransfers.length === 0 ? (
         <Card>
-          <p className="text-sm text-gray-500 text-center py-8">Нет отправок</p>
+          <p className="text-sm text-gray-500 text-center py-8">
+            {transfers.length === 0 ? 'Нет отправок' : 'Ничего не найдено'}
+          </p>
         </Card>
       ) : (
         <div className="space-y-3">
-          {transfers.map((t) => (
-            <Card key={t.id}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Badge status={t.status} />
-                    <span className="text-xs text-gray-400">
-                      {new Date(t.createdAt).toLocaleDateString('ru-RU')}
-                    </span>
-                  </div>
-                  <div className="text-sm">
-                    <span className="text-gray-500">
-                      {t.senderType === 'ADMIN' ? 'Админ' : (t.senderCity?.name || t.senderCountry?.name || t.senderType)}
-                    </span>
-                    <span className="mx-2 text-gray-300">→</span>
-                    <span className="font-medium">{t.receiverCity?.name || t.receiverCountry?.name || t.receiverType}</span>
-                  </div>
-                  <BraceletRow items={t.items} size="sm" />
-                  {t.notes && <p className="text-xs text-gray-400 mt-1">{t.notes}</p>}
-                </div>
+          {filteredTransfers.map((t) => {
+            const from =
+              t.senderType === 'ADMIN'
+                ? 'Админ'
+                : (t.senderCity?.name || t.senderCountry?.name || t.senderType);
+            const to = t.receiverCity?.name || t.receiverCountry?.name || t.receiverType;
+            const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
 
-                {t.status === 'SENT' && t.createdBy === user.id && (
-                  <Button variant="ghost" size="sm" onClick={() => handleCancel(t.id)}>
-                    <X size={16} /> Отменить
-                  </Button>
-                )}
+            return (
+              <div
+                key={t.id}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge status={t.status} />
+                      <span className="text-xs text-gray-400">
+                        {new Date(t.createdAt).toLocaleDateString('ru-RU', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </span>
+                      <span className="text-xs text-gray-300 font-mono">
+                        #{t.id?.slice(-6) || '—'}
+                      </span>
+                    </div>
+
+                    <div className="text-sm flex items-center gap-1.5">
+                      <span className="text-gray-500 truncate">{from}</span>
+                      <span className="text-gray-300 flex-shrink-0">→</span>
+                      <span className="font-medium text-gray-800 truncate">{to}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <BraceletRow items={t.items} size="sm" />
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        Итого: {totalQty} шт
+                      </span>
+                    </div>
+
+                    {t.notes && (
+                      <p className="text-xs text-gray-400 italic">{t.notes}</p>
+                    )}
+                  </div>
+
+                  {t.status === 'SENT' && t.createdBy === user.id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCancel(t.id)}
+                      className="flex-shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <X size={16} /> Отменить
+                    </Button>
+                  )}
+                </div>
               </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Create transfer modal */}
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); resetForm(); }} title="Новая отправка">
+      {/* ── Summary Footer ────────────────────────────── */}
+      {transfers.length > 0 && (
+        <div className="text-xs text-gray-400 text-right">
+          Показано {filteredTransfers.length} из {transfers.length} отправок
+        </div>
+      )}
+
+      {/* ── Create Transfer Modal ─────────────────────── */}
+      <Modal
+        open={showCreate}
+        onClose={() => { setShowCreate(false); resetForm(); }}
+        title="Новая отправка"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* ADMIN: country → city (cascading) */}
           {user.role === 'ADMIN' && (
-            <Select
-              label="Тип получателя"
-              value={toType}
-              onChange={handleToTypeChange}
-              options={[
-                { value: '', label: '— Выберите —' },
-                { value: 'COUNTRY', label: 'Страна' },
-                { value: 'CITY', label: 'Город' },
-              ]}
-            />
+            <>
+              <Select
+                label="Страна-получатель"
+                value={toCountryId}
+                onChange={handleCountryChange}
+                options={[
+                  { value: '', label: '— Выберите страну —' },
+                  ...countries.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+
+              {toCountryId && (
+                <div>
+                  <Select
+                    label="Город (необязательно)"
+                    value={toCityId}
+                    onChange={(e) => setToCityId(e.target.value)}
+                    options={[
+                      { value: '', label: citiesLoading ? 'Загрузка...' : '— Вся страна —' },
+                      ...cities.map((c) => ({ value: c.id, label: c.name })),
+                    ]}
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    {toCityId
+                      ? 'Отправка будет адресована выбранному городу'
+                      : 'Если город не выбран — отправка пойдёт на уровень страны'}
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
-          {(toType === 'COUNTRY' || (toType === 'CITY' && user.role === 'ADMIN')) && (
+          {/* COUNTRY: just city selector */}
+          {user.role === 'COUNTRY' && (
             <Select
-              label="Страна"
-              value={toType === 'COUNTRY' ? toCountryId : toCountryId}
-              onChange={handleCountryChange}
-              options={[
-                { value: '', label: '— Выберите страну —' },
-                ...countries.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-          )}
-
-          {toType === 'CITY' && (
-            <Select
-              label="Город"
+              label="Город-получатель"
               value={toCityId}
               onChange={(e) => setToCityId(e.target.value)}
               options={[
@@ -253,6 +425,17 @@ export default function Transfers() {
             />
           )}
 
+          {/* Receiver hint */}
+          {receiverLabel && (
+            <div className="flex items-center gap-2 bg-brand-50 text-brand-700 rounded-lg px-3 py-2">
+              <Send size={14} />
+              <span className="text-sm">
+                Получатель: <strong>{receiverLabel}</strong>
+              </span>
+            </div>
+          )}
+
+          {/* Bracelet quantities */}
           <div>
             <p className="text-sm font-medium text-gray-700 mb-2">Количество браслетов</p>
             <div className="grid grid-cols-2 gap-3">
@@ -280,7 +463,9 @@ export default function Transfers() {
           />
 
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">
+              {error}
+            </div>
           )}
 
           <Button type="submit" loading={sending} className="w-full">
