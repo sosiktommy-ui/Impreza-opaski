@@ -157,19 +157,20 @@ export default function Acceptance() {
 
                   <div className="text-sm text-gray-500">Пересчитайте и примите</div>
 
-                {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
+                  {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
 
-                <div className="flex gap-2">
-                  <Button size="sm" variant="success" onClick={() => openAccept(t)}>
-                    <CheckCircle size={16} /> Принять
-                  </Button>
-                  <Button size="sm" variant="danger" onClick={() => openReject(t)}>
-                    <XCircle size={16} /> Отклонить
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="success" onClick={() => openAccept(t)}>
+                      <CheckCircle size={16} /> Принять
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => openReject(t)}>
+                      <XCircle size={16} /> Отклонить
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
