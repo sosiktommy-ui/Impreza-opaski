@@ -32,12 +32,13 @@ export class AuthController {
     );
 
     // Set refresh token as HttpOnly cookie
+    const isProduction = process.env.NODE_ENV === 'production';
     response.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/api/auth',
+      path: '/',
     });
 
     return {
@@ -64,12 +65,13 @@ export class AuthController {
     const tokens = await this.authService.refresh(refreshToken);
 
     // Set new refresh token cookie
+    const isProduction = process.env.NODE_ENV === 'production';
     response.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/api/auth',
+      path: '/',
     });
 
     return {
@@ -89,7 +91,7 @@ export class AuthController {
       await this.authService.logout(refreshToken);
     }
 
-    response.clearCookie('refresh_token', { path: '/api/auth' });
+    response.clearCookie('refresh_token', { path: '/' });
 
     return { message: 'Logged out successfully' };
   }
@@ -102,7 +104,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     await this.authService.logoutAll(user.id);
-    response.clearCookie('refresh_token', { path: '/api/auth' });
+    response.clearCookie('refresh_token', { path: '/' });
     return { message: 'All sessions revoked' };
   }
 
