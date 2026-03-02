@@ -57,10 +57,12 @@ export default function ProblematicTransfers() {
     setLoading(true);
     try {
       const { data } = await transfersApi.getProblematic({ page: p, limit: 20 });
-      const result = data.data || data;
-      setTransfers(result.data || []);
-      setTotalPages(result.meta?.totalPages || 1);
-      setPage(result.meta?.page || p);
+      const payload = data?.data || data;
+      const list = Array.isArray(payload) ? payload : [];
+      setTransfers(list);
+      const meta = data?.meta || payload?.meta;
+      setTotalPages(meta?.totalPages || 1);
+      setPage(meta?.page || p);
     } catch (err) {
       console.error('Failed to fetch problematic transfers', err);
     } finally {

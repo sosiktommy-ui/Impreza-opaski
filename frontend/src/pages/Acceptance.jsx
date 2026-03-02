@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -14,11 +14,12 @@ const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Крас
 export default function Acceptance() {
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [receivedQty, setReceivedQty] = useState({});
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+
+  // Reject modal state
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectCounts, setRejectCounts] = useState({});
   const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export default function Acceptance() {
   const loadPending = async () => {
     try {
       const { data } = await transfersApi.getPending();
-      const result = data.data || data;
+      const result = data?.data || data;
       setPending(Array.isArray(result) ? result : []);
     } catch (err) {
       console.error(err);
@@ -37,30 +38,18 @@ export default function Acceptance() {
     }
   };
 
-  const openAccept = (transfer) => {
-    setSelected(transfer);
-    setError('');
-    // Do NOT pre-fill — receiver must count and enter actual quantity
-    const qty = {};
-    transfer.items?.forEach((item) => {
-      qty[item.itemType] = '';
-    });
-    setReceivedQty(qty);
-  };
-
-  const handleAccept = async () => {
+  // ── ACCEPT: one-click, no counting needed ──
+  const handleAccept = async (transfer) => {
+    if (!confirm('Принять отправку? Нажимая «Принять» вы подтверждаете что получили все браслеты.')) return;
     setProcessing(true);
     setError('');
     try {
-      const items = ITEM_TYPES
-        .filter((t) => receivedQty[t] !== undefined)
-        .map((t) => ({
-          itemType: t,
-          receivedQuantity: parseInt(receivedQty[t]) || 0,
-        }));
-
-      await transfersApi.accept(selected.id, items);
-      setSelected(null);
+      // Auto-fill receivedQuantity = sentQuantity (accept as-is)
+      const items = (transfer.items || []).map((item) => ({
+        itemType: item.itemType,
+        receivedQuantity: item.quantity,
+      }));
+      await transfersApi.accept(transfer.id, items);
       await loadPending();
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка приёмки');
@@ -69,20 +58,77 @@ export default function Acceptance() {
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectTarget || !rejectReason.trim()) return;
+  // ── REJECT: open modal to count ──
+  const openReject = (transfer) => {
+    setRejectTarget(transfer);
+    setRejectReason('');
+    setError('');
+    const counts = {};
+    transfer.items?.forEach((item) => {
+      counts[item.itemType] = '';
+    });
+    setRejectCounts(counts);
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectTarget) return;
     setProcessing(true);
     setError('');
+
     try {
-      await transfersApi.reject(rejectTarget.id, rejectReason.trim());
+      // Parse counted quantities
+      const counts = {};
+      let totalCounted = 0;
+      ITEM_TYPES.forEach((t) => {
+        if (rejectCounts[t] !== undefined) {
+          const val = parseInt(rejectCounts[t]) || 0;
+          counts[t] = val;
+          totalCounted += val;
+        }
+      });
+
+      if (totalCounted === 0) {
+        // All zeros — full rejection
+        await transfersApi.reject(rejectTarget.id, rejectReason.trim() || 'Отклонено получателем');
+      } else {
+        // Has some counted bracelets — send through accept which detects discrepancy
+        const items = ITEM_TYPES
+          .filter((t) => rejectCounts[t] !== undefined)
+          .map((t) => ({
+            itemType: t,
+            receivedQuantity: counts[t],
+          }));
+        await transfersApi.accept(rejectTarget.id, items);
+      }
+
       setRejectTarget(null);
       setRejectReason('');
       await loadPending();
     } catch (err) {
-      setError(err.response?.data?.message || 'Ошибка отклонения');
+      setError(err.response?.data?.message || 'Ошибка');
     } finally {
       setProcessing(false);
     }
+  };
+
+  // Check what will happen based on current counts
+  const getRejectPreview = () => {
+    if (!rejectTarget) return null;
+    let totalCounted = 0;
+    let hasDiscrepancy = false;
+
+    ITEM_TYPES.forEach((t) => {
+      if (rejectCounts[t] !== undefined) {
+        const counted = parseInt(rejectCounts[t]) || 0;
+        totalCounted += counted;
+        const sent = (rejectTarget.items || []).find((i) => i.itemType === t)?.quantity || 0;
+        if (counted !== sent) hasDiscrepancy = true;
+      }
+    });
+
+    if (totalCounted === 0) return { type: 'rejected', label: 'Полное отклонение — ничего не получено' };
+    if (hasDiscrepancy) return { type: 'discrepancy', label: 'Расхождение — количество не совпадает с отправленным' };
+    return { type: 'match', label: 'Количество совпадает с отправленным — лучше нажмите «Принять»' };
   };
 
   if (loading) {
@@ -96,6 +142,10 @@ export default function Acceptance() {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-bold text-gray-800">Приёмка</h2>
+
+      {error && !rejectTarget && (
+        <div className="bg-red-50 text-red-600 text-sm px-4 py-2.5 rounded-lg">{error}</div>
+      )}
 
       {pending.length === 0 ? (
         <Card>
@@ -113,7 +163,6 @@ export default function Acceptance() {
                     ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
                     : t.senderCountry?.name || '—';
             const senderName = t.createdByUser?.displayName;
-            const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
 
             return (
               <Card key={t.id}>
@@ -146,16 +195,23 @@ export default function Acceptance() {
                     <span className="text-xs text-gray-400 ml-2">{t.items?.length || 0} цветов</span>
                   </div>
 
-                  <div className="text-sm text-gray-500">Пересчитайте и примите</div>
+                  <div className="text-sm text-gray-500">
+                    Принять = согласиться с отправленным количеством
+                  </div>
 
                   {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
 
                   <div className="flex gap-2">
-                    <Button size="sm" variant="success" onClick={() => openAccept(t)}>
+                    <Button size="sm" variant="success" onClick={() => handleAccept(t)} loading={processing}>
                       <CheckCircle size={16} /> Принять
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => { setRejectTarget(t); setRejectReason(''); setError(''); }}>
-                      <XCircle size={16} /> Отклонить
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                      onClick={() => openReject(t)}
+                    >
+                      <AlertTriangle size={16} /> Есть проблема
                     </Button>
                   </div>
                 </div>
@@ -165,80 +221,89 @@ export default function Acceptance() {
         </div>
       )}
 
-      {/* Accept modal */}
+      {/* Reject / Discrepancy modal */}
       <Modal
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        title="Приёмка браслетов"
+        open={!!rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        title="Проблема с отправкой"
       >
-        {selected && (
+        {rejectTarget && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-500">
-              Укажите фактически полученное количество:
-            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-800 flex items-center gap-2">
+                <AlertTriangle size={16} />
+                Укажите сколько браслетов вы фактически насчитали.
+              </p>
+              <p className="text-xs text-amber-600 mt-1">
+                Если ничего не получено — оставьте всё по 0.
+              </p>
+            </div>
 
             <div className="space-y-3">
-              {selected.items?.map((item) => (
+              {rejectTarget.items?.map((item) => (
                 <div key={item.itemType} className="flex items-center justify-between gap-4">
-                  <div className="text-sm">
+                  <div className="text-sm flex items-center gap-2">
+                    <BraceletBadge type={item.itemType} count="?" size="sm" />
                     <span className="font-medium">{ITEM_LABELS[item.itemType]}</span>
                   </div>
                   <Input
                     type="number"
                     min="0"
-                    value={receivedQty[item.itemType] || ''}
+                    value={rejectCounts[item.itemType] ?? ''}
                     onChange={(e) =>
-                      setReceivedQty((p) => ({ ...p, [item.itemType]: e.target.value }))
+                      setRejectCounts((p) => ({ ...p, [item.itemType]: e.target.value }))
                     }
+                    placeholder="0"
                     className="w-24 text-center"
                   />
                 </div>
               ))}
             </div>
 
-            {error && (
-              <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
-            )}
+            {/* Preview what will happen */}
+            {(() => {
+              const preview = getRejectPreview();
+              if (!preview) return null;
+              const colors = {
+                rejected: 'bg-red-50 text-red-700 border-red-200',
+                discrepancy: 'bg-orange-50 text-orange-700 border-orange-200',
+                match: 'bg-green-50 text-green-700 border-green-200',
+              };
+              return (
+                <div className={`text-xs px-3 py-2 rounded-lg border ${colors[preview.type]}`}>
+                  {preview.label}
+                </div>
+              );
+            })()}
 
-            <Button onClick={handleAccept} loading={processing} className="w-full" variant="success">
-              <CheckCircle size={18} /> Подтвердить приёмку
-            </Button>
-          </div>
-        )}
-      </Modal>
-
-      {/* Reject modal */}
-      <Modal
-        open={!!rejectTarget}
-        onClose={() => setRejectTarget(null)}
-        title="Отклонить отправку"
-      >
-        {rejectTarget && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500">
-              Укажите причину отклонения:
-            </p>
             <Input
+              label="Причина / комментарий"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Причина отклонения..."
+              placeholder="Опишите проблему..."
             />
+
             {error && (
               <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
             )}
+
             <Button
-              onClick={handleReject}
+              onClick={handleRejectSubmit}
               loading={processing}
               className="w-full"
-              variant="danger"
-              disabled={!rejectReason.trim()}
+              variant={getRejectPreview()?.type === 'match' ? 'primary' : 'danger'}
             >
-              <XCircle size={18} /> Отклонить
+              {getRejectPreview()?.type === 'rejected' ? (
+                <><XCircle size={18} /> Отклонить</>
+              ) : getRejectPreview()?.type === 'discrepancy' ? (
+                <><AlertTriangle size={18} /> Отправить расхождение</>
+              ) : (
+                <><CheckCircle size={18} /> Подтвердить</>
+              )}
             </Button>
           </div>
         )}
       </Modal>
-
     </div>
   );
 }
