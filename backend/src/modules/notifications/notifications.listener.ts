@@ -146,8 +146,8 @@ export class NotificationListener {
     await this.enqueue({
       userIds,
       type: NotificationType.LOW_STOCK,
-      title: 'Low Stock Alert',
-      message: `${payload.cityName} (${payload.countryName}) stock is low: ${payload.totalBalance} items remaining`,
+      title: 'Мало опасок',
+      message: `${payload.cityName} (${payload.countryName}): остаток ${payload.totalBalance} шт. Необходимо пополнение`,
       metadata: { cityId: payload.cityId, totalBalance: payload.totalBalance },
     });
   }
@@ -165,8 +165,8 @@ export class NotificationListener {
     await this.enqueue({
       userIds,
       type: NotificationType.ZERO_STOCK,
-      title: 'Zero Stock — City Inactive',
-      message: `${payload.cityName} (${payload.countryName}) has reached zero stock and is now INACTIVE`,
+      title: 'Нулевой остаток — город неактивен',
+      message: `${payload.cityName} (${payload.countryName}): опаски закончились, город переведён в INACTIVE`,
       metadata: { cityId: payload.cityId },
     });
   }
@@ -177,6 +177,31 @@ export class NotificationListener {
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: 100,
       removeOnFail: 500,
+    });
+  }
+
+  @OnEvent('transfer.cancelled')
+  async handleTransferCancelled(payload: {
+    transferId: string;
+    toEntityId: string;
+    toEntityType: string;
+    toEntityName: string;
+    cancelledByName: string;
+    actorId: string;
+  }) {
+    this.logger.debug(`Event transfer.cancelled: ${payload.transferId}`);
+
+    const userIds = await this.notificationsService.findUsersForEntity(
+      payload.toEntityType,
+      payload.toEntityId,
+    );
+
+    await this.enqueue({
+      userIds,
+      type: NotificationType.TRANSFER_REJECTED,
+      title: 'Трансфер отменён',
+      message: `Трансфер к ${payload.toEntityName} отменён (${payload.cancelledByName})`,
+      metadata: { transferId: payload.transferId },
     });
   }
 }

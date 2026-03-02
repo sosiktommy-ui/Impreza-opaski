@@ -37,12 +37,13 @@ export default function Dashboard() {
         transfersApi.getProblematic({ page: 1, limit: 1 }),
       ];
 
-      if (!isAdminOrOffice) {
+      if (isAdminOrOffice) {
+        // Admin/Office — load all inventory to compute system totals
+        promises.push(inventoryApi.getAll());
+      } else {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
         promises.push(inventoryApi.getBalance(entityType, entityId));
-      } else if (user.role === 'OFFICE' && user.officeId) {
-        promises.push(inventoryApi.getBalance('OFFICE', user.officeId));
       }
 
       const results = await Promise.all(promises);
@@ -70,11 +71,21 @@ export default function Dashboard() {
       const probPayload = probData?.data || probData;
       setProblematicCount(probPayload?.total || probPayload?.length || 0);
 
-      // Balance (non-admin/office)
+      // Balance
       if (results[4]) {
         const d = results[4].data;
         const dPayload = d?.data || d;
-        if (dPayload && typeof dPayload === 'object' && !Array.isArray(dPayload)) {
+
+        if (isAdminOrOffice && Array.isArray(dPayload)) {
+          // Aggregate all inventory records into system totals
+          const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+          dPayload.forEach((inv) => {
+            if (totals[inv.itemType] !== undefined) {
+              totals[inv.itemType] += inv.quantity || 0;
+            }
+          });
+          setBalance(Object.entries(totals).map(([itemType, quantity]) => ({ itemType, quantity })));
+        } else if (dPayload && typeof dPayload === 'object' && !Array.isArray(dPayload)) {
           setBalance(Object.entries(dPayload).map(([itemType, quantity]) => ({ itemType, quantity })));
         } else {
           setBalance(Array.isArray(dPayload) ? dPayload : []);
@@ -173,7 +184,11 @@ export default function Dashboard() {
       {/* ── Balance (non-admin) ──────────────────────── */}
       {balance && balance.length > 0 && (
         <Card
-          title="Текущий остаток"
+          title={
+            (user.role === 'ADMIN' || user.role === 'OFFICE')
+              ? 'Общий баланс системы'
+              : 'Текущий остаток'
+          }
           action={
             <button
               onClick={() => navigate('/inventory')}

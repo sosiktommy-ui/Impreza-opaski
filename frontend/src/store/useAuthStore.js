@@ -1,17 +1,28 @@
 import { create } from 'zustand';
 import { authApi } from '../api/auth';
 
+const TOKEN_KEY = 'impreza_access_token';
+
 export const useAuthStore = create((set, get) => ({
   token: null,
   user: null,
   loading: true,
 
-  setToken: (token) => set({ token }),
+  setToken: (token) => {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    set({ token });
+  },
 
   login: async (username, password) => {
     const { data } = await authApi.login(username, password);
     const result = data.data || data;
-    set({ token: result.accessToken, user: result.user, loading: false });
+    const token = result.accessToken;
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    set({ token, user: result.user, loading: false });
     return result.user;
   },
 
@@ -21,20 +32,31 @@ export const useAuthStore = create((set, get) => ({
     } catch {
       // ignore
     }
+    localStorage.removeItem(TOKEN_KEY);
     set({ token: null, user: null, loading: false });
   },
 
   checkAuth: async () => {
     try {
+      // Restore token from localStorage so interceptor can attach it immediately
+      const savedToken = localStorage.getItem(TOKEN_KEY);
+      if (savedToken) {
+        set({ token: savedToken });
+      }
+
+      // Try refreshing via HttpOnly cookie (rotates tokens)
       const { data } = await authApi.refresh();
       const result = data.data || data;
-      set({ token: result.accessToken, loading: false });
+      const newToken = result.accessToken;
+      if (newToken) localStorage.setItem(TOKEN_KEY, newToken);
+      set({ token: newToken, loading: false });
 
       // Fetch user info
       const { data: meData } = await authApi.me();
       const userData = meData?.data?.user || meData?.user || meData;
       set({ user: userData });
     } catch {
+      localStorage.removeItem(TOKEN_KEY);
       set({ token: null, user: null, loading: false });
     }
   },

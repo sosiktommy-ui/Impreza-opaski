@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
+import { eventsApi } from '../api/events';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -24,6 +25,8 @@ export default function Expenses() {
   const [cities, setCities] = useState([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [auraEvents, setAuraEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,6 +44,7 @@ export default function Expenses() {
   useEffect(() => {
     loadExpenses();
     loadCities();
+    loadAuraEvents();
   }, []);
 
   const loadExpenses = async () => {
@@ -64,6 +68,15 @@ export default function Expenses() {
       } catch (err) {
         console.error(err);
       }
+    }
+  };
+
+  const loadAuraEvents = async () => {
+    try {
+      const { data } = await eventsApi.getEvents();
+      setAuraEvents(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load AURA events', err);
     }
   };
 
@@ -125,6 +138,7 @@ export default function Expenses() {
   const openCreate = async () => {
     setShowCreate(true);
     setError('');
+    setSelectedEvent('');
     if (user.role === 'CITY') {
       setCityId(user.cityId);
     }
@@ -176,6 +190,7 @@ export default function Expenses() {
     setQuantities({ black: '', white: '', red: '', blue: '' });
     setNotes('');
     setError('');
+    setSelectedEvent('');
   };
 
   if (loading) {
@@ -194,7 +209,7 @@ export default function Expenses() {
           <h2 className="text-xl font-bold text-gray-800">Мероприятия</h2>
           <p className="text-xs text-gray-400 mt-0.5">Учёт расхода браслетов</p>
         </div>
-        {(user.role === 'CITY' || user.role === 'COUNTRY') && (
+        {(user.role === 'CITY' || user.role === 'COUNTRY' || user.role === 'ADMIN' || user.role === 'OFFICE') && (
           <Button onClick={openCreate} size="sm">
             <Plus size={18} /> Новое
           </Button>
@@ -419,13 +434,50 @@ export default function Expenses() {
             />
           )}
 
-          <Input
-            label="Название мероприятия"
-            value={eventName}
-            onChange={(e) => setEventName(e.target.value)}
-            placeholder="Например: Фестиваль красок"
-            required
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Мероприятие
+            </label>
+            {auraEvents.length > 0 && (
+              <select
+                value={selectedEvent}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedEvent(val);
+                  if (val === '__manual__') {
+                    setEventName('');
+                    setEventDate('');
+                    setLocation('');
+                  } else if (val) {
+                    const ev = auraEvents.find((ev) => String(ev.id) === val);
+                    if (ev) {
+                      setEventName(ev.title);
+                      setEventDate(ev.date ? ev.date.slice(0, 10) : '');
+                      setLocation(ev.venue || ev.city || '');
+                    }
+                  }
+                }}
+                className="w-full rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none mb-2"
+              >
+                <option value="">— Выберите из AURA или введите вручную —</option>
+                {auraEvents.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>
+                    {ev.title} — {ev.city}{ev.date ? ` (${new Date(ev.date).toLocaleDateString('ru-RU')})` : ''}
+                  </option>
+                ))}
+                <option value="__manual__">✏️ Ввести вручную</option>
+              </select>
+            )}
+            {(selectedEvent === '__manual__' || auraEvents.length === 0) && (
+              <Input
+                label={auraEvents.length > 0 ? '' : 'Название мероприятия'}
+                value={eventName}
+                onChange={(e) => setEventName(e.target.value)}
+                placeholder="Например: Фестиваль красок"
+                required
+              />
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input

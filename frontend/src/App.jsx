@@ -73,7 +73,7 @@ export default function App() {
         <Route
           path="problematic"
           element={
-            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
+            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
               <ProblematicTransfers />
             </PrivateRoute>
           }
@@ -92,7 +92,14 @@ export default function App() {
         />
 
         <Route path="history" element={<History />} />
-        <Route path="map" element={<MapPage />} />
+        <Route
+          path="map"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
+              <MapPage />
+            </PrivateRoute>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

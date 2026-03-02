@@ -240,11 +240,11 @@ export default function History() {
                       </button>
                       {isExpanded && (
                         <div className="px-3 pb-2 space-y-1">
-                          {t.acceptanceRecords[0]?.items?.map((ri) => {
+                          {t.acceptanceRecords?.map((ri) => {
                             const sentItem = (t.items || []).find((si) => si.itemType === ri.itemType);
                             const diff = (ri.receivedQuantity || 0) - (sentItem?.quantity || 0);
                             return (
-                              <div key={ri.itemType} className="flex items-center justify-between text-xs">
+                              <div key={ri.itemType || ri.id} className="flex items-center justify-between text-xs">
                                 <BraceletBadge type={ri.itemType} size="sm" />
                                 <span className="text-gray-600">
                                   Отпр: {sentItem?.quantity || 0} / Получ: {ri.receivedQuantity || 0}
@@ -309,7 +309,7 @@ export default function History() {
                 </thead>
                 <tbody>
                   {(selected.items || []).map((item) => {
-                    const rec = selected.acceptanceRecords?.[0]?.items?.find(
+                    const rec = selected.acceptanceRecords?.find(
                       (ri) => ri.itemType === item.itemType
                     );
                     return (

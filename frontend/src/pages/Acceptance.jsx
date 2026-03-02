@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -16,8 +16,6 @@ export default function Acceptance() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [receivedQty, setReceivedQty] = useState({});
-  const [rejectReason, setRejectReason] = useState('');
-  const [showReject, setShowReject] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,7 +37,6 @@ export default function Acceptance() {
 
   const openAccept = (transfer) => {
     setSelected(transfer);
-    setShowReject(false);
     setError('');
     // Do NOT pre-fill — receiver must count and enter actual quantity
     const qty = {};
@@ -65,32 +62,6 @@ export default function Acceptance() {
       await loadPending();
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка приёмки');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const openReject = (transfer) => {
-    setSelected(transfer);
-    setShowReject(true);
-    setRejectReason('');
-    setError('');
-  };
-
-  const handleReject = async () => {
-    if (!rejectReason.trim()) {
-      setError('Укажите причину отклонения');
-      return;
-    }
-    setProcessing(true);
-    setError('');
-    try {
-      await transfersApi.reject(selected.id, rejectReason);
-      setSelected(null);
-      setShowReject(false);
-      await loadPending();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Ошибка отклонения');
     } finally {
       setProcessing(false);
     }
@@ -165,9 +136,6 @@ export default function Acceptance() {
                     <Button size="sm" variant="success" onClick={() => openAccept(t)}>
                       <CheckCircle size={16} /> Принять
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => openReject(t)}>
-                      <XCircle size={16} /> Отклонить
-                    </Button>
                   </div>
                 </div>
               </Card>
@@ -178,7 +146,7 @@ export default function Acceptance() {
 
       {/* Accept modal */}
       <Modal
-        open={!!selected && !showReject}
+        open={!!selected}
         onClose={() => setSelected(null)}
         title="Приёмка браслетов"
       >
@@ -218,29 +186,6 @@ export default function Acceptance() {
         )}
       </Modal>
 
-      {/* Reject modal */}
-      <Modal
-        open={!!selected && showReject}
-        onClose={() => { setSelected(null); setShowReject(false); }}
-        title="Отклонить отправку"
-      >
-        <div className="space-y-4">
-          <Input
-            label="Причина отклонения"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Укажите причину..."
-          />
-
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
-          )}
-
-          <Button onClick={handleReject} loading={processing} className="w-full" variant="danger">
-            <XCircle size={18} /> Отклонить
-          </Button>
-        </div>
-      </Modal>
     </div>
   );
 }

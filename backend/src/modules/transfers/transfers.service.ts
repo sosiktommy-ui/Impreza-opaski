@@ -67,6 +67,26 @@ export class TransfersService {
       }
     }
 
+    // CITY can only return bracelets to its own COUNTRY
+    if (input.senderType === EntityType.CITY) {
+      if (input.receiverType !== EntityType.COUNTRY) {
+        throw new BadRequestException('City can only send bracelets back to a country');
+      }
+      if (!input.senderCityId) {
+        throw new BadRequestException('Sender city ID is required for CITY sender');
+      }
+      const senderCity = await this.prisma.city.findUnique({
+        where: { id: input.senderCityId },
+        select: { countryId: true },
+      });
+      if (!senderCity) {
+        throw new BadRequestException('Sender city not found');
+      }
+      if (input.receiverCountryId !== senderCity.countryId) {
+        throw new BadRequestException('City can only return bracelets to its own country');
+      }
+    }
+
     const isAdminSender = input.senderType === EntityType.ADMIN;
 
     return this.prisma.$transaction(async (tx) => {
@@ -272,26 +292,25 @@ export class TransfersService {
           );
         }
 
-        // DEDUCT from sender (deduction happens on accept, not on send)
-        if (transfer.senderType !== EntityType.ADMIN) {
-          const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-          for (const item of transfer.items) {
-            await this.deductInventory(
-              tx,
-              transfer.senderType,
-              senderEntityId,
-              item.itemType,
-              item.quantity,
-            );
-          }
-        }
-
-        // If discrepancy found — do NOT credit receiver, transfer stays frozen
+        // If discrepancy found — do NOT deduct sender, do NOT credit receiver.
+        // Transfer stays frozen in DISCREPANCY_FOUND until Admin/Office resolves.
         if (hasDiscrepancy) {
-          // No crediting — transfer goes to DISCREPANCY_FOUND
-          // Admin/Office will resolve it later
+          // Nothing happens to balances — frozen until resolve
         } else {
-          // Credit receiver with RECEIVED quantities (no discrepancy = sent == received)
+          // No discrepancy: deduct sender (sentQty) + credit receiver (receivedQty)
+          if (transfer.senderType !== EntityType.ADMIN) {
+            const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+            for (const item of transfer.items) {
+              await this.deductInventory(
+                tx,
+                transfer.senderType,
+                senderEntityId,
+                item.itemType,
+                item.quantity,
+              );
+            }
+          }
+
           const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
           for (const ri of receivedItems) {
             if (ri.receivedQuantity > 0) {
@@ -393,12 +412,12 @@ export class TransfersService {
     });
     if (transfer) {
       if (transfer.senderType !== EntityType.ADMIN) {
-        const senderEntityId = transfer.senderCityId || transfer.senderCountryId;
+        const senderEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId;
         if (senderEntityId) {
           await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
         }
       }
-      const receiverEntityId = transfer.receiverCityId || transfer.receiverCountryId;
+      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId;
       if (receiverEntityId) {
         await this.redis.invalidateInventory(transfer.receiverType, receiverEntityId);
       }
@@ -742,6 +761,24 @@ export class TransfersService {
 
     if (userRole === 'ADMIN') {
       // Admin sees all pending
+    } else if (userRole === 'OFFICE') {
+      // Office sees pending for countries/cities assigned to their office
+      const officeCountries = await this.prisma.country.findMany({
+        where: { officeId: entityId },
+        select: { id: true },
+      });
+      const countryIds = officeCountries.map((c) => c.id);
+      if (countryIds.length > 0) {
+        where.OR = [
+          { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
+          { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
+          { senderType: EntityType.OFFICE, senderOfficeId: entityId },
+        ];
+      } else {
+        // Office has no assigned countries — only see transfers from this office
+        where.senderType = EntityType.OFFICE;
+        where.senderOfficeId = entityId;
+      }
     } else if (entityType === EntityType.COUNTRY) {
       where.OR = [
         { receiverType: EntityType.COUNTRY, receiverCountryId: entityId },
@@ -893,6 +930,20 @@ export class TransfersService {
       }
 
       if (action === 'accept_received') {
+        // Deduct sender with SENT quantities (for non-ADMIN)
+        if (transfer.senderType !== EntityType.ADMIN) {
+          const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+          for (const item of transfer.items) {
+            await this.deductInventory(
+              tx,
+              transfer.senderType,
+              senderEntityId,
+              item.itemType,
+              item.quantity,
+            );
+          }
+        }
+
         // Credit receiver with what they actually counted (receivedQuantity)
         const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
         for (const record of transfer.acceptanceRecords) {
@@ -907,33 +958,29 @@ export class TransfersService {
           }
         }
 
+        // Update city statuses
+        if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
+          await this.inventoryService.updateCityStatus(tx, transfer.senderCityId);
+        }
+        if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
+          await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
+        }
+
         await tx.transfer.update({
           where: { id: transferId },
           data: { status: TransferStatus.ACCEPTED, version: transfer.version + 1 },
         });
 
-        this.logger.log(`Discrepancy resolved: ${transferId} → ACCEPTED (received quantities credited)`);
+        this.logger.log(`Discrepancy resolved: ${transferId} → ACCEPTED (sender deducted sent, receiver credited received)`);
       } else {
-        // Cancel — refund sender (if not admin)
-        if (transfer.senderType !== EntityType.ADMIN) {
-          const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-          for (const item of transfer.items) {
-            await this.creditInventory(
-              tx,
-              transfer.senderType,
-              senderEntityId,
-              item.itemType,
-              item.quantity,
-            );
-          }
-        }
-
+        // Cancel — do NOT touch any balances.
+        // Since acceptTransfer did not deduct/credit on discrepancy, nothing to reverse.
         await tx.transfer.update({
           where: { id: transferId },
           data: { status: TransferStatus.CANCELLED, version: transfer.version + 1 },
         });
 
-        this.logger.log(`Discrepancy resolved: ${transferId} → CANCELLED (sender refunded)`);
+        this.logger.log(`Discrepancy resolved: ${transferId} → CANCELLED (no balance changes)`);
       }
 
       await this.storeDomainEvent(transferId, 'DiscrepancyResolved', {
@@ -946,6 +993,24 @@ export class TransfersService {
         include: { items: true, acceptanceRecords: true },
       });
     });
+
+    // Invalidate caches AFTER the transaction commits
+    const resolvedTransfer = await this.prisma.transfer.findUnique({
+      where: { id: transferId },
+    });
+    if (!resolvedTransfer) return;
+
+    const rt = resolvedTransfer!;
+    if (rt.senderType !== EntityType.ADMIN) {
+      const senderEntityId = rt.senderOfficeId || rt.senderCityId || rt.senderCountryId;
+      if (senderEntityId) {
+        await this.redis.invalidateInventory(rt.senderType, senderEntityId as string);
+      }
+    }
+    const receiverEntityId = rt.receiverOfficeId || rt.receiverCityId || rt.receiverCountryId;
+    if (receiverEntityId) {
+      await this.redis.invalidateInventory(rt.receiverType, receiverEntityId as string);
+    }
   }
 
   // ──────────────────────────────────────────────

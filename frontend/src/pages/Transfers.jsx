@@ -32,6 +32,7 @@ export default function Transfers() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
+  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'completed' | 'all'
 
   // Form state — cascading: country → city (optional)
   const [toCountryId, setToCountryId] = useState('');
@@ -63,6 +64,13 @@ export default function Transfers() {
   const filteredTransfers = useMemo(() => {
     let list = [...transfers];
 
+    // Tab filter
+    if (activeTab === 'active') {
+      list = list.filter((t) => ['SENT', 'DISCREPANCY_FOUND'].includes(t.status));
+    } else if (activeTab === 'completed') {
+      list = list.filter((t) => ['ACCEPTED', 'CANCELLED', 'REJECTED'].includes(t.status));
+    }
+
     // Status filter
     if (statusFilter !== 'all') {
       list = list.filter((t) => t.status === statusFilter);
@@ -90,13 +98,20 @@ export default function Transfers() {
     });
 
     return list;
-  }, [transfers, statusFilter, searchQuery, sortOrder]);
+  }, [transfers, activeTab, statusFilter, searchQuery, sortOrder]);
 
   // Status counts
   const statusCounts = useMemo(() => {
     const counts = {};
     transfers.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
     return counts;
+  }, [transfers]);
+
+  // Tab counts
+  const tabCounts = useMemo(() => {
+    const active = transfers.filter((t) => ['SENT', 'DISCREPANCY_FOUND'].includes(t.status)).length;
+    const completed = transfers.filter((t) => ['ACCEPTED', 'CANCELLED', 'REJECTED'].includes(t.status)).length;
+    return { active, completed, all: transfers.length };
   }, [transfers]);
 
   const openCreate = async () => {
@@ -269,6 +284,32 @@ export default function Transfers() {
             <Plus size={18} /> {user.role === 'CITY' ? 'Вернуть' : 'Новая'}
           </Button>
         )}
+      </div>
+
+      {/* ── Tabs ──────────────────────────────────── */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        {[
+          { key: 'active', label: 'В пути', count: tabCounts.active },
+          { key: 'completed', label: 'Завершённые', count: tabCounts.completed },
+          { key: 'all', label: 'Все', count: tabCounts.all },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => { setActiveTab(tab.key); setStatusFilter('all'); }}
+            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === tab.key
+                ? 'bg-white text-gray-800 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+            <span className={`ml-1.5 text-xs ${
+              activeTab === tab.key ? 'text-brand-600' : 'text-gray-400'
+            }`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* ── Filters Row ───────────────────────────────── */}

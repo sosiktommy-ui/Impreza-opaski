@@ -227,12 +227,10 @@ async function main() {
   });
   console.log(`   ✅ admin / admin_2025!Imp (ADMIN)\n`);
 
-  // ───── 4b. Create Offices ─────
-  console.log('🏢 Creating offices...');
+  // ───── 4b. Create Office ─────
+  console.log('🏢 Creating office...');
   const OFFICES = [
     { name: 'Офис Европа', code: 'eu' },
-    { name: 'Офис Запад', code: 'west' },
-    { name: 'Офис Восток', code: 'east' },
   ];
   const officeMap: Record<string, string> = {};
 
@@ -244,12 +242,10 @@ async function main() {
     console.log(`   ✅ ${o.name} (${o.code})`);
   }
 
-  // ───── 4c. Create Office accounts ─────
-  console.log('\n👤 Creating office accounts...');
+  // ───── 4c. Create Office account ─────
+  console.log('\n👤 Creating office account...');
   const officeAccounts = [
     { username: 'office_eu', displayName: 'Офис Европа', officeCode: 'eu' },
-    { username: 'office_west', displayName: 'Офис Запад', officeCode: 'west' },
-    { username: 'office_east', displayName: 'Офис Восток', officeCode: 'east' },
   ];
   for (const oa of officeAccounts) {
     const password = `${oa.username}_2025!Imp`;

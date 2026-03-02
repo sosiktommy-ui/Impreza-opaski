@@ -153,7 +153,7 @@ export class InventoryController {
   }
 
   @Post('expense')
-  @Roles(Role.CITY, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.CITY, Role.COUNTRY)
   createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,

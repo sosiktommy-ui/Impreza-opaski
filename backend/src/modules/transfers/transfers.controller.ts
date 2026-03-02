@@ -105,7 +105,7 @@ export class TransfersController {
   constructor(private readonly transfersService: TransfersService) {}
 
   @Post()
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   sendTransfer(
     @Body() dto: CreateTransferDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -181,9 +181,12 @@ export class TransfersController {
     let entityType: EntityType;
     let entityId: string;
 
-    if (user.role === Role.ADMIN || user.role === Role.OFFICE) {
+    if (user.role === Role.ADMIN) {
       entityType = EntityType.ADMIN;
       entityId = user.id;
+    } else if (user.role === Role.OFFICE) {
+      entityType = EntityType.OFFICE;
+      entityId = (user as any).officeId || user.id;
     } else if (user.role === Role.CITY && user.cityId) {
       entityType = EntityType.CITY;
       entityId = user.cityId;

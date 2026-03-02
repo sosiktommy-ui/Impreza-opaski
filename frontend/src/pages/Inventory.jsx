@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
@@ -7,12 +7,23 @@ import Select from '../components/ui/Select';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
+import BraceletBadge from '../components/ui/BraceletBadge';
 import { Boxes, Plus, Minus } from 'lucide-react';
+
+const COLORS = ['BLACK', 'WHITE', 'RED', 'BLUE'];
+const COLOR_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
+const COLOR_STYLES = {
+  BLACK: 'bg-gray-900 text-white',
+  WHITE: 'bg-white border-2 border-gray-200 text-gray-800',
+  RED: 'bg-red-600 text-white',
+  BLUE: 'bg-blue-600 text-white',
+};
 
 export default function Inventory() {
   const { user } = useAuthStore();
   const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
   const [balances, setBalances] = useState([]);
+  const [allInventory, setAllInventory] = useState([]);
   const [countries, setCountries] = useState([]);
   const [cities, setCities] = useState([]);
   const [selectedCountry, setSelectedCountry] = useState('');
@@ -29,13 +40,21 @@ export default function Inventory() {
 
   const init = async () => {
     if (isAdminOrOffice) {
-      // Admin/Office can view any entity
-      const { data } = await usersApi.getCountries();
-      const payload = data?.data || data;
-      setCountries(Array.isArray(payload) ? payload : []);
+      try {
+        const [countriesRes, inventoryRes] = await Promise.all([
+          usersApi.getCountries(),
+          inventoryApi.getAll(),
+        ]);
+        const cPayload = countriesRes.data?.data || countriesRes.data;
+        setCountries(Array.isArray(cPayload) ? cPayload : []);
+
+        const iPayload = inventoryRes.data?.data || inventoryRes.data;
+        setAllInventory(Array.isArray(iPayload) ? iPayload : []);
+      } catch (err) {
+        console.error(err);
+      }
       setLoading(false);
     } else if (user.role === 'COUNTRY') {
-      // Load own balance + list cities
       setViewEntity({ type: 'COUNTRY', id: user.countryId });
       const [, citiesRes] = await Promise.all([
         loadBalance('COUNTRY', user.countryId),
@@ -44,17 +63,85 @@ export default function Inventory() {
       const citiesPayload = citiesRes.data?.data || citiesRes.data;
       setCities(Array.isArray(citiesPayload) ? citiesPayload : []);
     } else {
-      // City — just load own balance
       setViewEntity({ type: 'CITY', id: user.cityId });
       await loadBalance('CITY', user.cityId);
     }
   };
 
+  // System-wide totals for Admin/Office
+  const systemTotals = useMemo(() => {
+    const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+    allInventory.forEach((inv) => {
+      if (totals[inv.itemType] !== undefined) {
+        totals[inv.itemType] += inv.quantity || 0;
+      }
+    });
+    return totals;
+  }, [allInventory]);
+
+  const systemTotal = useMemo(() =>
+    Object.values(systemTotals).reduce((s, v) => s + v, 0),
+  [systemTotals]);
+
+  // Group inventory by country for Admin/Office overview
+  const countryBreakdown = useMemo(() => {
+    if (!isAdminOrOffice || allInventory.length === 0) return [];
+
+    const countryMap = {};
+
+    allInventory.forEach((inv) => {
+      let countryId = null;
+      let countryName = null;
+
+      if (inv.entityType === 'COUNTRY' && inv.country) {
+        countryId = inv.country.id;
+        countryName = inv.country.name;
+      } else if (inv.entityType === 'CITY' && inv.city) {
+        countryId = inv.city.countryId;
+        // We'll resolve the name from countries list
+      } else if (inv.entityType === 'OFFICE') {
+        // Office inventory shown separately
+        return;
+      }
+
+      if (!countryId) return;
+
+      if (!countryMap[countryId]) {
+        const c = countries.find((ct) => ct.id === countryId);
+        countryMap[countryId] = {
+          id: countryId,
+          name: countryName || c?.name || 'Неизвестно',
+          totals: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
+          cities: {},
+        };
+      }
+
+      // Add to country totals
+      if (inv.entityType === 'COUNTRY') {
+        countryMap[countryId].totals[inv.itemType] = (countryMap[countryId].totals[inv.itemType] || 0) + (inv.quantity || 0);
+      }
+
+      // If city inventory, track per city
+      if (inv.entityType === 'CITY' && inv.city) {
+        const cityId = inv.city.id;
+        if (!countryMap[countryId].cities[cityId]) {
+          countryMap[countryId].cities[cityId] = {
+            id: cityId,
+            name: inv.city.name,
+            totals: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
+          };
+        }
+        countryMap[countryId].cities[cityId].totals[inv.itemType] = (inv.quantity || 0);
+      }
+    });
+
+    return Object.values(countryMap).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allInventory, countries, isAdminOrOffice]);
+
   const loadBalance = async (entityType, entityId) => {
     try {
       const { data } = await inventoryApi.getBalance(entityType, entityId);
       const payload = data?.data || data;
-      // Backend returns { BLACK: 0, WHITE: 0, ... } object, not array
       if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
         setBalances(Object.entries(payload).map(([itemType, quantity]) => ({ itemType, quantity })));
       } else {
@@ -81,6 +168,7 @@ export default function Inventory() {
     } else {
       setBalances([]);
       setCities([]);
+      setViewEntity({ type: '', id: '' });
     }
   };
 
@@ -120,6 +208,12 @@ export default function Inventory() {
       setShowAdjust(false);
       setAdjustForm({ itemType: 'BLACK', delta: 0, reason: '' });
       await loadBalance(viewEntity.type, viewEntity.id);
+      // Refresh system totals
+      if (isAdminOrOffice) {
+        const { data } = await inventoryApi.getAll();
+        const iPayload = data?.data || data;
+        setAllInventory(Array.isArray(iPayload) ? iPayload : []);
+      }
     } catch (err) {
       alert(err.response?.data?.message || 'Ошибка корректировки');
     } finally {
@@ -150,7 +244,69 @@ export default function Inventory() {
         )}
       </div>
 
-      {/* Admin/Office filters */}
+      {/* ── System Totals (Admin/Office) ──────────────── */}
+      {isAdminOrOffice && allInventory.length > 0 && (
+        <Card title={`Общий баланс системы — ${systemTotal} шт`}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {COLORS.map((type) => (
+              <div key={type} className={`rounded-xl p-4 text-center ${COLOR_STYLES[type]} shadow-sm`}>
+                <div className="text-3xl font-bold">{systemTotals[type]}</div>
+                <div className="text-sm mt-1 opacity-80">{COLOR_LABELS[type]}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Country Breakdown Table (Admin/Office) ────── */}
+      {isAdminOrOffice && countryBreakdown.length > 0 && !selectedCountry && (
+        <Card title="Остатки по странам">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs text-gray-400">
+                  <th className="text-left py-2 px-2">Страна</th>
+                  {COLORS.map((c) => (
+                    <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
+                  ))}
+                  <th className="text-center py-2 px-2">Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countryBreakdown.map((country) => {
+                  const countryTotal = Object.values(country.totals).reduce((s, v) => s + v, 0);
+                  const citiesList = Object.values(country.cities);
+                  const citiesTotal = {};
+                  COLORS.forEach((c) => {
+                    citiesTotal[c] = citiesList.reduce((s, city) => s + (city.totals[c] || 0), 0);
+                  });
+                  const allTotal = countryTotal + Object.values(citiesTotal).reduce((s, v) => s + v, 0);
+                  return (
+                    <tr
+                      key={country.id}
+                      className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setSelectedCountry(country.id);
+                        handleCountrySelect({ target: { value: country.id } });
+                      }}
+                    >
+                      <td className="py-2.5 px-2 font-medium text-gray-700">{country.name}</td>
+                      {COLORS.map((c) => (
+                        <td key={c} className="text-center py-2.5 px-2 text-gray-600">
+                          {(country.totals[c] || 0) + (citiesTotal[c] || 0)}
+                        </td>
+                      ))}
+                      <td className="text-center py-2.5 px-2 font-semibold text-gray-800">{allTotal}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Admin/Office filters ──────────────────────── */}
       {isAdminOrOffice && (
         <Card>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -193,37 +349,70 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* Balance display */}
-      {balances.length > 0 ? (
+      {/* Balance display for selected entity */}
+      {balances.length > 0 && (selectedCountry || !isAdminOrOffice) ? (
         <Card title={`Текущий баланс — ${totalBracelets} шт всего`}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
-              const colors = {
-                BLACK: 'bg-gray-900 text-white',
-                WHITE: 'bg-white border-2 border-gray-200 text-gray-800',
-                RED: 'bg-red-600 text-white',
-                BLUE: 'bg-blue-600 text-white',
-              };
-              const labels = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
-              return (
-                <div
-                  key={type}
-                  className={`rounded-xl p-4 text-center ${colors[type]} shadow-sm`}
-                >
-                  <div className="text-3xl font-bold">{balanceMap[type] || 0}</div>
-                  <div className="text-sm mt-1 opacity-80">{labels[type]}</div>
-                </div>
-              );
-            })}
+            {COLORS.map((type) => (
+              <div key={type} className={`rounded-xl p-4 text-center ${COLOR_STYLES[type]} shadow-sm`}>
+                <div className="text-3xl font-bold">{balanceMap[type] || 0}</div>
+                <div className="text-sm mt-1 opacity-80">{COLOR_LABELS[type]}</div>
+              </div>
+            ))}
           </div>
         </Card>
-      ) : (
+      ) : !isAdminOrOffice ? (
         <Card>
-          <p className="text-sm text-gray-500 text-center py-8">
-            {isAdminOrOffice ? 'Выберите страну или город' : 'Нет данных'}
-          </p>
+          <p className="text-sm text-gray-500 text-center py-8">Нет данных</p>
         </Card>
-      )}
+      ) : null}
+
+      {/* ── City breakdown when country selected (Admin/Office) ── */}
+      {isAdminOrOffice && selectedCountry && !selectedCity && (() => {
+        const countryData = countryBreakdown.find((c) => c.id === selectedCountry);
+        const citiesList = countryData ? Object.values(countryData.cities) : [];
+        if (citiesList.length === 0) return null;
+        return (
+          <Card title="Города">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-xs text-gray-400">
+                    <th className="text-left py-2 px-2">Город</th>
+                    {COLORS.map((c) => (
+                      <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
+                    ))}
+                    <th className="text-center py-2 px-2">Итого</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {citiesList.sort((a, b) => a.name.localeCompare(b.name)).map((city) => {
+                    const cityTotal = Object.values(city.totals).reduce((s, v) => s + v, 0);
+                    return (
+                      <tr
+                        key={city.id}
+                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => {
+                          setSelectedCity(city.id);
+                          handleCitySelect({ target: { value: city.id } });
+                        }}
+                      >
+                        <td className="py-2.5 px-2 font-medium text-gray-700">{city.name}</td>
+                        {COLORS.map((c) => (
+                          <td key={c} className="text-center py-2.5 px-2 text-gray-600">
+                            {city.totals[c] || 0}
+                          </td>
+                        ))}
+                        <td className="text-center py-2.5 px-2 font-semibold text-gray-800">{cityTotal}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* Adjust balance modal */}
       <Modal open={showAdjust} onClose={() => setShowAdjust(false)} title="Корректировка остатков">
