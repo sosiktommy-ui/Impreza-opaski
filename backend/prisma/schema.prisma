@@ -72,6 +72,7 @@ enum AuditAction {
   USER_UPDATED
   USER_DELETED
   EXPENSE_CREATED
+  EXPENSE_DELETED
 }
 
 // ──────────────────────────────────────────────

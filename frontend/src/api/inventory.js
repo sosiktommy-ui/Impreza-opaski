@@ -17,4 +17,6 @@ export const inventoryApi = {
   // data: { cityId, eventName, eventDate, location, black, white, red, blue, notes }
 
   getExpenses: (params) => api.get('/inventory/expenses', { params }),
+
+  deleteExpense: (id) => api.delete(`/inventory/expense/${id}`),
 };

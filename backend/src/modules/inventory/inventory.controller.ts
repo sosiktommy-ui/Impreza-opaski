@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Param,
   Query,
@@ -162,5 +163,14 @@ export class InventoryController {
       ...dto,
       actorId: user.id,
     });
+  }
+
+  @Delete('expense/:id')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  deleteExpense(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.inventoryService.deleteExpense(id, user.id);
   }
 }

@@ -11,7 +11,7 @@ import Modal from '../components/ui/Modal';
 import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   CalendarDays, Plus, Search, TrendingDown,
-  MapPin, BarChart3, Package,
+  MapPin, BarChart3, Package, Trash2,
 } from 'lucide-react';
 
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -50,7 +50,8 @@ export default function Expenses() {
   const loadExpenses = async () => {
     try {
       const { data } = await inventoryApi.getExpenses();
-      setExpenses(Array.isArray(data) ? data : []);
+      const list = data?.data || data;
+      setExpenses(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -64,7 +65,8 @@ export default function Expenses() {
         const { data } = await usersApi.getCities(
           user.role === 'COUNTRY' ? user.countryId : undefined,
         );
-        setCities(Array.isArray(data) ? data : []);
+        const list = data?.data || data;
+        setCities(Array.isArray(list) ? list : []);
       } catch (err) {
         console.error(err);
       }
@@ -74,7 +76,8 @@ export default function Expenses() {
   const loadAuraEvents = async () => {
     try {
       const { data } = await eventsApi.getEvents();
-      setAuraEvents(Array.isArray(data) ? data : []);
+      const list = data?.data || data;
+      setAuraEvents(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error('Failed to load AURA events', err);
     }
@@ -191,6 +194,16 @@ export default function Expenses() {
     setNotes('');
     setError('');
     setSelectedEvent('');
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Удалить это мероприятие? Остатки будут восстановлены.')) return;
+    try {
+      await inventoryApi.deleteExpense(id);
+      await loadExpenses();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Ошибка удаления');
+    }
   };
 
   if (loading) {
@@ -389,9 +402,20 @@ export default function Expenses() {
                       <MapPin size={11} />
                       {ex.city?.name || 'Город'}
                     </span>
-                    {ex.notes && (
-                      <span className="truncate max-w-[200px] italic">{ex.notes}</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {ex.notes && (
+                        <span className="truncate max-w-[200px] italic">{ex.notes}</span>
+                      )}
+                      {(user.role === 'ADMIN' || user.role === 'OFFICE') && (
+                        <button
+                          onClick={() => handleDelete(ex.id)}
+                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                          title="Удалить"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

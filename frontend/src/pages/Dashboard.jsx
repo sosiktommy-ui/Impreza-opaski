@@ -31,7 +31,7 @@ export default function Dashboard() {
     try {
       const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
       const promises = [
-        transfersApi.getAll(),
+        transfersApi.getAll({ limit: 200 }),
         transfersApi.getPending(),
         usersApi.getCountries(),
         transfersApi.getProblematic({ page: 1, limit: 1 }),
@@ -69,7 +69,7 @@ export default function Dashboard() {
       // Problematic count
       const probData = results[3].data;
       const probPayload = probData?.data || probData;
-      setProblematicCount(probPayload?.total || probPayload?.length || 0);
+      setProblematicCount(probData?.meta?.total || probPayload?.meta?.total || (Array.isArray(probPayload) ? probPayload.length : 0));
 
       // Balance
       if (results[4]) {

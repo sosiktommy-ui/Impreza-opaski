@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, XCircle } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -18,6 +18,8 @@ export default function Acceptance() {
   const [receivedQty, setReceivedQty] = useState({});
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
     loadPending();
@@ -62,6 +64,22 @@ export default function Acceptance() {
       await loadPending();
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка приёмки');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget || !rejectReason.trim()) return;
+    setProcessing(true);
+    setError('');
+    try {
+      await transfersApi.reject(rejectTarget.id, rejectReason.trim());
+      setRejectTarget(null);
+      setRejectReason('');
+      await loadPending();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка отклонения');
     } finally {
       setProcessing(false);
     }
@@ -120,12 +138,12 @@ export default function Acceptance() {
                     <Badge status={t.status} />
                   </div>
 
-                  {/* Color breakdown */}
+                  {/* Color breakdown — hide quantities for blind acceptance */}
                   <div className="flex items-center gap-1.5">
                     {(t.items || []).map((item) => (
-                      <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} />
+                      <BraceletBadge key={item.itemType || item.id} type={item.itemType} count="?" />
                     ))}
-                    <span className="text-xs text-gray-400 ml-2">Итого: {totalQty} шт</span>
+                    <span className="text-xs text-gray-400 ml-2">{t.items?.length || 0} цветов</span>
                   </div>
 
                   <div className="text-sm text-gray-500">Пересчитайте и примите</div>
@@ -135,6 +153,9 @@ export default function Acceptance() {
                   <div className="flex gap-2">
                     <Button size="sm" variant="success" onClick={() => openAccept(t)}>
                       <CheckCircle size={16} /> Принять
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => { setRejectTarget(t); setRejectReason(''); setError(''); }}>
+                      <XCircle size={16} /> Отклонить
                     </Button>
                   </div>
                 </div>
@@ -181,6 +202,38 @@ export default function Acceptance() {
 
             <Button onClick={handleAccept} loading={processing} className="w-full" variant="success">
               <CheckCircle size={18} /> Подтвердить приёмку
+            </Button>
+          </div>
+        )}
+      </Modal>
+
+      {/* Reject modal */}
+      <Modal
+        open={!!rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        title="Отклонить отправку"
+      >
+        {rejectTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Укажите причину отклонения:
+            </p>
+            <Input
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Причина отклонения..."
+            />
+            {error && (
+              <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            )}
+            <Button
+              onClick={handleReject}
+              loading={processing}
+              className="w-full"
+              variant="danger"
+              disabled={!rejectReason.trim()}
+            >
+              <XCircle size={18} /> Отклонить
             </Button>
           </div>
         )}

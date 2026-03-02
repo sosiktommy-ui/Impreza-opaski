@@ -23,18 +23,21 @@ export default function History() {
 
   useEffect(() => {
     loadHistory();
-  }, [page, filter]);
+  }, [page, filter, dateFrom, dateTo]);
 
   const loadHistory = async () => {
     setLoading(true);
     try {
       const params = { page, limit: 20 };
       if (filter !== 'all') params.status = filter;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
       const { data } = await transfersApi.getAll(params);
       const payload = data?.data || data;
       const list = Array.isArray(payload) ? payload : (payload?.items || []);
       setTransfers(list);
-      setTotalPages(payload?.totalPages || data?.totalPages || 1);
+      const meta = data?.meta || payload?.meta;
+      setTotalPages(meta?.totalPages || 1);
     } catch (err) {
       console.error(err);
     } finally {

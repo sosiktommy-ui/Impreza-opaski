@@ -314,6 +314,58 @@ export class InventoryService {
     };
   }
 
+  // Delete expense and restore inventory
+  async deleteExpense(expenseId: string, actorId: string) {
+    const expense = await this.prisma.expense.findUnique({
+      where: { id: expenseId },
+      include: { city: true },
+    });
+    if (!expense) {
+      throw new Error('Expense not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Restore inventory for each color
+      const colors: Array<{ type: ItemType; qty: number }> = [
+        { type: 'BLACK' as ItemType, qty: expense.black },
+        { type: 'WHITE' as ItemType, qty: expense.white },
+        { type: 'RED' as ItemType, qty: expense.red },
+        { type: 'BLUE' as ItemType, qty: expense.blue },
+      ];
+
+      for (const { type, qty } of colors) {
+        if (qty > 0) {
+          await tx.inventory.updateMany({
+            where: { entityType: 'CITY', cityId: expense.cityId, itemType: type },
+            data: { quantity: { increment: qty } },
+          });
+        }
+      }
+
+      // Delete the expense record
+      await tx.expense.delete({ where: { id: expenseId } });
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          action: 'EXPENSE_DELETED',
+          entityType: 'Expense',
+          entityId: expenseId,
+          actorId,
+          metadata: {
+            eventName: expense.eventName,
+            black: expense.black,
+            white: expense.white,
+            red: expense.red,
+            blue: expense.blue,
+          },
+        },
+      });
+    });
+
+    return { success: true };
+  }
+
   // ──────────────────────────────────────────────
   // INTERNAL: Update city status based on inventory
   // ──────────────────────────────────────────────

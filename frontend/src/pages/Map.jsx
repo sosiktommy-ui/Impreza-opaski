@@ -109,11 +109,12 @@ export default function MapPage() {
     try {
       const [countriesRes, transfersRes] = await Promise.all([
         usersApi.getCountries(),
-        transfersApi.getAll(),
+        transfersApi.getAll({ limit: 200 }),
       ]);
-      setCountries(Array.isArray(countriesRes.data) ? countriesRes.data : []);
-      const tData = transfersRes.data;
-      setTransfers(Array.isArray(tData) ? tData : []);
+      const cPayload = countriesRes.data?.data || countriesRes.data;
+      setCountries(Array.isArray(cPayload) ? cPayload : []);
+      const tPayload = transfersRes.data?.data || transfersRes.data;
+      setTransfers(Array.isArray(tPayload) ? tPayload : []);
     } catch (err) {
       console.error('Map data loading error:', err);
     } finally {

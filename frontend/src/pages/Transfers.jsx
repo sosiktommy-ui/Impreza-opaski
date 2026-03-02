@@ -66,9 +66,9 @@ export default function Transfers() {
 
     // Tab filter
     if (activeTab === 'active') {
-      list = list.filter((t) => ['SENT', 'DISCREPANCY_FOUND'].includes(t.status));
+      list = list.filter((t) => ['SENT'].includes(t.status));
     } else if (activeTab === 'completed') {
-      list = list.filter((t) => ['ACCEPTED', 'CANCELLED', 'REJECTED'].includes(t.status));
+      list = list.filter((t) => ['ACCEPTED', 'CANCELLED', 'REJECTED', 'DISCREPANCY_FOUND'].includes(t.status));
     }
 
     // Status filter
@@ -428,7 +428,7 @@ export default function Transfers() {
                     )}
                   </div>
 
-                  {t.status === 'SENT' && t.createdBy === user.id && (
+                  {t.status === 'SENT' && t.createdBy === user.id && ['ADMIN', 'OFFICE', 'COUNTRY'].includes(user.role) && (
                     <Button
                       variant="ghost"
                       size="sm"
