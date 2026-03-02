@@ -102,9 +102,7 @@ railway run -s backend -- npx prisma db seed
 
 Seed создаст:
 - **admin** / `admin123` (администратор)
-- **office.eu** / `office123` (офис Европа)
-- **office.west** / `office123` (офис Запад)
-- **office.east** / `office123` (офис Восток)
+- **office_eu** / `office123` (офис Европа)
 - **16 стран** + **66 городов** с аккаунтами
 
 ---
