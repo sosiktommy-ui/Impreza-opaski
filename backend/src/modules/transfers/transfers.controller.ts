@@ -161,13 +161,16 @@ export class TransfersController {
     @Query('status') status: TransferStatus | undefined,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('direction') direction?: 'sent' | 'received',
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     return this.transfersService.findAll({
       status,
       page,
       limit,
+      direction,
       userRole: user?.role,
+      userId: user?.id,
       userCountryId: user?.countryId ?? undefined,
       userCityId: user?.cityId ?? undefined,
       userOfficeId: (user as any)?.officeId ?? undefined,

@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
-import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Package } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -17,10 +17,13 @@ export default function Acceptance() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
 
-  // Reject modal state
-  const [rejectTarget, setRejectTarget] = useState(null);
-  const [rejectCounts, setRejectCounts] = useState({});
-  const [rejectReason, setRejectReason] = useState('');
+  // Accept confirmation modal
+  const [acceptTarget, setAcceptTarget] = useState(null);
+
+  // Disagree modal state
+  const [disagreeTarget, setDisagreeTarget] = useState(null);
+  const [disagreeCounts, setDisagreeCounts] = useState({});
+  const [disagreeReason, setDisagreeReason] = useState('');
 
   useEffect(() => {
     loadPending();
@@ -38,18 +41,23 @@ export default function Acceptance() {
     }
   };
 
-  // ── ACCEPT: one-click, no counting needed ──
-  const handleAccept = async (transfer) => {
-    if (!confirm('Принять отправку? Нажимая «Принять» вы подтверждаете что получили все браслеты.')) return;
+  // ── ACCEPT: modal with quantities shown, confirm button ──
+  const openAccept = (transfer) => {
+    setAcceptTarget(transfer);
+    setError('');
+  };
+
+  const handleAcceptConfirm = async () => {
+    if (!acceptTarget) return;
     setProcessing(true);
     setError('');
     try {
-      // Auto-fill receivedQuantity = sentQuantity (accept as-is)
-      const items = (transfer.items || []).map((item) => ({
+      const items = (acceptTarget.items || []).map((item) => ({
         itemType: item.itemType,
         receivedQuantity: item.quantity,
       }));
-      await transfersApi.accept(transfer.id, items);
+      await transfersApi.accept(acceptTarget.id, items);
+      setAcceptTarget(null);
       await loadPending();
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка приёмки');
@@ -58,51 +66,53 @@ export default function Acceptance() {
     }
   };
 
-  // ── REJECT: open modal to count ──
-  const openReject = (transfer) => {
-    setRejectTarget(transfer);
-    setRejectReason('');
+  // ── DISAGREE: open modal to count what was actually received ──
+  const openDisagree = (transfer) => {
+    setDisagreeTarget(transfer);
+    setDisagreeReason('');
     setError('');
     const counts = {};
     transfer.items?.forEach((item) => {
       counts[item.itemType] = '';
     });
-    setRejectCounts(counts);
+    setDisagreeCounts(counts);
   };
 
-  const handleRejectSubmit = async () => {
-    if (!rejectTarget) return;
+  const handleDisagreeSubmit = async () => {
+    if (!disagreeTarget) return;
     setProcessing(true);
     setError('');
 
     try {
-      // Parse counted quantities
       const counts = {};
       let totalCounted = 0;
       ITEM_TYPES.forEach((t) => {
-        if (rejectCounts[t] !== undefined) {
-          const val = parseInt(rejectCounts[t]) || 0;
+        if (disagreeCounts[t] !== undefined) {
+          const val = parseInt(disagreeCounts[t]) || 0;
           counts[t] = val;
           totalCounted += val;
         }
       });
 
       if (totalCounted === 0) {
-        // All zeros — full rejection
-        await transfersApi.reject(rejectTarget.id, rejectReason.trim() || 'Отклонено получателем');
+        // All zeros — full rejection (nothing received)
+        await transfersApi.reject(
+          disagreeTarget.id,
+          disagreeReason.trim() || 'Ничего не получено — отклонено получателем',
+        );
       } else {
-        // Has some counted bracelets — send through accept which detects discrepancy
+        // Has some counted — send through accept which detects discrepancy
         const items = ITEM_TYPES
-          .filter((t) => rejectCounts[t] !== undefined)
+          .filter((t) => disagreeCounts[t] !== undefined)
           .map((t) => ({
             itemType: t,
             receivedQuantity: counts[t],
           }));
-        await transfersApi.accept(rejectTarget.id, items);
+        await transfersApi.accept(disagreeTarget.id, items);
       }
 
-      setRejectTarget(null);
-      setRejectReason('');
+      setDisagreeTarget(null);
+      setDisagreeReason('');
       await loadPending();
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка');
@@ -111,24 +121,24 @@ export default function Acceptance() {
     }
   };
 
-  // Check what will happen based on current counts
-  const getRejectPreview = () => {
-    if (!rejectTarget) return null;
+  // Preview what will happen based on current disagree counts
+  const getDisagreePreview = () => {
+    if (!disagreeTarget) return null;
     let totalCounted = 0;
     let hasDiscrepancy = false;
 
     ITEM_TYPES.forEach((t) => {
-      if (rejectCounts[t] !== undefined) {
-        const counted = parseInt(rejectCounts[t]) || 0;
+      if (disagreeCounts[t] !== undefined) {
+        const counted = parseInt(disagreeCounts[t]) || 0;
         totalCounted += counted;
-        const sent = (rejectTarget.items || []).find((i) => i.itemType === t)?.quantity || 0;
+        const sent = (disagreeTarget.items || []).find((i) => i.itemType === t)?.quantity || 0;
         if (counted !== sent) hasDiscrepancy = true;
       }
     });
 
-    if (totalCounted === 0) return { type: 'rejected', label: 'Полное отклонение — ничего не получено' };
+    if (totalCounted === 0) return { type: 'rejected', label: 'Ничего не получено — отправка будет отклонена' };
     if (hasDiscrepancy) return { type: 'discrepancy', label: 'Расхождение — количество не совпадает с отправленным' };
-    return { type: 'match', label: 'Количество совпадает с отправленным — лучше нажмите «Принять»' };
+    return { type: 'match', label: 'Количество совпадает — лучше нажмите «Принять»' };
   };
 
   if (loading) {
@@ -143,7 +153,7 @@ export default function Acceptance() {
     <div className="space-y-4">
       <h2 className="text-xl font-bold text-gray-800">Приёмка</h2>
 
-      {error && !rejectTarget && (
+      {error && !acceptTarget && !disagreeTarget && (
         <div className="bg-red-50 text-red-600 text-sm px-4 py-2.5 rounded-lg">{error}</div>
       )}
 
@@ -187,7 +197,7 @@ export default function Acceptance() {
                     <Badge status={t.status} />
                   </div>
 
-                  {/* Color breakdown — hide quantities for blind acceptance */}
+                  {/* Bracelet types (hidden quantities for blind acceptance in card) */}
                   <div className="flex items-center gap-1.5">
                     {(t.items || []).map((item) => (
                       <BraceletBadge key={item.itemType || item.id} type={item.itemType} count="?" />
@@ -195,23 +205,19 @@ export default function Acceptance() {
                     <span className="text-xs text-gray-400 ml-2">{t.items?.length || 0} цветов</span>
                   </div>
 
-                  <div className="text-sm text-gray-500">
-                    Принять = согласиться с отправленным количеством
-                  </div>
-
                   {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
 
                   <div className="flex gap-2">
-                    <Button size="sm" variant="success" onClick={() => handleAccept(t)} loading={processing}>
+                    <Button size="sm" variant="success" onClick={() => openAccept(t)} loading={processing}>
                       <CheckCircle size={16} /> Принять
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
                       className="text-orange-500 hover:text-orange-700 hover:bg-orange-50"
-                      onClick={() => openReject(t)}
+                      onClick={() => openDisagree(t)}
                     >
-                      <AlertTriangle size={16} /> Есть проблема
+                      <XCircle size={16} /> Не согласен
                     </Button>
                   </div>
                 </div>
@@ -221,26 +227,89 @@ export default function Acceptance() {
         </div>
       )}
 
-      {/* Reject / Discrepancy modal */}
+      {/* ── Accept Confirmation Modal ── */}
       <Modal
-        open={!!rejectTarget}
-        onClose={() => setRejectTarget(null)}
-        title="Проблема с отправкой"
+        open={!!acceptTarget}
+        onClose={() => setAcceptTarget(null)}
+        title="Подтверждение приёмки"
       >
-        {rejectTarget && (
+        {acceptTarget && (
           <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-sm text-amber-800 flex items-center gap-2">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-sm text-green-800 flex items-center gap-2">
+                <Package size={16} />
+                Вам отправлены следующие браслеты:
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {acceptTarget.items?.map((item) => (
+                <div key={item.itemType} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <BraceletBadge type={item.itemType} count={item.quantity} />
+                    <span className="text-sm font-medium text-gray-700">{ITEM_LABELS[item.itemType]}</span>
+                  </div>
+                  <span className="text-lg font-bold text-gray-800">{item.quantity} шт</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between">
+              <span className="text-sm text-gray-600">Итого:</span>
+              <span className="text-lg font-bold text-gray-800">
+                {(acceptTarget.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} шт
+              </span>
+            </div>
+
+            <p className="text-xs text-gray-500 text-center">
+              Нажимая «Да, принимаю» вы подтверждаете, что получили все браслеты в указанном количестве.
+            </p>
+
+            {error && (
+              <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleAcceptConfirm}
+                loading={processing}
+                className="flex-1"
+                variant="success"
+              >
+                <CheckCircle size={18} /> Да, принимаю
+              </Button>
+              <Button
+                onClick={() => setAcceptTarget(null)}
+                variant="ghost"
+                className="flex-shrink-0"
+              >
+                Отмена
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Disagree / Count Modal ── */}
+      <Modal
+        open={!!disagreeTarget}
+        onClose={() => setDisagreeTarget(null)}
+        title="Не согласен с отправкой"
+      >
+        {disagreeTarget && (
+          <div className="space-y-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <p className="text-sm text-orange-800 flex items-center gap-2">
                 <AlertTriangle size={16} />
                 Укажите сколько браслетов вы фактически насчитали.
               </p>
-              <p className="text-xs text-amber-600 mt-1">
+              <p className="text-xs text-orange-600 mt-1">
                 Если ничего не получено — оставьте всё по 0.
               </p>
             </div>
 
             <div className="space-y-3">
-              {rejectTarget.items?.map((item) => (
+              {disagreeTarget.items?.map((item) => (
                 <div key={item.itemType} className="flex items-center justify-between gap-4">
                   <div className="text-sm flex items-center gap-2">
                     <BraceletBadge type={item.itemType} count="?" size="sm" />
@@ -249,9 +318,9 @@ export default function Acceptance() {
                   <Input
                     type="number"
                     min="0"
-                    value={rejectCounts[item.itemType] ?? ''}
+                    value={disagreeCounts[item.itemType] ?? ''}
                     onChange={(e) =>
-                      setRejectCounts((p) => ({ ...p, [item.itemType]: e.target.value }))
+                      setDisagreeCounts((p) => ({ ...p, [item.itemType]: e.target.value }))
                     }
                     placeholder="0"
                     className="w-24 text-center"
@@ -262,7 +331,7 @@ export default function Acceptance() {
 
             {/* Preview what will happen */}
             {(() => {
-              const preview = getRejectPreview();
+              const preview = getDisagreePreview();
               if (!preview) return null;
               const colors = {
                 rejected: 'bg-red-50 text-red-700 border-red-200',
@@ -278,8 +347,8 @@ export default function Acceptance() {
 
             <Input
               label="Причина / комментарий"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
+              value={disagreeReason}
+              onChange={(e) => setDisagreeReason(e.target.value)}
               placeholder="Опишите проблему..."
             />
 
@@ -288,14 +357,14 @@ export default function Acceptance() {
             )}
 
             <Button
-              onClick={handleRejectSubmit}
+              onClick={handleDisagreeSubmit}
               loading={processing}
               className="w-full"
-              variant={getRejectPreview()?.type === 'match' ? 'primary' : 'danger'}
+              variant={getDisagreePreview()?.type === 'match' ? 'primary' : 'danger'}
             >
-              {getRejectPreview()?.type === 'rejected' ? (
+              {getDisagreePreview()?.type === 'rejected' ? (
                 <><XCircle size={18} /> Отклонить</>
-              ) : getRejectPreview()?.type === 'discrepancy' ? (
+              ) : getDisagreePreview()?.type === 'discrepancy' ? (
                 <><AlertTriangle size={18} /> Отправить расхождение</>
               ) : (
                 <><CheckCircle size={18} /> Подтвердить</>

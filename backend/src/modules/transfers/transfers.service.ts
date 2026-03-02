@@ -593,7 +593,9 @@ export class TransfersService {
     status?: TransferStatus;
     page?: number;
     limit?: number;
+    direction?: 'sent' | 'received';
     userRole?: string;
+    userId?: string;
     userCountryId?: string;
     userCityId?: string;
     userOfficeId?: string;
@@ -602,7 +604,9 @@ export class TransfersService {
       status,
       page = 1,
       limit = 20,
+      direction,
       userRole,
+      userId,
       userCountryId,
       userCityId,
       userOfficeId,
@@ -613,39 +617,82 @@ export class TransfersService {
 
     if (status) where.status = status;
 
-    // Apply RBAC scope filtering
-    if (userRole === 'COUNTRY' && userCountryId) {
-      where.OR = [
-        { senderType: EntityType.COUNTRY, senderCountryId: userCountryId },
-        { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
-        {
-          senderType: EntityType.CITY,
-          senderCity: { countryId: userCountryId },
-        },
-        {
-          receiverType: EntityType.CITY,
-          receiverCity: { countryId: userCountryId },
-        },
-      ];
-    } else if (userRole === 'CITY' && userCityId) {
-      where.OR = [
-        { senderType: EntityType.CITY, senderCityId: userCityId },
-        { receiverType: EntityType.CITY, receiverCityId: userCityId },
-      ];
-    } else if (userRole === 'OFFICE' && userOfficeId) {
-      // OFFICE sees transfers for countries assigned to their office
-      const officeCountries = await this.prisma.country.findMany({
-        where: { officeId: userOfficeId },
-        select: { id: true },
-      });
-      const countryIds = officeCountries.map((c) => c.id);
-      if (countryIds.length > 0) {
+    // Direction filter: 'sent' = user is sender, 'received' = user is receiver
+    if (direction && userRole) {
+      const directionConditions: Prisma.TransferWhereInput[] = [];
+
+      if (direction === 'sent') {
+        if (userRole === 'ADMIN') {
+          directionConditions.push({ senderType: EntityType.ADMIN, createdBy: userId });
+        } else if (userRole === 'OFFICE' && userOfficeId) {
+          directionConditions.push({ senderType: EntityType.OFFICE, senderOfficeId: userOfficeId });
+        } else if (userRole === 'COUNTRY' && userCountryId) {
+          directionConditions.push({ senderType: EntityType.COUNTRY, senderCountryId: userCountryId });
+        } else if (userRole === 'CITY' && userCityId) {
+          directionConditions.push({ senderType: EntityType.CITY, senderCityId: userCityId });
+        }
+      } else if (direction === 'received') {
+        if (userRole === 'ADMIN') {
+          // Admin sees all incoming
+        } else if (userRole === 'OFFICE' && userOfficeId) {
+          const officeCountries = await this.prisma.country.findMany({
+            where: { officeId: userOfficeId },
+            select: { id: true },
+          });
+          const countryIds = officeCountries.map((c) => c.id);
+          if (countryIds.length > 0) {
+            directionConditions.push(
+              { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
+              { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
+            );
+          }
+        } else if (userRole === 'COUNTRY' && userCountryId) {
+          directionConditions.push(
+            { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
+            { receiverType: EntityType.CITY, receiverCity: { countryId: userCountryId } },
+          );
+        } else if (userRole === 'CITY' && userCityId) {
+          directionConditions.push({ receiverType: EntityType.CITY, receiverCityId: userCityId });
+        }
+      }
+
+      if (directionConditions.length > 0) {
+        where.OR = directionConditions;
+      }
+    } else {
+      // No direction filter — apply standard RBAC scope
+      if (userRole === 'COUNTRY' && userCountryId) {
         where.OR = [
-          { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
-          { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
-          { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
-          { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
+          { senderType: EntityType.COUNTRY, senderCountryId: userCountryId },
+          { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
+          {
+            senderType: EntityType.CITY,
+            senderCity: { countryId: userCountryId },
+          },
+          {
+            receiverType: EntityType.CITY,
+            receiverCity: { countryId: userCountryId },
+          },
         ];
+      } else if (userRole === 'CITY' && userCityId) {
+        where.OR = [
+          { senderType: EntityType.CITY, senderCityId: userCityId },
+          { receiverType: EntityType.CITY, receiverCityId: userCityId },
+        ];
+      } else if (userRole === 'OFFICE' && userOfficeId) {
+        const officeCountries = await this.prisma.country.findMany({
+          where: { officeId: userOfficeId },
+          select: { id: true },
+        });
+        const countryIds = officeCountries.map((c) => c.id);
+        if (countryIds.length > 0) {
+          where.OR = [
+            { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
+            { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
+            { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
+            { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
+          ];
+        }
       }
     }
 
@@ -915,7 +962,7 @@ export class TransfersService {
     action: 'accept_received' | 'cancel',
     actorId: string,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const transfer = await tx.transfer.findUnique({
         where: { id: transferId },
         include: { items: true, acceptanceRecords: true },
@@ -998,19 +1045,20 @@ export class TransfersService {
     const resolvedTransfer = await this.prisma.transfer.findUnique({
       where: { id: transferId },
     });
-    if (!resolvedTransfer) return;
-
-    const rt = resolvedTransfer!;
-    if (rt.senderType !== EntityType.ADMIN) {
-      const senderEntityId = rt.senderOfficeId || rt.senderCityId || rt.senderCountryId;
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(rt.senderType, senderEntityId as string);
+    if (resolvedTransfer) {
+      if (resolvedTransfer.senderType !== EntityType.ADMIN) {
+        const senderEntityId = resolvedTransfer.senderOfficeId || resolvedTransfer.senderCityId || resolvedTransfer.senderCountryId;
+        if (senderEntityId) {
+          await this.redis.invalidateInventory(resolvedTransfer.senderType, senderEntityId as string);
+        }
+      }
+      const receiverEntityId = resolvedTransfer.receiverOfficeId || resolvedTransfer.receiverCityId || resolvedTransfer.receiverCountryId;
+      if (receiverEntityId) {
+        await this.redis.invalidateInventory(resolvedTransfer.receiverType, receiverEntityId as string);
       }
     }
-    const receiverEntityId = rt.receiverOfficeId || rt.receiverCityId || rt.receiverCountryId;
-    if (receiverEntityId) {
-      await this.redis.invalidateInventory(rt.receiverType, receiverEntityId as string);
-    }
+
+    return result;
   }
 
   // ──────────────────────────────────────────────

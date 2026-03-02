@@ -10,7 +10,7 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import { Plus, Send, X, Search, Filter, ArrowUpDown } from 'lucide-react';
+import { Plus, Send, X, Search, ArrowUpDown } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -30,9 +30,8 @@ export default function Transfers() {
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
-  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'completed' | 'all'
+  const [activeTab, setActiveTab] = useState('active'); // 'active' = SENT, 'completed' = ACCEPTED
 
   // Form state — cascading: country → city (optional)
   const [toCountryId, setToCountryId] = useState('');
@@ -42,12 +41,20 @@ export default function Transfers() {
 
   useEffect(() => {
     loadTransfers();
-  }, []);
+  }, [activeTab]);
 
   const loadTransfers = async (p = 1) => {
     setLoading(true);
     try {
-      const { data } = await transfersApi.getAll({ page: p, limit: 30, status: statusFilter !== 'all' ? statusFilter : undefined });
+      const params = {
+        page: p,
+        limit: 30,
+        direction: 'sent', // Only show transfers sent by current user
+      };
+      if (activeTab === 'active') params.status = 'SENT';
+      else if (activeTab === 'completed') params.status = 'ACCEPTED';
+
+      const { data } = await transfersApi.getAll(params);
       const result = data.data || data;
       const list = result.data || (Array.isArray(result) ? result : []);
       setTransfers(list);
@@ -60,31 +67,17 @@ export default function Transfers() {
     }
   };
 
-  // Filtered & sorted transfers
+  // Filtered & sorted transfers (client-side search + sort)
   const filteredTransfers = useMemo(() => {
     let list = [...transfers];
-
-    // Tab filter
-    if (activeTab === 'active') {
-      list = list.filter((t) => ['SENT'].includes(t.status));
-    } else if (activeTab === 'completed') {
-      list = list.filter((t) => ['ACCEPTED', 'CANCELLED', 'REJECTED', 'DISCREPANCY_FOUND'].includes(t.status));
-    }
-
-    // Status filter
-    if (statusFilter !== 'all') {
-      list = list.filter((t) => t.status === statusFilter);
-    }
 
     // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((t) => {
-        const from = t.senderType === 'ADMIN'
-          ? 'админ'
-          : (t.senderCity?.name || t.senderCountry?.name || '');
         const to = t.receiverCity?.name || t.receiverCountry?.name || '';
-        return from.toLowerCase().includes(q) || to.toLowerCase().includes(q);
+        return to.toLowerCase().includes(q) ||
+          (t.notes || '').toLowerCase().includes(q);
       });
     }
 
@@ -98,21 +91,7 @@ export default function Transfers() {
     });
 
     return list;
-  }, [transfers, activeTab, statusFilter, searchQuery, sortOrder]);
-
-  // Status counts
-  const statusCounts = useMemo(() => {
-    const counts = {};
-    transfers.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
-    return counts;
-  }, [transfers]);
-
-  // Tab counts
-  const tabCounts = useMemo(() => {
-    const active = transfers.filter((t) => ['SENT', 'DISCREPANCY_FOUND'].includes(t.status)).length;
-    const completed = transfers.filter((t) => ['ACCEPTED', 'CANCELLED', 'REJECTED'].includes(t.status)).length;
-    return { active, completed, all: transfers.length };
-  }, [transfers]);
+  }, [transfers, searchQuery, sortOrder]);
 
   const openCreate = async () => {
     setShowCreate(true);
@@ -177,7 +156,6 @@ export default function Transfers() {
         setError('Выберите страну-получателя');
         return;
       }
-      // Cascading: if city selected → send to city, otherwise → to country
       if (toCityId) {
         receiverType = 'CITY';
         receiverCityId = toCityId;
@@ -193,7 +171,6 @@ export default function Transfers() {
       receiverType = 'CITY';
       receiverCityId = toCityId;
     } else if (user.role === 'CITY') {
-      // City can only send back to its own country
       receiverType = 'COUNTRY';
       receiverCountryId = user.countryId;
     }
@@ -261,7 +238,7 @@ export default function Transfers() {
     return null;
   }, [user.role, toCountryId, toCityId, countries, cities]);
 
-  if (loading) {
+  if (loading && transfers.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin h-8 w-8 border-4 border-brand-200 border-t-brand-600 rounded-full" />
@@ -274,9 +251,9 @@ export default function Transfers() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Отправки</h2>
+          <h2 className="text-xl font-bold text-gray-800">Мои отправки</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            Всего: {transfers.length} • На карте маршрутов
+            Отправки от вашего аккаунта
           </p>
         </div>
         {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].includes(user.role) && (
@@ -286,16 +263,15 @@ export default function Transfers() {
         )}
       </div>
 
-      {/* ── Tabs ──────────────────────────────────── */}
+      {/* ── Tabs: Не завершённые / Завершённые ──────── */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
         {[
-          { key: 'active', label: 'В пути', count: tabCounts.active },
-          { key: 'completed', label: 'Завершённые', count: tabCounts.completed },
-          { key: 'all', label: 'Все', count: tabCounts.all },
+          { key: 'active', label: 'Не завершённые' },
+          { key: 'completed', label: 'Завершённые' },
         ].map((tab) => (
           <button
             key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setStatusFilter('all'); }}
+            onClick={() => { setActiveTab(tab.key); setPage(1); }}
             className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
                 ? 'bg-white text-gray-800 shadow-sm'
@@ -303,11 +279,6 @@ export default function Transfers() {
             }`}
           >
             {tab.label}
-            <span className={`ml-1.5 text-xs ${
-              activeTab === tab.key ? 'text-brand-600' : 'text-gray-400'
-            }`}>
-              {tab.count}
-            </span>
           </button>
         ))}
       </div>
@@ -318,56 +289,34 @@ export default function Transfers() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Поиск по отправителю, получателю..."
+            placeholder="Поиск по получателю..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           />
         </div>
-        <div className="flex gap-2">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
-          >
-            <option value="all">Все статусы ({transfers.length})</option>
-            <option value="SENT">Отправлено ({statusCounts.SENT || 0})</option>
-            <option value="ACCEPTED">Принято ({statusCounts.ACCEPTED || 0})</option>
-            <option value="DISCREPANCY_FOUND">Расхождение ({statusCounts.DISCREPANCY_FOUND || 0})</option>
-            <option value="REJECTED">Отклонено ({statusCounts.REJECTED || 0})</option>
-            <option value="CANCELLED">Отменено ({statusCounts.CANCELLED || 0})</option>
-          </select>
-          <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
-          >
-            <option value="newest">Новые ↓</option>
-            <option value="oldest">Старые ↑</option>
-            <option value="most">Больше шт</option>
-            <option value="least">Меньше шт</option>
-          </select>
-        </div>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value)}
+          className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+        >
+          <option value="newest">Новые ↓</option>
+          <option value="oldest">Старые ↑</option>
+          <option value="most">Больше шт</option>
+          <option value="least">Меньше шт</option>
+        </select>
       </div>
 
       {/* ── Transfers List ────────────────────────────── */}
       {filteredTransfers.length === 0 ? (
         <Card>
           <p className="text-sm text-gray-500 text-center py-8">
-            {transfers.length === 0 ? 'Нет отправок' : 'Ничего не найдено'}
+            {activeTab === 'active' ? 'Нет активных отправок' : 'Нет завершённых отправок'}
           </p>
         </Card>
       ) : (
         <div className="space-y-3">
           {filteredTransfers.map((t) => {
-            const from =
-              t.senderType === 'ADMIN'
-                ? 'Админ'
-                : t.senderType === 'OFFICE'
-                  ? (t.senderOffice?.name || 'Офис')
-                  : t.senderType === 'CITY'
-                    ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
-                    : t.senderCountry?.name || t.senderType;
             const to =
               t.receiverType === 'ADMIN'
                 ? 'Админ'
@@ -377,7 +326,6 @@ export default function Transfers() {
                     ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
                     : t.receiverCountry?.name || t.receiverType;
             const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
-            const senderName = t.createdByUser?.displayName;
 
             return (
               <div
@@ -401,16 +349,9 @@ export default function Transfers() {
                     </div>
 
                     <div className="text-sm flex items-center gap-1.5">
-                      <span className="text-gray-500 truncate">{from}</span>
                       <span className="text-gray-300 flex-shrink-0">→</span>
                       <span className="font-medium text-gray-800 truncate">{to}</span>
                     </div>
-
-                    {senderName && (
-                      <p className="text-xs text-gray-400">
-                        Отправитель: <span className="text-gray-600 font-medium">{senderName}</span>
-                      </p>
-                    )}
 
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
@@ -428,7 +369,7 @@ export default function Transfers() {
                     )}
                   </div>
 
-                  {t.status === 'SENT' && t.createdBy === user.id && ['ADMIN', 'OFFICE', 'COUNTRY'].includes(user.role) && (
+                  {t.status === 'SENT' && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -445,7 +386,7 @@ export default function Transfers() {
         </div>
       )}
 
-      {/* ── Summary Footer ────────────────────────────── */}
+      {/* ── Pagination ────────────────────────────────── */}
       {transfers.length > 0 && (
         <div className="space-y-2">
           <Pagination page={page} totalPages={totalPages} onPageChange={(p) => loadTransfers(p)} />

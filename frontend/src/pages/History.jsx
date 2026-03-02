@@ -12,7 +12,6 @@ export default function History() {
   const { user } = useAuthStore();
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
@@ -20,24 +19,39 @@ export default function History() {
   const [dateTo, setDateTo] = useState('');
   const [selected, setSelected] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [activeTab, setActiveTab] = useState('completed'); // 'completed' | 'pending' | 'problematic'
 
   useEffect(() => {
     loadHistory();
-  }, [page, filter, dateFrom, dateTo]);
+  }, [activeTab]);
 
-  const loadHistory = async () => {
+  const loadHistory = async (p = 1) => {
     setLoading(true);
     try {
-      const params = { page, limit: 20 };
-      if (filter !== 'all') params.status = filter;
-      if (dateFrom) params.dateFrom = dateFrom;
-      if (dateTo) params.dateTo = dateTo;
+      const params = {
+        page: p,
+        limit: 30,
+        direction: 'received', // Only transfers received by current user's entity
+      };
+
+      // Tab-based status filtering
+      if (activeTab === 'completed') params.status = 'ACCEPTED';
+      else if (activeTab === 'pending') params.status = 'SENT';
+      // 'problematic' — we'll load all and filter client-side for DISCREPANCY_FOUND + REJECTED + CANCELLED
+
+      if (activeTab === 'problematic') {
+        // Load without status filter, then filter client-side
+        delete params.status;
+      }
+
       const { data } = await transfersApi.getAll(params);
       const payload = data?.data || data;
-      const list = Array.isArray(payload) ? payload : (payload?.items || []);
+      const list = Array.isArray(payload) ? payload : (payload?.data || payload?.items || []);
+      
       setTransfers(list);
       const meta = data?.meta || payload?.meta;
       setTotalPages(meta?.totalPages || 1);
+      setPage(meta?.page || p);
     } catch (err) {
       console.error(err);
     } finally {
@@ -46,18 +60,27 @@ export default function History() {
   };
 
   const displayList = useMemo(() => {
-    let list = transfers;
+    let list = [...transfers];
+
+    // For "problematic" tab: filter to only DISCREPANCY_FOUND + REJECTED + CANCELLED
+    if (activeTab === 'problematic') {
+      list = list.filter((t) =>
+        ['DISCREPANCY_FOUND', 'REJECTED', 'CANCELLED'].includes(t.status)
+      );
+    }
+
+    // Client-side search
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((t) =>
         (t.senderCity?.name || '').toLowerCase().includes(q) ||
         (t.senderCountry?.name || '').toLowerCase().includes(q) ||
-        (t.receiverCity?.name || '').toLowerCase().includes(q) ||
-        (t.receiverCountry?.name || '').toLowerCase().includes(q) ||
         (t.createdByUser?.displayName || '').toLowerCase().includes(q) ||
         (t.notes || '').toLowerCase().includes(q)
       );
     }
+
+    // Date range
     if (dateFrom) {
       const from = new Date(dateFrom);
       list = list.filter((t) => new Date(t.createdAt) >= from);
@@ -67,34 +90,22 @@ export default function History() {
       to.setHours(23, 59, 59, 999);
       list = list.filter((t) => new Date(t.createdAt) <= to);
     }
-    return list;
-  }, [transfers, search, dateFrom, dateTo]);
 
-  const statusCounts = useMemo(() => {
-    const counts = {};
-    transfers.forEach((t) => {
-      counts[t.status] = (counts[t.status] || 0) + 1;
-    });
-    return counts;
-  }, [transfers]);
+    // Sort newest first
+    list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return list;
+  }, [transfers, activeTab, search, dateFrom, dateTo]);
 
   const getSenderLabel = (t) => {
     if (t.senderType === 'ADMIN') return 'Склад';
+    if (t.senderType === 'OFFICE') return t.senderOffice?.name || 'Офис';
     if (t.senderType === 'CITY') {
       const city = t.senderCity?.name || '—';
       const country = t.senderCity?.country?.name;
       return country ? `${city} (${country})` : city;
     }
     return t.senderCountry?.name || t.senderType;
-  };
-
-  const getReceiverLabel = (t) => {
-    if (t.receiverType === 'CITY') {
-      const city = t.receiverCity?.name || '—';
-      const country = t.receiverCity?.country?.name;
-      return country ? `${city} (${country})` : city;
-    }
-    return t.receiverCountry?.name || t.receiverType;
   };
 
   if (loading && transfers.length === 0) {
@@ -107,70 +118,73 @@ export default function History() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-gray-800">История</h2>
-
-      {/* Search + date filters */}
-      <Card>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Поиск по городу, стране, отправителю…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-            />
-          </div>
-          <div className="flex gap-2 items-center">
-            <Calendar size={14} className="text-gray-400 flex-shrink-0" />
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="border border-gray-200 rounded-lg px-2 py-2 text-sm"
-            />
-            <span className="text-gray-400 text-xs">—</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="border border-gray-200 rounded-lg px-2 py-2 text-sm"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Status filters */}
-      <div className="flex gap-2 flex-wrap">
-        {[
-          { key: 'all', label: 'Все' },
-          { key: 'SENT', label: 'Отправлено' },
-          { key: 'ACCEPTED', label: 'Принято' },
-          { key: 'DISCREPANCY_FOUND', label: 'Расхождение' },
-          { key: 'REJECTED', label: 'Отклонено' },
-          { key: 'CANCELLED', label: 'Отменено' },
-        ].map(({ key, label }) => {
-          const count = key === 'all' ? transfers.length : (statusCounts[key] || 0);
-          return (
-            <button
-              key={key}
-              onClick={() => { setFilter(key); setPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors
-                ${filter === key
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                }`}
-            >
-              {label} ({count})
-            </button>
-          );
-        })}
+      {/* ── Header ────────────────────────────────────── */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-800">Входящие</h2>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Отправки, адресованные вам
+        </p>
       </div>
 
+      {/* ── Tabs: Завершённые / Не завершённые / Проблемные ── */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        {[
+          { key: 'completed', label: 'Завершённые' },
+          { key: 'pending', label: 'Не завершённые' },
+          { key: 'problematic', label: 'Проблемные' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => { setActiveTab(tab.key); setPage(1); }}
+            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === tab.key
+                ? 'bg-white text-gray-800 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Filters ───────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Поиск по отправителю..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-200 focus:border-brand-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2 items-center">
+          <Calendar size={14} className="text-gray-400 flex-shrink-0" />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:border-brand-500 focus:outline-none"
+          />
+          <span className="text-gray-400 text-xs">—</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:border-brand-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* ── Transfers List ────────────────────────────── */}
       {displayList.length === 0 ? (
         <Card>
-          <p className="text-sm text-gray-500 text-center py-8">Нет записей</p>
+          <p className="text-sm text-gray-500 text-center py-8">
+            {activeTab === 'completed' && 'Нет завершённых входящих'}
+            {activeTab === 'pending' && 'Нет ожидающих входящих'}
+            {activeTab === 'problematic' && 'Нет проблемных отправок'}
+          </p>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -180,35 +194,39 @@ export default function History() {
             const senderName = t.createdByUser?.displayName;
 
             return (
-              <Card key={t.id}>
-                <div className="space-y-2">
+              <div
+                key={t.id}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+              >
+                <div className="p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <Badge status={t.status} />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge status={t.status} />
                       <span className="text-xs text-gray-400">
                         {new Date(t.createdAt).toLocaleString('ru-RU', {
                           day: '2-digit', month: '2-digit', year: '2-digit',
                           hour: '2-digit', minute: '2-digit',
                         })}
                       </span>
-                      <button
-                        onClick={() => setSelected(t)}
-                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-brand-600"
-                        title="Подробнее"
-                      >
-                        <Eye size={14} />
-                      </button>
+                      <span className="text-xs text-gray-300 font-mono">
+                        #{t.id?.slice(-6) || '—'}
+                      </span>
                     </div>
+                    <button
+                      onClick={() => setSelected(t)}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-brand-600 transition-colors"
+                      title="Подробнее"
+                    >
+                      <Eye size={16} />
+                    </button>
                   </div>
 
-                  {/* Sender → Receiver */}
-                  <div className="text-sm">
-                    <span className="text-gray-500">{getSenderLabel(t)}</span>
-                    <span className="mx-2 text-gray-300">→</span>
-                    <span className="font-medium">{getReceiverLabel(t)}</span>
+                  {/* Sender (from) */}
+                  <div className="text-sm flex items-center gap-1.5">
+                    <span className="text-gray-300 flex-shrink-0">от</span>
+                    <span className="font-medium text-gray-800 truncate">{getSenderLabel(t)}</span>
                   </div>
 
-                  {/* Sender name */}
                   {senderName && (
                     <div className="text-xs text-gray-400">
                       Отправитель: <span className="text-gray-600 font-medium">{senderName}</span>
@@ -223,10 +241,10 @@ export default function History() {
                     <span className="text-xs text-gray-400 ml-1">{totalQty} шт</span>
                   </div>
 
-                  {t.notes && <p className="text-xs text-gray-400 italic">💬 {t.notes}</p>}
+                  {t.notes && <p className="text-xs text-gray-400 italic">{t.notes}</p>}
 
                   {t.rejection && (
-                    <div className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded">
+                    <div className="bg-red-50 text-red-600 text-xs px-2 py-1.5 rounded-lg">
                       Причина отклонения: {t.rejection.reason}
                     </div>
                   )}
@@ -263,16 +281,24 @@ export default function History() {
                     </div>
                   )}
                 </div>
-              </Card>
+              </div>
             );
           })}
         </div>
       )}
 
-      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      {/* ── Pagination ────────────────────────────────── */}
+      {transfers.length > 0 && (
+        <div className="space-y-2">
+          <Pagination page={page} totalPages={totalPages} onPageChange={(p) => loadHistory(p)} />
+          <div className="text-xs text-gray-400 text-right">
+            Показано {displayList.length} из {transfers.length}
+          </div>
+        </div>
+      )}
 
-      {/* Detail modal */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Детали трансфера">
+      {/* ── Detail Modal ─────────────────────────────── */}
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Детали отправки">
         {selected && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -282,20 +308,14 @@ export default function History() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Откуда</div>
-                <div className="font-medium">{getSenderLabel(selected)}</div>
-                {selected.createdByUser?.displayName && (
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Отправитель: {selected.createdByUser.displayName}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Куда</div>
-                <div className="font-medium">{getReceiverLabel(selected)}</div>
-              </div>
+            <div className="text-sm">
+              <div className="text-xs text-gray-400 mb-1">Отправитель</div>
+              <div className="font-medium">{getSenderLabel(selected)}</div>
+              {selected.createdByUser?.displayName && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {selected.createdByUser.displayName}
+                </div>
+              )}
             </div>
 
             <div>

@@ -11,7 +11,7 @@ import Modal from '../components/ui/Modal';
 import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   CalendarDays, Plus, Search, TrendingDown,
-  MapPin, BarChart3, Package, Trash2,
+  MapPin, BarChart3, Trash2,
 } from 'lucide-react';
 
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -44,7 +44,6 @@ export default function Expenses() {
   useEffect(() => {
     loadExpenses();
     loadCities();
-    loadAuraEvents();
   }, []);
 
   const loadExpenses = async () => {
@@ -73,9 +72,13 @@ export default function Expenses() {
     }
   };
 
-  const loadAuraEvents = async () => {
+  // Load AURA events filtered by user's city (for CITY role)
+  const loadAuraEvents = async (targetCityName) => {
     try {
-      const { data } = await eventsApi.getEvents();
+      const params = {};
+      // If we know the city name, filter on server side
+      if (targetCityName) params.city = targetCityName;
+      const { data } = await eventsApi.getEvents(params);
       const list = data?.data || data;
       setAuraEvents(Array.isArray(list) ? list : []);
     } catch (err) {
@@ -142,8 +145,55 @@ export default function Expenses() {
     setShowCreate(true);
     setError('');
     setSelectedEvent('');
+    setAuraEvents([]);
+
     if (user.role === 'CITY') {
       setCityId(user.cityId);
+      // Auto-load events for this city
+      const cityName = user.city?.name;
+      if (cityName) {
+        await loadAuraEvents(cityName);
+      } else {
+        await loadAuraEvents();
+      }
+    }
+  };
+
+  // When city is selected in the form (for ADMIN/OFFICE/COUNTRY), load events for that city
+  const handleCityChange = async (e) => {
+    const id = e.target.value;
+    setCityId(id);
+    setSelectedEvent('');
+    setEventName('');
+    setEventDate('');
+    setLocation('');
+
+    if (id) {
+      const city = cities.find((c) => c.id === id);
+      if (city?.name) {
+        await loadAuraEvents(city.name);
+      } else {
+        await loadAuraEvents();
+      }
+    } else {
+      setAuraEvents([]);
+    }
+  };
+
+  const handleEventSelect = (e) => {
+    const val = e.target.value;
+    setSelectedEvent(val);
+    if (val) {
+      const ev = auraEvents.find((ev) => String(ev.id) === val);
+      if (ev) {
+        setEventName(ev.title);
+        setEventDate(ev.date ? ev.date.slice(0, 10) : '');
+        setLocation(ev.venue || ev.city || '');
+      }
+    } else {
+      setEventName('');
+      setEventDate('');
+      setLocation('');
     }
   };
 
@@ -153,7 +203,7 @@ export default function Expenses() {
 
     const targetCityId = user.role === 'CITY' ? user.cityId : cityId;
     if (!targetCityId) { setError('Выберите город'); return; }
-    if (!eventName.trim()) { setError('Укажите название мероприятия'); return; }
+    if (!eventName.trim()) { setError('Выберите мероприятие из списка AURA'); return; }
 
     const black = parseInt(quantities.black) || 0;
     const white = parseInt(quantities.white) || 0;
@@ -194,6 +244,7 @@ export default function Expenses() {
     setNotes('');
     setError('');
     setSelectedEvent('');
+    setAuraEvents([]);
   };
 
   const handleDelete = async (id) => {
@@ -220,7 +271,7 @@ export default function Expenses() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Мероприятия</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Учёт расхода браслетов</p>
+          <p className="text-xs text-gray-400 mt-0.5">Учёт расхода браслетов по событиям AURA</p>
         </div>
         {(user.role === 'CITY' || user.role === 'COUNTRY' || user.role === 'ADMIN' || user.role === 'OFFICE') && (
           <Button onClick={openCreate} size="sm">
@@ -446,11 +497,12 @@ export default function Expenses() {
         title="Новое мероприятие"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* City selector for non-CITY roles */}
           {user.role !== 'CITY' && (
             <Select
               label="Город"
               value={cityId}
-              onChange={(e) => setCityId(e.target.value)}
+              onChange={handleCityChange}
               options={[
                 { value: '', label: '— Выберите город —' },
                 ...cities.map((c) => ({ value: c.id, label: c.name })),
@@ -458,66 +510,53 @@ export default function Expenses() {
             />
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Мероприятие
-            </label>
-            {auraEvents.length > 0 && (
-              <select
-                value={selectedEvent}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedEvent(val);
-                  if (val === '__manual__') {
-                    setEventName('');
-                    setEventDate('');
-                    setLocation('');
-                  } else if (val) {
-                    const ev = auraEvents.find((ev) => String(ev.id) === val);
-                    if (ev) {
-                      setEventName(ev.title);
-                      setEventDate(ev.date ? ev.date.slice(0, 10) : '');
-                      setLocation(ev.venue || ev.city || '');
-                    }
-                  }
-                }}
-                className="w-full rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none mb-2"
-              >
-                <option value="">— Выберите из AURA или введите вручную —</option>
-                {auraEvents.map((ev) => (
-                  <option key={ev.id} value={String(ev.id)}>
-                    {ev.title} — {ev.city}{ev.date ? ` (${new Date(ev.date).toLocaleDateString('ru-RU')})` : ''}
-                  </option>
-                ))}
-                <option value="__manual__">✏️ Ввести вручную</option>
-              </select>
-            )}
-            {(selectedEvent === '__manual__' || auraEvents.length === 0) && (
-              <Input
-                label={auraEvents.length > 0 ? '' : 'Название мероприятия'}
-                value={eventName}
-                onChange={(e) => setEventName(e.target.value)}
-                placeholder="Например: Фестиваль красок"
-                required
-              />
-            )}
-          </div>
+          {/* AURA events dropdown — only if city is selected or user is CITY role */}
+          {(user.role === 'CITY' || cityId) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Мероприятие (AURA)
+              </label>
+              {auraEvents.length > 0 ? (
+                <select
+                  value={selectedEvent}
+                  onChange={handleEventSelect}
+                  className="w-full rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                >
+                  <option value="">— Выберите мероприятие —</option>
+                  {auraEvents.map((ev) => (
+                    <option key={ev.id} value={String(ev.id)}>
+                      {ev.title} — {ev.city}{ev.date ? ` (${new Date(ev.date).toLocaleDateString('ru-RU')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-sm text-gray-400 bg-gray-50 px-3 py-2.5 rounded-lg">
+                  Нет мероприятий AURA для выбранного города
+                </div>
+              )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Дата"
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-            />
-            <Input
-              label="Место"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Парк, площадь..."
-            />
-          </div>
+              {/* Show selected event details */}
+              {selectedEvent && eventName && (
+                <div className="mt-2 bg-brand-50 text-brand-700 rounded-lg px-3 py-2 text-sm space-y-0.5">
+                  <div className="font-medium">{eventName}</div>
+                  {eventDate && (
+                    <div className="text-xs flex items-center gap-1">
+                      <CalendarDays size={12} />
+                      {new Date(eventDate).toLocaleDateString('ru-RU')}
+                    </div>
+                  )}
+                  {location && (
+                    <div className="text-xs flex items-center gap-1">
+                      <MapPin size={12} />
+                      {location}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
+          {/* Bracelet quantities */}
           <div>
             <p className="text-sm font-medium text-gray-700 mb-2">Израсходовано браслетов</p>
             <div className="grid grid-cols-2 gap-3">
@@ -546,7 +585,7 @@ export default function Expenses() {
             <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
           )}
 
-          <Button type="submit" loading={sending} className="w-full">
+          <Button type="submit" loading={sending} disabled={!selectedEvent} className="w-full">
             <TrendingDown size={18} /> Записать расход
           </Button>
         </form>
