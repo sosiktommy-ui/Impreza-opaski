@@ -42,6 +42,10 @@ class CreateTransferDto {
 
   @IsString()
   @IsOptional()
+  senderOfficeId?: string;
+
+  @IsString()
+  @IsOptional()
   senderCountryId?: string;
 
   @IsString()
@@ -50,6 +54,10 @@ class CreateTransferDto {
 
   @IsEnum(EntityType)
   receiverType!: EntityType;
+
+  @IsString()
+  @IsOptional()
+  receiverOfficeId?: string;
 
   @IsString()
   @IsOptional()
@@ -135,6 +143,16 @@ export class TransfersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.transfersService.cancelTransfer(id, user.id);
+  }
+
+  @Patch(':id/resolve-discrepancy')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  resolveDiscrepancy(
+    @Param('id') id: string,
+    @Body() dto: { action: 'accept_received' | 'cancel' },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transfersService.resolveDiscrepancy(id, dto.action, user.id);
   }
 
   @Get()

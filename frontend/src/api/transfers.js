@@ -20,4 +20,8 @@ export const transfersApi = {
     api.patch(`/transfers/${id}/reject`, { reason }),
 
   cancel: (id) => api.patch(`/transfers/${id}/cancel`),
+
+  resolveDiscrepancy: (id, action) =>
+    api.patch(`/transfers/${id}/resolve-discrepancy`, { action }),
+  // action: 'accept_received' | 'cancel'
 };

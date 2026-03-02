@@ -18,9 +18,11 @@ import { InventoryService } from '../inventory/inventory.service';
 
 export interface SendTransferInput {
   senderType: EntityType;
+  senderOfficeId?: string;
   senderCountryId?: string;
   senderCityId?: string;
   receiverType: EntityType;
+  receiverOfficeId?: string;
   receiverCountryId?: string;
   receiverCityId?: string;
   items: Array<{ itemType: ItemType; quantity: number }>;
@@ -72,11 +74,15 @@ export class TransfersService {
       // Actual deduction happens when receiver confirms (acceptTransfer)
       if (!isAdminSender) {
         for (const item of input.items) {
+          const entityId = input.senderType === EntityType.OFFICE
+            ? (input.senderOfficeId || null)
+            : input.senderType === EntityType.COUNTRY
+            ? (input.senderCountryId || null)
+            : (input.senderCityId || null);
           const balance = await this.getEntityBalance(
             tx,
             input.senderType,
-            input.senderCountryId || null,
-            input.senderCityId || null,
+            entityId,
             item.itemType,
           );
           if (balance < item.quantity) {
@@ -91,9 +97,11 @@ export class TransfersService {
       const transfer = await tx.transfer.create({
         data: {
           senderType: input.senderType,
+          senderOfficeId: input.senderOfficeId || null,
           senderCountryId: input.senderCountryId || null,
           senderCityId: input.senderCityId || null,
           receiverType: input.receiverType,
+          receiverOfficeId: input.receiverOfficeId || null,
           receiverCountryId: input.receiverCountryId || null,
           receiverCityId: input.receiverCityId || null,
           status: TransferStatus.SENT,
@@ -264,29 +272,35 @@ export class TransfersService {
 
         // DEDUCT from sender (deduction happens on accept, not on send)
         if (transfer.senderType !== EntityType.ADMIN) {
+          const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
           for (const item of transfer.items) {
             await this.deductInventory(
               tx,
               transfer.senderType,
-              transfer.senderCountryId,
-              transfer.senderCityId,
+              senderEntityId,
               item.itemType,
               item.quantity,
             );
           }
         }
 
-        // Credit receiver with RECEIVED quantities (not sent!)
-        for (const ri of receivedItems) {
-          if (ri.receivedQuantity > 0) {
-            await this.creditInventory(
-              tx,
-              transfer.receiverType,
-              transfer.receiverCountryId,
-              transfer.receiverCityId,
-              ri.itemType,
-              ri.receivedQuantity,
-            );
+        // If discrepancy found — do NOT credit receiver, transfer stays frozen
+        if (hasDiscrepancy) {
+          // No crediting — transfer goes to DISCREPANCY_FOUND
+          // Admin/Office will resolve it later
+        } else {
+          // Credit receiver with RECEIVED quantities (no discrepancy = sent == received)
+          const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+          for (const ri of receivedItems) {
+            if (ri.receivedQuantity > 0) {
+              await this.creditInventory(
+                tx,
+                transfer.receiverType,
+                receiverEntityId,
+                ri.itemType,
+                ri.receivedQuantity,
+              );
+            }
           }
         }
 
@@ -846,6 +860,85 @@ export class TransfersService {
   }
 
   // ──────────────────────────────────────────────
+  // RESOLVE DISCREPANCY (Admin/Office only)
+  // ──────────────────────────────────────────────
+
+  async resolveDiscrepancy(
+    transferId: string,
+    action: 'accept_received' | 'cancel',
+    actorId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.transfer.findUnique({
+        where: { id: transferId },
+        include: { items: true, acceptanceRecords: true },
+      });
+
+      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
+
+      if (transfer.status !== TransferStatus.DISCREPANCY_FOUND) {
+        throw new ConflictException(
+          `Transfer is in status ${transfer.status}, expected DISCREPANCY_FOUND`,
+        );
+      }
+
+      if (action === 'accept_received') {
+        // Credit receiver with what they actually counted (receivedQuantity)
+        const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+        for (const record of transfer.acceptanceRecords) {
+          if (record.receivedQuantity > 0) {
+            await this.creditInventory(
+              tx,
+              transfer.receiverType,
+              receiverEntityId,
+              record.itemType,
+              record.receivedQuantity,
+            );
+          }
+        }
+
+        await tx.transfer.update({
+          where: { id: transferId },
+          data: { status: TransferStatus.ACCEPTED, version: transfer.version + 1 },
+        });
+
+        this.logger.log(`Discrepancy resolved: ${transferId} → ACCEPTED (received quantities credited)`);
+      } else {
+        // Cancel — refund sender (if not admin)
+        if (transfer.senderType !== EntityType.ADMIN) {
+          const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+          for (const item of transfer.items) {
+            await this.creditInventory(
+              tx,
+              transfer.senderType,
+              senderEntityId,
+              item.itemType,
+              item.quantity,
+            );
+          }
+        }
+
+        await tx.transfer.update({
+          where: { id: transferId },
+          data: { status: TransferStatus.CANCELLED, version: transfer.version + 1 },
+        });
+
+        this.logger.log(`Discrepancy resolved: ${transferId} → CANCELLED (sender refunded)`);
+      }
+
+      await this.storeDomainEvent(transferId, 'DiscrepancyResolved', {
+        action,
+        actorId,
+      });
+
+      return tx.transfer.findUnique({
+        where: { id: transferId },
+        include: { items: true, acceptanceRecords: true },
+      });
+    });
+  }
+
+  // ──────────────────────────────────────────────
   // INTERNAL HELPERS
   // ──────────────────────────────────────────────
 
@@ -877,13 +970,13 @@ export class TransfersService {
   private async getEntityBalance(
     tx: Prisma.TransactionClient,
     entityType: EntityType,
-    countryId: string | null,
-    cityId: string | null,
+    entityId: string | null,
     itemType: ItemType,
   ): Promise<number> {
     const where: Prisma.InventoryWhereInput = { entityType, itemType };
-    if (entityType === EntityType.COUNTRY) where.countryId = countryId;
-    if (entityType === EntityType.CITY) where.cityId = cityId;
+    if (entityType === EntityType.OFFICE) where.officeId = entityId;
+    if (entityType === EntityType.COUNTRY) where.countryId = entityId;
+    if (entityType === EntityType.CITY) where.cityId = entityId;
 
     const inventory = await tx.inventory.findFirst({ where });
     return inventory?.quantity ?? 0;
@@ -892,14 +985,14 @@ export class TransfersService {
   private async deductInventory(
     tx: Prisma.TransactionClient,
     entityType: EntityType,
-    countryId: string | null,
-    cityId: string | null,
+    entityId: string | null,
     itemType: ItemType,
     quantity: number,
   ): Promise<void> {
     const where: Prisma.InventoryWhereInput = { entityType, itemType };
-    if (entityType === EntityType.COUNTRY) where.countryId = countryId;
-    if (entityType === EntityType.CITY) where.cityId = cityId;
+    if (entityType === EntityType.OFFICE) where.officeId = entityId;
+    if (entityType === EntityType.COUNTRY) where.countryId = entityId;
+    if (entityType === EntityType.CITY) where.cityId = entityId;
 
     const inventory = await tx.inventory.findFirst({ where });
     if (!inventory || inventory.quantity < quantity) {
@@ -917,14 +1010,14 @@ export class TransfersService {
   private async creditInventory(
     tx: Prisma.TransactionClient,
     entityType: EntityType,
-    countryId: string | null,
-    cityId: string | null,
+    entityId: string | null,
     itemType: ItemType,
     quantity: number,
   ): Promise<void> {
     const where: Prisma.InventoryWhereInput = { entityType, itemType };
-    if (entityType === EntityType.COUNTRY) where.countryId = countryId;
-    if (entityType === EntityType.CITY) where.cityId = cityId;
+    if (entityType === EntityType.OFFICE) where.officeId = entityId;
+    if (entityType === EntityType.COUNTRY) where.countryId = entityId;
+    if (entityType === EntityType.CITY) where.cityId = entityId;
 
     const inventory = await tx.inventory.findFirst({ where });
     if (inventory) {
@@ -936,8 +1029,9 @@ export class TransfersService {
       await tx.inventory.create({
         data: {
           entityType,
-          countryId: entityType === EntityType.COUNTRY ? countryId : null,
-          cityId: entityType === EntityType.CITY ? cityId : null,
+          officeId: entityType === EntityType.OFFICE ? entityId : null,
+          countryId: entityType === EntityType.COUNTRY ? entityId : null,
+          cityId: entityType === EntityType.CITY ? entityId : null,
           itemType,
           quantity,
         },

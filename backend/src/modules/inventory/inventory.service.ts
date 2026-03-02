@@ -114,7 +114,9 @@ export class InventoryService {
         inventory = await tx.inventory.create({
           data: {
             entityType,
-            ...(entityType === EntityType.COUNTRY
+            ...(entityType === EntityType.OFFICE
+              ? { officeId: entityId }
+              : entityType === EntityType.COUNTRY
               ? { countryId: entityId }
               : entityType === EntityType.CITY
               ? { cityId: entityId }
@@ -142,7 +144,9 @@ export class InventoryService {
       const adjustment = await tx.adjustment.create({
         data: {
           entityType,
-          ...(entityType === EntityType.COUNTRY
+          ...(entityType === EntityType.OFFICE
+            ? { officeId: entityId }
+            : entityType === EntityType.COUNTRY
             ? { countryId: entityId }
             : entityType === EntityType.CITY
             ? { cityId: entityId }
@@ -372,7 +376,9 @@ export class InventoryService {
 
   private buildInventoryWhere(entityType: EntityType, entityId: string) {
     const where: Prisma.InventoryWhereInput = { entityType };
-    if (entityType === EntityType.COUNTRY) {
+    if (entityType === EntityType.OFFICE) {
+      where.officeId = entityId;
+    } else if (entityType === EntityType.COUNTRY) {
       where.countryId = entityId;
     } else if (entityType === EntityType.CITY) {
       where.cityId = entityId;

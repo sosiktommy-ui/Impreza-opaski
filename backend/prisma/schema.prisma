@@ -135,6 +135,9 @@ model Office {
   // Relations
   users     User[]
   countries Country[]
+  inventory Inventory[]
+  transfersSent     Transfer[] @relation("SenderOffice")
+  transfersReceived Transfer[] @relation("ReceiverOffice")
 
   @@map("offices")
 }
@@ -192,18 +195,21 @@ model City {
 model Inventory {
   id         String     @id @default(uuid())
   entityType EntityType @map("entity_type")
+  officeId   String?    @map("office_id")
   countryId  String?    @map("country_id")
   cityId     String?    @map("city_id")
   itemType   ItemType   @map("item_type")
   quantity   Int        @default(0)
   updatedAt  DateTime   @updatedAt @map("updated_at")
 
+  office     Office?    @relation(fields: [officeId], references: [id])
   country    Country?   @relation(fields: [countryId], references: [id])
   city       City?      @relation(fields: [cityId], references: [id])
 
   // Unique per entity+item combination
-  @@unique([entityType, countryId, cityId, itemType], name: "unique_inventory_entry")
+  @@unique([entityType, officeId, countryId, cityId, itemType], name: "unique_inventory_entry")
   @@index([itemType])
+  @@index([entityType, officeId])
   @@index([entityType, countryId])
   @@index([entityType, cityId])
   @@map("inventory")
@@ -218,11 +224,13 @@ model Transfer {
 
   // Sender
   senderType      EntityType     @map("sender_type")
+  senderOfficeId  String?        @map("sender_office_id")
   senderCountryId String?        @map("sender_country_id")
   senderCityId    String?        @map("sender_city_id")
 
   // Receiver
   receiverType    EntityType     @map("receiver_type")
+  receiverOfficeId String?       @map("receiver_office_id")
   receiverCountryId String?      @map("receiver_country_id")
   receiverCityId  String?        @map("receiver_city_id")
 
@@ -237,8 +245,10 @@ model Transfer {
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
   // Relations
+  senderOffice    Office?        @relation("SenderOffice", fields: [senderOfficeId], references: [id])
   senderCountry   Country?       @relation("SenderCountry", fields: [senderCountryId], references: [id])
   senderCity      City?          @relation("SenderCity", fields: [senderCityId], references: [id])
+  receiverOffice  Office?        @relation("ReceiverOffice", fields: [receiverOfficeId], references: [id])
   receiverCountry Country?       @relation("ReceiverCountry", fields: [receiverCountryId], references: [id])
   receiverCity    City?          @relation("ReceiverCity", fields: [receiverCityId], references: [id])
   items           TransferItem[]
@@ -246,8 +256,10 @@ model Transfer {
   acceptanceRecords AcceptanceRecord[]
 
   @@index([status])
+  @@index([senderType, senderOfficeId])
   @@index([senderType, senderCountryId])
   @@index([senderType, senderCityId])
+  @@index([receiverType, receiverOfficeId])
   @@index([receiverType, receiverCountryId])
   @@index([receiverType, receiverCityId])
   @@index([createdBy])
@@ -303,6 +315,7 @@ model AcceptanceRecord {
 model Adjustment {
   id         String     @id @default(uuid())
   entityType EntityType @map("entity_type")
+  officeId   String?    @map("office_id")
   countryId  String?    @map("country_id")
   cityId     String?    @map("city_id")
   itemType   ItemType   @map("item_type")
@@ -311,6 +324,7 @@ model Adjustment {
   createdBy  String     @map("created_by")
   createdAt  DateTime   @default(now()) @map("created_at")
 
+  @@index([entityType, officeId])
   @@index([entityType, countryId])
   @@index([entityType, cityId])
   @@map("adjustments")

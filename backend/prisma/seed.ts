@@ -309,9 +309,24 @@ async function main() {
     console.log(`   ✅ ${c.name}: ${c.cities.length} city accounts`);
   }
 
-  // ───── 7. Initialize empty inventory for countries and cities ─────
-  console.log('\n📋 Initializing country/city inventories (all at 0)...');
+  // ───── 7. Initialize empty inventory for offices, countries and cities ─────
+  console.log('\n📋 Initializing office/country/city inventories (all at 0)...');
   const itemTypes: ItemType[] = [ItemType.BLACK, ItemType.WHITE, ItemType.RED, ItemType.BLUE];
+
+  // Office inventory
+  for (const o of OFFICES) {
+    for (const it of itemTypes) {
+      await prisma.inventory.create({
+        data: {
+          entityType: EntityType.OFFICE,
+          officeId: officeMap[o.code],
+          itemType: it,
+          quantity: 0,
+        },
+      });
+    }
+    console.log(`   ✅ Office ${o.name}: inventory initialized`);
+  }
 
   for (const c of COUNTRIES) {
     // Country inventory
