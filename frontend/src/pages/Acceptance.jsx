@@ -117,10 +117,12 @@ export default function Acceptance() {
           {pending.map((t) => {
             const senderLabel =
               t.senderType === 'ADMIN'
-                ? 'Склад'
-                : t.senderType === 'CITY'
-                  ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
-                  : t.senderCountry?.name || '—';
+                ? 'Админ'
+                : t.senderType === 'OFFICE'
+                  ? (t.senderOffice?.name || 'Офис')
+                  : t.senderType === 'CITY'
+                    ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                    : t.senderCountry?.name || '—';
             const senderName = t.createdByUser?.displayName;
             const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
 

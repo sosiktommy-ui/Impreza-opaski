@@ -155,7 +155,7 @@ export default function Transfers() {
       return;
     }
 
-    let receiverType, receiverCountryId, receiverCityId;
+    let receiverType, receiverCountryId, receiverCityId, receiverOfficeId;
 
     if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       if (!toCountryId) {
@@ -177,13 +177,19 @@ export default function Transfers() {
       }
       receiverType = 'CITY';
       receiverCityId = toCityId;
+    } else if (user.role === 'CITY') {
+      // City can only send back to its own country
+      receiverType = 'COUNTRY';
+      receiverCountryId = user.countryId;
     }
 
     const payload = {
-      senderType: (user.role === 'ADMIN' || user.role === 'OFFICE') ? 'ADMIN' : user.role,
+      senderType: user.role === 'ADMIN' ? 'ADMIN' : user.role,
+      senderOfficeId: user.role === 'OFFICE' ? user.officeId : undefined,
       senderCountryId: user.role === 'COUNTRY' ? user.countryId : undefined,
       senderCityId: user.role === 'CITY' ? user.cityId : undefined,
       receiverType,
+      receiverOfficeId,
       receiverCountryId,
       receiverCityId,
       items,
@@ -234,6 +240,9 @@ export default function Transfers() {
       const city = cities.find((c) => c.id === toCityId);
       if (city) return city.name;
     }
+    if (user.role === 'CITY') {
+      return user.country?.name || 'Страна';
+    }
     return null;
   }, [user.role, toCountryId, toCityId, countries, cities]);
 
@@ -255,9 +264,9 @@ export default function Transfers() {
             Всего: {transfers.length} • На карте маршрутов
           </p>
         </div>
-        {['ADMIN', 'OFFICE', 'COUNTRY'].includes(user.role) && (
+        {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].includes(user.role) && (
           <Button onClick={openCreate} size="sm">
-            <Plus size={18} /> Новая
+            <Plus size={18} /> {user.role === 'CITY' ? 'Вернуть' : 'Новая'}
           </Button>
         )}
       </div>
@@ -312,16 +321,20 @@ export default function Transfers() {
           {filteredTransfers.map((t) => {
             const from =
               t.senderType === 'ADMIN'
-                ? 'Склад'
-                : t.senderType === 'CITY'
-                  ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
-                  : t.senderCountry?.name || t.senderType;
+                ? 'Админ'
+                : t.senderType === 'OFFICE'
+                  ? (t.senderOffice?.name || 'Офис')
+                  : t.senderType === 'CITY'
+                    ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                    : t.senderCountry?.name || t.senderType;
             const to =
               t.receiverType === 'ADMIN'
-                ? 'Склад'
-                : t.receiverType === 'CITY'
-                  ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
-                  : t.receiverCountry?.name || t.receiverType;
+                ? 'Админ'
+                : t.receiverType === 'OFFICE'
+                  ? (t.receiverOffice?.name || 'Офис')
+                  : t.receiverType === 'CITY'
+                    ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
+                    : t.receiverCountry?.name || t.receiverType;
             const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
             const senderName = t.createdByUser?.displayName;
 
@@ -453,6 +466,16 @@ export default function Transfers() {
                 ...cities.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />
+          )}
+
+          {/* CITY: auto-receiver is parent country */}
+          {user.role === 'CITY' && (
+            <div className="flex items-center gap-2 bg-gray-50 text-gray-600 rounded-lg px-3 py-2.5">
+              <Send size={14} />
+              <span className="text-sm">
+                Отправка назад: <strong>{user.country?.name || 'Страна'}</strong>
+              </span>
+            </div>
           )}
 
           {/* Receiver hint */}

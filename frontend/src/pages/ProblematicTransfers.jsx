@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Eye } from 'lucide-react';
+import { AlertTriangle, Eye, CheckCircle, XCircle } from 'lucide-react';
+import { useAuthStore } from '../store/useAuthStore';
 import { transfersApi } from '../api/transfers';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
+import Button from '../components/ui/Button';
 
 const ITEM_COLORS = {
   BLACK: { label: 'Чёрный', bg: 'bg-gray-800', text: 'text-white' },
@@ -16,7 +18,11 @@ const ITEM_COLORS = {
 
 function entityLabel(transfer, prefix) {
   const type = transfer[`${prefix}Type`];
-  if (type === 'ADMIN') return 'Склад';
+  if (type === 'ADMIN') return 'Админ';
+  if (type === 'OFFICE') {
+    const o = transfer[`${prefix}Office`];
+    return o?.name || 'Офис';
+  }
   if (type === 'COUNTRY') {
     const c = transfer[`${prefix}Country`];
     return c?.name || '—';
@@ -38,11 +44,14 @@ function formatDate(str) {
 }
 
 export default function ProblematicTransfers() {
+  const { user } = useAuthStore();
+  const canResolve = user?.role === 'ADMIN' || user?.role === 'OFFICE';
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedTransfer, setSelectedTransfer] = useState(null);
+  const [resolving, setResolving] = useState(false);
 
   const fetchData = async (p = 1) => {
     setLoading(true);
@@ -62,6 +71,23 @@ export default function ProblematicTransfers() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleResolve = async (transferId, action) => {
+    const msg = action === 'accept_received'
+      ? 'Принять как есть? Получателю зачислится то что он насчитал.'
+      : 'Отменить трансфер? Опаски вернутся отправителю, получателю ничего не зачислится.';
+    if (!confirm(msg)) return;
+    setResolving(true);
+    try {
+      await transfersApi.resolveDiscrepancy(transferId, action);
+      setSelectedTransfer(null);
+      await fetchData(page);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Ошибка');
+    } finally {
+      setResolving(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -116,6 +142,28 @@ export default function ProblematicTransfers() {
 
                 <div className="flex items-center gap-2">
                   <Badge variant="warning">Расхождение</Badge>
+                  {canResolve && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() => handleResolve(t.id, 'accept_received')}
+                        disabled={resolving}
+                        title="Принять как есть"
+                      >
+                        <CheckCircle size={14} /> Принять
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => handleResolve(t.id, 'cancel')}
+                        disabled={resolving}
+                        title="Отменить трансфер"
+                      >
+                        <XCircle size={14} /> Отменить
+                      </Button>
+                    </>
+                  )}
                   <button
                     onClick={() => setSelectedTransfer(t)}
                     className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
@@ -231,6 +279,27 @@ export default function ProblematicTransfers() {
                 Принял: {selectedTransfer.acceptanceRecords[0].acceptedBy.displayName}
                 {' '} — {formatDate(selectedTransfer.acceptanceRecords[0].createdAt)}
               </p>
+            )}
+
+            {canResolve && (
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <Button
+                  variant="success"
+                  onClick={() => handleResolve(selectedTransfer.id, 'accept_received')}
+                  disabled={resolving}
+                  className="flex-1"
+                >
+                  <CheckCircle size={16} /> Принять как есть
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => handleResolve(selectedTransfer.id, 'cancel')}
+                  disabled={resolving}
+                  className="flex-1"
+                >
+                  <XCircle size={16} /> Отменить трансфер
+                </Button>
+              </div>
             )}
           </div>
         </Modal>

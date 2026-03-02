@@ -18,12 +18,13 @@ const allLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/transfers', icon: Send, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/acceptance', icon: PackageCheck, label: 'Приёмка', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/problematic', icon: AlertTriangle, label: 'Проблемные', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/expenses', icon: CalendarDays, label: 'Мероприятия', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+  { to: '/problematic', icon: AlertTriangle, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'] },
+  { to: '/expenses', icon: CalendarDays, label: 'Расход', roles: ['CITY'] },
+  { to: '/expenses', icon: CalendarDays, label: 'Мероприятия', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   { to: '/inventory', icon: Boxes, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/users', icon: Users, label: 'Пользователи', roles: ['ADMIN', 'OFFICE'] },
   { to: '/history', icon: History, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/map', icon: MapPin, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+  { to: '/map', icon: MapPin, label: 'Карта', roles: ['ADMIN', 'OFFICE'] },
 ];
 
 export default function Sidebar() {

@@ -51,6 +51,7 @@ export class InventoryService {
 
     const inventory = await this.prisma.inventory.findMany({
       include: {
+        office: { select: { id: true, name: true, code: true } },
         country: { select: { id: true, name: true, code: true } },
         city: { select: { id: true, name: true, slug: true, countryId: true } },
       },

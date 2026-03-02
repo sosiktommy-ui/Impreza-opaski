@@ -41,6 +41,8 @@ export default function Dashboard() {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
         promises.push(inventoryApi.getBalance(entityType, entityId));
+      } else if (user.role === 'OFFICE' && user.officeId) {
+        promises.push(inventoryApi.getBalance('OFFICE', user.officeId));
       }
 
       const results = await Promise.all(promises);
@@ -111,11 +113,13 @@ export default function Dashboard() {
 
   const quickActions = [
     { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
+    { label: 'Вернуть опаски', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['CITY'] },
     { label: 'Приёмка', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['CITY', 'COUNTRY'] },
+    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'] },
+    { label: 'Расход', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['CITY'] },
+    { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
     { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Карта', icon: MapIcon, path: '/map', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Карта', icon: MapIcon, path: '/map', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE'] },
     { label: 'История', icon: Clock, path: '/history', color: 'bg-slate-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   ].filter((a) => a.roles.includes(user.role));
 
