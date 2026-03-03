@@ -25,7 +25,7 @@ export class ChatController {
 
   @Get('users')
   getUsers(@CurrentUser() user: AuthenticatedUser) {
-    return this.chatService.getUsers(user.id);
+    return this.chatService.getUsers(user);
   }
 
   @Get('unread-count')
@@ -53,7 +53,7 @@ export class ChatController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() data: { receiverId: string; text: string },
   ) {
-    return this.chatService.sendMessage(user.id, data.receiverId, data.text);
+    return this.chatService.sendMessage(user, data.receiverId, data.text);
   }
 
   @Patch('messages/:senderId/read')

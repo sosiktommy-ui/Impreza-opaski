@@ -5,6 +5,8 @@ export const inventoryApi = {
 
   getMy: () => api.get('/inventory/my'),
 
+  getMapData: () => api.get('/inventory/map'),
+
   getByCountry: (countryId) => api.get(`/inventory/country/${countryId}`),
 
   getBalance: (entityType, entityId) =>

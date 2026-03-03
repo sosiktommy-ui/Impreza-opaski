@@ -79,6 +79,11 @@ class CreateExpenseDto {
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
+  @Get('map')
+  getMapData(@CurrentUser() user: AuthenticatedUser) {
+    return this.inventoryService.getMapData(user);
+  }
+
   @Get()
   @Roles(Role.ADMIN, Role.OFFICE)
   getAllBalances() {

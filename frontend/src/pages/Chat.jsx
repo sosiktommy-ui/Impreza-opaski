@@ -82,8 +82,21 @@ export default function Chat() {
     });
 
     socket.on('new_message', (msg) => {
+      // Only add to current messages if it belongs to the active conversation
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
+        // Check if this message is part of the currently open conversation
+        const currentUserId = useAuthStore.getState().user?.id;
+        const otherId = msg.senderId === currentUserId ? msg.receiverId : msg.senderId;
+        // We store selectedUser in a ref-like way — check via DOM or prev messages
+        if (prev.length > 0) {
+          const firstMsg = prev[0];
+          const prevOtherId =
+            firstMsg.senderId === currentUserId
+              ? firstMsg.receiverId
+              : firstMsg.senderId;
+          if (otherId !== prevOtherId) return prev; // Not the current conversation
+        }
         return [...prev, msg];
       });
       loadConversations();

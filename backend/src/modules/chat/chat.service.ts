@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { Role } from '@prisma/client';
+import { AuthenticatedUser } from '../auth/auth.service';
 
 @Injectable()
 export class ChatService {
@@ -129,14 +131,11 @@ export class ChatService {
     return messages.reverse();
   }
 
-  async sendMessage(senderId: string, receiverId: string, text: string) {
-    const receiver = await this.prisma.user.findUnique({
-      where: { id: receiverId },
-    });
-    if (!receiver) throw new NotFoundException('Получатель не найден');
+  async sendMessage(sender: AuthenticatedUser, receiverId: string, text: string) {
+    await this.validateContactAccess(sender, receiverId);
 
     return this.prisma.chatMessage.create({
-      data: { senderId, receiverId, text },
+      data: { senderId: sender.id, receiverId, text },
       include: {
         sender: {
           select: { id: true, displayName: true, avatarUrl: true },
@@ -158,9 +157,48 @@ export class ChatService {
     });
   }
 
-  async getUsers(currentUserId: string) {
+  async getUsers(currentUser: AuthenticatedUser) {
+    const { id, role, countryId, cityId } = currentUser;
+    const where: any = { id: { not: id }, isActive: true };
+
+    if (role === Role.CITY) {
+      // CITY sees: ADMIN + OFFICE + COUNTRY manager of same country
+      let myCountryId = countryId;
+      if (!myCountryId && cityId) {
+        const city = await this.prisma.city.findUnique({
+          where: { id: cityId },
+          select: { countryId: true },
+        });
+        myCountryId = city?.countryId || null;
+      }
+      where.OR = [
+        { role: Role.ADMIN },
+        { role: Role.OFFICE },
+        ...(myCountryId
+          ? [{ role: Role.COUNTRY, countryId: myCountryId }]
+          : []),
+      ];
+    } else if (role === Role.COUNTRY) {
+      // COUNTRY sees: ADMIN + OFFICE + all CITY users in own country's cities
+      const myCities = countryId
+        ? await this.prisma.city.findMany({
+            where: { countryId },
+            select: { id: true },
+          })
+        : [];
+      const cityIds = myCities.map((c) => c.id);
+      where.OR = [
+        { role: Role.ADMIN },
+        { role: Role.OFFICE },
+        ...(cityIds.length > 0
+          ? [{ role: Role.CITY, cityId: { in: cityIds } }]
+          : []),
+      ];
+    }
+    // ADMIN / OFFICE — no extra filter, sees everyone
+
     return this.prisma.user.findMany({
-      where: { id: { not: currentUserId }, isActive: true },
+      where,
       select: {
         id: true,
         displayName: true,
@@ -170,5 +208,59 @@ export class ChatService {
       },
       orderBy: { displayName: 'asc' },
     });
+  }
+
+  /** Check if sender is allowed to message receiver based on role hierarchy */
+  async validateContactAccess(
+    sender: AuthenticatedUser,
+    receiverId: string,
+  ): Promise<void> {
+    if (sender.role === Role.ADMIN || sender.role === Role.OFFICE) return;
+
+    const receiver = await this.prisma.user.findUnique({
+      where: { id: receiverId },
+      select: { role: true, countryId: true, cityId: true },
+    });
+    if (!receiver) throw new NotFoundException('Получатель не найден');
+
+    if (
+      receiver.role === Role.ADMIN ||
+      receiver.role === Role.OFFICE
+    ) {
+      return; // Everyone can write to ADMIN/OFFICE
+    }
+
+    if (sender.role === Role.CITY) {
+      // CITY can write to COUNTRY of same country
+      let senderCountryId = sender.countryId;
+      if (!senderCountryId && sender.cityId) {
+        const city = await this.prisma.city.findUnique({
+          where: { id: sender.cityId },
+          select: { countryId: true },
+        });
+        senderCountryId = city?.countryId || null;
+      }
+      if (
+        receiver.role === Role.COUNTRY &&
+        receiver.countryId === senderCountryId
+      ) {
+        return;
+      }
+      throw new ForbiddenException('Вы не можете писать этому пользователю');
+    }
+
+    if (sender.role === Role.COUNTRY) {
+      // COUNTRY can write to CITY in own cities
+      if (receiver.role === Role.CITY && receiver.cityId) {
+        const city = await this.prisma.city.findUnique({
+          where: { id: receiver.cityId },
+          select: { countryId: true },
+        });
+        if (city?.countryId === sender.countryId) return;
+      }
+      throw new ForbiddenException('Вы не можете писать этому пользователю');
+    }
+
+    throw new ForbiddenException('Вы не можете писать этому пользователю');
   }
 }

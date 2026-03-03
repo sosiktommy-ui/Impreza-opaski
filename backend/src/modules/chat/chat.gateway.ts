@@ -9,6 +9,9 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuthenticatedUser } from '../auth/auth.service';
+import { Role } from '@prisma/client';
 
 @WebSocketGateway({
   namespace: '/chat',
@@ -24,6 +27,7 @@ export class ChatGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -38,7 +42,23 @@ export class ChatGateway
 
       const payload = this.jwtService.verify(token);
       const userId = payload.sub;
+
+      // Load full user data for role-based checks
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true, username: true, email: true, role: true,
+          displayName: true, avatarUrl: true,
+          officeId: true, countryId: true, cityId: true,
+        },
+      });
+      if (!dbUser) {
+        client.disconnect();
+        return;
+      }
+
       client.data.userId = userId;
+      client.data.user = dbUser as AuthenticatedUser;
 
       if (!this.userSockets.has(userId)) {
         this.userSockets.set(userId, new Set());
@@ -67,16 +87,16 @@ export class ChatGateway
     client: Socket,
     data: { receiverId: string; text: string },
   ) {
-    const senderId = client.data?.userId;
-    if (!senderId || !data.receiverId || !data.text?.trim()) return;
+    const senderUser = client.data?.user as AuthenticatedUser | undefined;
+    if (!senderUser || !data.receiverId || !data.text?.trim()) return;
 
     try {
       const message = await this.chatService.sendMessage(
-        senderId,
+        senderUser,
         data.receiverId,
         data.text.trim(),
       );
-      this.server.to(`user:${senderId}`).emit('new_message', message);
+      this.server.to(`user:${senderUser.id}`).emit('new_message', message);
       this.server.to(`user:${data.receiverId}`).emit('new_message', message);
     } catch (err: any) {
       client.emit('message_error', {

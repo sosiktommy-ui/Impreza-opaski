@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EntityType, ItemType, CityStatus, Prisma } from '@prisma/client';
+import { EntityType, ItemType, CityStatus, Prisma, Role } from '@prisma/client';
 
 const CACHE_TTL = 300; // 5 minutes
 
@@ -364,6 +364,160 @@ export class InventoryService {
     });
 
     return { success: true };
+  }
+
+  // ──────────────────────────────────────────────
+  // MAP DATA — cities + inventory + transfer summaries
+  // ──────────────────────────────────────────────
+
+  async getMapData(user: {
+    role: Role;
+    officeId?: string | null;
+    countryId?: string | null;
+    cityId?: string | null;
+  }) {
+    const { role, countryId, cityId } = user;
+
+    // Build city filter based on role
+    const cityWhere: Prisma.CityWhereInput = {};
+    if (role === Role.COUNTRY && countryId) {
+      cityWhere.countryId = countryId;
+    } else if (role === Role.CITY && cityId) {
+      // Find the country for this city, show all sibling cities
+      const myCity = await this.prisma.city.findUnique({
+        where: { id: cityId },
+        select: { countryId: true },
+      });
+      if (myCity?.countryId) {
+        cityWhere.countryId = myCity.countryId;
+      } else {
+        cityWhere.id = cityId;
+      }
+    }
+    // ADMIN / OFFICE — no filter
+
+    // Get cities with inventory
+    const cities = await this.prisma.city.findMany({
+      where: cityWhere,
+      include: {
+        country: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const cityIds = cities.map((c) => c.id);
+
+    // Batch get inventory for all cities
+    const inventories = await this.prisma.inventory.findMany({
+      where: {
+        entityType: EntityType.CITY,
+        cityId: { in: cityIds },
+      },
+    });
+
+    // Aggregate transfer volumes between locations (last 90 days)
+    const since = new Date();
+    since.setDate(since.getDate() - 90);
+
+    const transferSummary = await this.prisma.transfer.findMany({
+      where: {
+        createdAt: { gte: since },
+        status: { in: ['SENT', 'ACCEPTED', 'DISCREPANCY_FOUND'] },
+        OR: [
+          { senderCityId: { in: cityIds } },
+          { receiverCityId: { in: cityIds } },
+        ],
+      },
+      select: {
+        senderType: true,
+        senderCityId: true,
+        senderCountryId: true,
+        receiverType: true,
+        receiverCityId: true,
+        receiverCountryId: true,
+        status: true,
+        items: { select: { itemType: true, quantity: true } },
+        senderCity: { select: { latitude: true, longitude: true } },
+        senderCountry: { select: { latitude: true, longitude: true } },
+        receiverCity: { select: { latitude: true, longitude: true } },
+        receiverCountry: { select: { latitude: true, longitude: true } },
+      },
+    });
+
+    // Build city data with inventory
+    const cityData = cities
+      .filter((c) => c.latitude && c.longitude)
+      .map((city) => {
+        const inv = inventories.filter((i) => i.cityId === city.id);
+        const balance: Record<string, number> = {};
+        for (const itemType of Object.values(ItemType)) {
+          const entry = inv.find((i) => i.itemType === itemType);
+          balance[itemType] = entry?.quantity ?? 0;
+        }
+        const total = Object.values(balance).reduce((a, b) => a + b, 0);
+
+        return {
+          id: city.id,
+          name: city.name,
+          slug: city.slug,
+          status: city.status,
+          latitude: city.latitude,
+          longitude: city.longitude,
+          countryId: city.countryId,
+          countryName: city.country?.name || '',
+          countryCode: city.country?.code || '',
+          balance,
+          totalStock: total,
+        };
+      });
+
+    // Aggregate transfer lines between locations
+    const lineMap = new Map<
+      string,
+      { fromLat: number; fromLng: number; toLat: number; toLng: number; volume: number }
+    >();
+    for (const t of transferSummary) {
+      const from = t.senderCity || t.senderCountry;
+      const to = t.receiverCity || t.receiverCountry;
+      if (!from?.latitude || !to?.latitude) continue;
+      if (from.latitude === 0 || to.latitude === 0) continue;
+
+      const key = `${from.latitude},${from.longitude}-${to.latitude},${to.longitude}`;
+      const vol = t.items.reduce((s, i) => s + i.quantity, 0);
+      const existing = lineMap.get(key);
+      if (existing) {
+        existing.volume += vol;
+      } else {
+        lineMap.set(key, {
+          fromLat: from.latitude,
+          fromLng: from.longitude,
+          toLat: to.latitude,
+          toLng: to.longitude,
+          volume: vol,
+        });
+      }
+    }
+
+    // Get countries for the scope
+    const countryWhere: Prisma.CountryWhereInput = {};
+    if (role === Role.COUNTRY && countryId) {
+      countryWhere.id = countryId;
+    } else if (role === Role.CITY && cityId) {
+      const myCity = cities.find((c) => c.id === cityId);
+      if (myCity) countryWhere.id = myCity.countryId;
+    }
+
+    const countries = await this.prisma.country.findMany({
+      where: countryWhere,
+      select: { id: true, name: true, code: true, latitude: true, longitude: true },
+      orderBy: { name: 'asc' },
+    });
+
+    return {
+      cities: cityData,
+      countries,
+      transferLines: Array.from(lineMap.values()),
+    };
   }
 
   // ──────────────────────────────────────────────
