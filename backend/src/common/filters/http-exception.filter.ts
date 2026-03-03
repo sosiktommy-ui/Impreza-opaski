@@ -42,6 +42,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const correlationId = request.headers['x-correlation-id'] as string;
 
+    // Guard: don't send response if headers already sent (prevents ERR_HTTP_HEADERS_SENT)
+    if (response.headersSent) {
+      return;
+    }
+
     response.status(status).json({
       success: false,
       statusCode: status,
