@@ -197,7 +197,7 @@ export default function Users() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Пользователи</h2>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Пользователи</h2>
         <Button onClick={() => setShowCreate(true)} size="sm">
           <Plus size={18} /> Новый
         </Button>

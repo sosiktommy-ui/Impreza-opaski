@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
+import { useThemeStore } from './store/useThemeStore';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -9,7 +10,6 @@ import Acceptance from './pages/Acceptance';
 import Expenses from './pages/Expenses';
 import Inventory from './pages/Inventory';
 import Users from './pages/Users';
-import History from './pages/History';
 import MapPage from './pages/Map';
 import ProblematicTransfers from './pages/ProblematicTransfers';
 
@@ -23,14 +23,20 @@ function PrivateRoute({ children, roles }) {
 
 export default function App() {
   const { user, loading, checkAuth } = useAuthStore();
+  const theme = useThemeStore((s) => s.theme);
 
   useEffect(() => {
     checkAuth();
   }, []);
 
+  // Sync dark class on <html>
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
   if (loading) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-gray-50">
+      <div className="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="animate-spin h-10 w-10 border-4 border-brand-200 border-t-brand-600 rounded-full mx-auto" />
           <p className="text-sm text-gray-400 mt-4">Загрузка...</p>
@@ -79,8 +85,22 @@ export default function App() {
           }
         />
 
-        <Route path="expenses" element={<Expenses />} />
-        <Route path="inventory" element={<Inventory />} />
+        <Route
+          path="expenses"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
+              <Expenses />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="inventory"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
+              <Inventory />
+            </PrivateRoute>
+          }
+        />
 
         <Route
           path="users"
@@ -91,7 +111,6 @@ export default function App() {
           }
         />
 
-        <Route path="history" element={<History />} />
         <Route
           path="map"
           element={

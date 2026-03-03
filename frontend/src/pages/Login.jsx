@@ -24,14 +24,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 dark:from-gray-900 dark:to-gray-800 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-brand-700 tracking-tight">IMPREZA</h1>
-          <p className="text-gray-500 mt-1">Система учёта браслетов</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Система учёта браслетов</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
           <Input
             label="Логин"
             value={username}

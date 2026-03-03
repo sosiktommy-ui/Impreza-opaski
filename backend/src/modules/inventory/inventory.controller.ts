@@ -154,13 +154,14 @@ export class InventoryController {
   }
 
   @Post('expense')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.CITY, Role.COUNTRY)
+  @Roles(Role.CITY)
   createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.inventoryService.createExpense({
       ...dto,
+      cityId: user.cityId!, // CITY role always uses own cityId
       actorId: user.id,
     });
   }

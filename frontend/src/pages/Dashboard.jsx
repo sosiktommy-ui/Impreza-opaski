@@ -9,7 +9,7 @@ import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import {
   Send, PackageCheck, Globe, MapPin,
-  ArrowRight, Package, Clock, Activity,
+  ArrowRight, Package, Activity,
   CalendarDays, Boxes, Map as MapIcon, AlertTriangle,
 } from 'lucide-react';
 
@@ -132,11 +132,9 @@ export default function Dashboard() {
     { label: 'Вернуть опаски', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['CITY'] },
     { label: 'Приёмка', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'] },
-    { label: 'Расход', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['CITY'] },
-    { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
+    { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Карта', icon: MapIcon, path: '/map', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE'] },
-    { label: 'История', icon: Clock, path: '/history', color: 'bg-slate-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   ].filter((a) => a.roles.includes(user.role));
 
   return (
@@ -172,13 +170,13 @@ export default function Dashboard() {
           { value: stats.countries, label: 'Стран', icon: Globe, iconColor: 'text-violet-500', bg: 'bg-violet-50' },
           { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-amber-500', bg: 'bg-amber-50' },
         ].map(({ value, label, icon: Icon, iconColor, bg }) => (
-          <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div key={label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center flex-shrink-0`}>
+              <div className={`w-10 h-10 rounded-lg ${bg} dark:opacity-80 flex items-center justify-center flex-shrink-0`}>
                 <Icon size={18} className={iconColor} />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-800">{value}</div>
+                <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</div>
                 <div className="text-xs text-gray-400">{label}</div>
               </div>
             </div>
@@ -285,16 +283,16 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {quickActions.map((action) => (
             <button
-              key={action.path}
+              key={action.label}
               onClick={() => navigate(action.path)}
-              className="group bg-white rounded-xl border border-gray-100 p-4 text-left hover:shadow-md hover:border-gray-200 transition-all"
+              className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 text-left hover:shadow-md hover:border-gray-200 dark:hover:border-gray-600 transition-all"
             >
               <div
                 className={`w-10 h-10 ${action.color} rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
               >
                 <action.icon size={20} className="text-white" />
               </div>
-              <div className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100">
                 {action.label}
               </div>
             </button>
@@ -326,11 +324,11 @@ export default function Dashboard() {
                 return (
                   <div key={key} className="flex items-center gap-3">
                     <span className={`w-2.5 h-2.5 rounded-full ${color} flex-shrink-0`} />
-                    <span className="text-sm text-gray-600 flex-1">{label}</span>
-                    <span className="text-sm font-semibold text-gray-800 w-6 text-right">
+                    <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">{label}</span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 w-6 text-right">
                       {count}
                     </span>
-                    <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full ${color} transition-all`}
                         style={{ width: `${pct}%` }}
@@ -348,7 +346,7 @@ export default function Dashboard() {
           title="Последние отправки"
           action={
             <button
-              onClick={() => navigate('/history')}
+              onClick={() => navigate('/transfers')}
               className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1"
             >
               Все <ArrowRight size={12} />
@@ -377,10 +375,10 @@ export default function Dashboard() {
                 return (
                   <div
                     key={t.id}
-                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-700 truncate">
+                      <div className="text-sm text-gray-700 dark:text-gray-300 truncate">
                         {from} → {to}
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">

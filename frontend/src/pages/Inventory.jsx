@@ -55,13 +55,49 @@ export default function Inventory() {
       }
       setLoading(false);
     } else if (user.role === 'COUNTRY') {
-      setViewEntity({ type: 'COUNTRY', id: user.countryId });
-      const [, citiesRes] = await Promise.all([
-        loadBalance('COUNTRY', user.countryId),
-        usersApi.getCities(user.countryId),
-      ]);
-      const citiesPayload = citiesRes.data?.data || citiesRes.data;
-      setCities(Array.isArray(citiesPayload) ? citiesPayload : []);
+      // COUNTRY: load country balance + all city balances directly
+      try {
+        setViewEntity({ type: 'COUNTRY', id: user.countryId });
+        const [balanceRes, citiesRes] = await Promise.all([
+          inventoryApi.getByCountry(user.countryId),
+          usersApi.getCities(user.countryId),
+        ]);
+        const bPayload = balanceRes.data?.data || balanceRes.data;
+        // getBalancesByCountry returns { country: {...}, cities: [...] }
+        if (bPayload?.country) {
+          const countryBal = bPayload.country;
+          const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
+          setBalances(
+            Object.entries(countryBal)
+              .filter(([key]) => VALID_TYPES.includes(key))
+              .map(([itemType, quantity]) => ({ itemType, quantity: Number(quantity) || 0 }))
+          );
+        }
+        const citiesPayload = citiesRes.data?.data || citiesRes.data;
+        setCities(Array.isArray(citiesPayload) ? citiesPayload : []);
+        // Build city balances from the country endpoint response
+        if (bPayload?.cities && Array.isArray(bPayload.cities)) {
+          const cityInv = [];
+          bPayload.cities.forEach((c) => {
+            if (c.balance && c.city) {
+              Object.entries(c.balance).forEach(([itemType, quantity]) => {
+                if (['BLACK', 'WHITE', 'RED', 'BLUE'].includes(itemType)) {
+                  cityInv.push({
+                    entityType: 'CITY',
+                    city: c.city,
+                    itemType,
+                    quantity: Number(quantity) || 0,
+                  });
+                }
+              });
+            }
+          });
+          setAllInventory(cityInv);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+      setLoading(false);
     } else {
       setViewEntity({ type: 'CITY', id: user.cityId });
       await loadBalance('CITY', user.cityId);
@@ -241,7 +277,7 @@ export default function Inventory() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Остатки</h2>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Остатки</h2>
         {isAdminOrOffice && viewEntity.type && viewEntity.id && (
           <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline">
             <Plus size={16} /> Корректировка
@@ -339,18 +375,60 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* Country filter for cities */}
-      {user.role === 'COUNTRY' && cities.length > 0 && (
-        <Card>
-          <Select
-            label="Показать остатки для"
-            value={selectedCity}
-            onChange={handleCitySelectForCountry}
-            options={[
-              { value: '', label: `${user.country?.name || 'Моя страна'} (общий)` },
-              ...cities.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-          />
+      {/* Country: city breakdown table */}
+      {user.role === 'COUNTRY' && allInventory.length > 0 && (
+        <Card title="Города">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs text-gray-400">
+                  <th className="text-left py-2 px-2">Город</th>
+                  {COLORS.map((c) => (
+                    <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
+                  ))}
+                  <th className="text-center py-2 px-2">Итого</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  // Group by city
+                  const cityMap = {};
+                  allInventory.forEach((inv) => {
+                    if (inv.city) {
+                      const cId = inv.city.id;
+                      if (!cityMap[cId]) {
+                        cityMap[cId] = { name: inv.city.name, totals: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 } };
+                      }
+                      if (COLORS.includes(inv.itemType)) {
+                        cityMap[cId].totals[inv.itemType] = inv.quantity || 0;
+                      }
+                    }
+                  });
+                  return Object.entries(cityMap)
+                    .sort(([, a], [, b]) => a.name.localeCompare(b.name))
+                    .map(([cityId, data]) => {
+                      const cityTotal = Object.values(data.totals).reduce((s, v) => s + v, 0);
+                      return (
+                        <tr
+                          key={cityId}
+                          className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={() => {
+                            setSelectedCity(cityId);
+                            loadBalance('CITY', cityId);
+                          }}
+                        >
+                          <td className="py-2.5 px-2 font-medium text-gray-700">{data.name}</td>
+                          {COLORS.map((c) => (
+                            <td key={c} className="text-center py-2.5 px-2 text-gray-600">{data.totals[c]}</td>
+                          ))}
+                          <td className="text-center py-2.5 px-2 font-semibold text-gray-800">{cityTotal}</td>
+                        </tr>
+                      );
+                    });
+                })()}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
 

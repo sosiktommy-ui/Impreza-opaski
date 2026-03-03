@@ -178,6 +178,11 @@ export class AuthService {
   async getUserFromToken(payload: JwtPayload): Promise<AuthenticatedUser | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
+      include: {
+        office: { select: { id: true, name: true, code: true } },
+        country: { select: { id: true, name: true, code: true } },
+        city: { select: { id: true, name: true, slug: true, countryId: true } },
+      },
     });
 
     if (!user || !user.isActive) return null;
@@ -191,6 +196,9 @@ export class AuthService {
       officeId: user.officeId,
       countryId: user.countryId,
       cityId: user.cityId,
-    };
+      office: user.office || undefined,
+      country: user.country || undefined,
+      city: user.city || undefined,
+    } as AuthenticatedUser & { office?: any; country?: any; city?: any };
   }
 }

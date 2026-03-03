@@ -251,7 +251,7 @@ export default function Transfers() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Мои отправки</h2>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Мои отправки</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             Отправки от вашего аккаунта
           </p>

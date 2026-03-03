@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { authApi } from '../api/auth';
 
 const TOKEN_KEY = 'impreza_access_token';
+const USER_KEY = 'impreza_user';
 
 export const useAuthStore = create((set, get) => ({
   token: null,
@@ -22,6 +23,7 @@ export const useAuthStore = create((set, get) => ({
     const result = data.data || data;
     const token = result.accessToken;
     if (token) localStorage.setItem(TOKEN_KEY, token);
+    if (result.user) localStorage.setItem(USER_KEY, JSON.stringify(result.user));
     set({ token, user: result.user, loading: false });
     return result.user;
   },
@@ -33,15 +35,20 @@ export const useAuthStore = create((set, get) => ({
       // ignore
     }
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
     set({ token: null, user: null, loading: false });
   },
 
   checkAuth: async () => {
     try {
-      // Restore token from localStorage so interceptor can attach it immediately
+      // Restore token + cached user from localStorage for instant render
       const savedToken = localStorage.getItem(TOKEN_KEY);
+      const cachedUser = (() => {
+        try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; }
+      })();
+
       if (savedToken) {
-        set({ token: savedToken });
+        set({ token: savedToken, user: cachedUser });
       }
 
       // Try refreshing via HttpOnly cookie (rotates tokens)
@@ -51,12 +58,14 @@ export const useAuthStore = create((set, get) => ({
       if (newToken) localStorage.setItem(TOKEN_KEY, newToken);
       set({ token: newToken, loading: false });
 
-      // Fetch user info
+      // Fetch fresh user info (includes city/country relations now)
       const { data: meData } = await authApi.me();
       const userData = meData?.data?.user || meData?.user || meData;
+      localStorage.setItem(USER_KEY, JSON.stringify(userData));
       set({ user: userData });
     } catch {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
       set({ token: null, user: null, loading: false });
     }
   },

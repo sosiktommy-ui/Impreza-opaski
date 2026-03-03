@@ -233,7 +233,7 @@ export default function MapPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Карта трансферов</h2>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Карта трансферов</h2>
         <button
           onClick={() => setShowStats(!showStats)}
           className="text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"

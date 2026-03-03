@@ -45,11 +45,11 @@ export default function NotificationPanel({ onClose }) {
   return (
     <div
       ref={panelRef}
-      className="absolute right-0 top-full mt-2 w-96 max-h-[480px] bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col z-50 overflow-hidden"
+      className="absolute right-0 top-full mt-2 w-96 max-h-[480px] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col z-50 overflow-hidden"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <h3 className="font-semibold text-gray-800 text-sm">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">
           Уведомления {unreadCount > 0 && <span className="text-red-500">({unreadCount})</span>}
         </h3>
         <div className="flex items-center gap-2">

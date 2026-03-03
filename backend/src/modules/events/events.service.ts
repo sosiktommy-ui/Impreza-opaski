@@ -3,10 +3,11 @@ import { RedisService } from '../../common/redis/redis.service';
 
 interface AuraTicket {
   id: number;
-  event_title: string;
+  event_name: string;
   event_date: string;
-  city: string;
-  country: string;
+  city_name: string;
+  country_code: string;
+  club_id?: number;
   venue?: string;
   [key: string]: unknown;
 }
@@ -81,20 +82,20 @@ export class EventsService {
       const data = await response.json();
       const tickets: AuraTicket[] = Array.isArray(data)
         ? data
-        : data?.results ?? data?.data ?? [];
+        : data?.tickets ?? data?.results ?? data?.data ?? [];
 
-      // Deduplicate by event_title + event_date
+      // Deduplicate by event_name + event_date
       const seen = new Map<string, EventInfo>();
 
       for (const t of tickets) {
-        const key = `${(t.event_title || '').trim()}|${(t.event_date || '').trim()}`;
-        if (!seen.has(key) && t.event_title) {
+        const key = `${(t.event_name || '').trim()}|${(t.event_date || '').trim()}`;
+        if (!seen.has(key) && t.event_name) {
           seen.set(key, {
             id: t.id,
-            title: t.event_title.trim(),
+            title: t.event_name.trim(),
             date: t.event_date,
-            city: (t.city || '').trim(),
-            country: (t.country || '').trim(),
+            city: (t.city_name || '').trim(),
+            country: (t.country_code || '').trim(),
             venue: t.venue ? String(t.venue).trim() : undefined,
           });
         }

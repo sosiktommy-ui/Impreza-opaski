@@ -270,10 +270,10 @@ export default function Expenses() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Мероприятия</h2>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Мероприятия</h2>
           <p className="text-xs text-gray-400 mt-0.5">Учёт расхода браслетов по событиям AURA</p>
         </div>
-        {(user.role === 'CITY' || user.role === 'COUNTRY' || user.role === 'ADMIN' || user.role === 'OFFICE') && (
+        {user.role === 'CITY' && (
           <Button onClick={openCreate} size="sm">
             <Plus size={18} /> Новое
           </Button>
@@ -497,26 +497,12 @@ export default function Expenses() {
         title="Новое мероприятие"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* City selector for non-CITY roles */}
-          {user.role !== 'CITY' && (
-            <Select
-              label="Город"
-              value={cityId}
-              onChange={handleCityChange}
-              options={[
-                { value: '', label: '— Выберите город —' },
-                ...cities.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-          )}
-
-          {/* AURA events dropdown — only if city is selected or user is CITY role */}
-          {(user.role === 'CITY' || cityId) && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Мероприятие (AURA)
-              </label>
-              {auraEvents.length > 0 ? (
+          {/* AURA events dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Мероприятие (AURA)
+            </label>
+            {auraEvents.length > 0 ? (
                 <select
                   value={selectedEvent}
                   onChange={handleEventSelect}
@@ -554,7 +540,6 @@ export default function Expenses() {
                 </div>
               )}
             </div>
-          )}
 
           {/* Bracelet quantities */}
           <div>

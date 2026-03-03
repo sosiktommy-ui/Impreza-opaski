@@ -15,17 +15,17 @@ export default function Modal({ open, onClose, title, children, wide = false }) 
       <div className="fixed inset-0 bg-black/40" onClick={onClose} />
       <div
         className={`
-          relative bg-white rounded-t-2xl sm:rounded-2xl w-full
+          relative bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full
           ${wide ? 'sm:max-w-2xl' : 'sm:max-w-md'}
           max-h-[90vh] overflow-y-auto shadow-xl
           animate-in slide-in-from-bottom sm:slide-in-from-bottom-0
         `}
       >
-        <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b border-gray-100 rounded-t-2xl">
-          <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
+        <div className="sticky top-0 bg-white dark:bg-gray-800 flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 rounded-t-2xl">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <X size={20} />
           </button>

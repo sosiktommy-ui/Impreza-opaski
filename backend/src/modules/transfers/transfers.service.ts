@@ -272,6 +272,10 @@ export class TransfersService {
           ? TransferStatus.DISCREPANCY_FOUND
           : TransferStatus.ACCEPTED;
 
+        // If all received quantities are zero → treat as CANCELLED (nothing received)
+        const allZero = receivedItems.every((ri) => ri.receivedQuantity === 0);
+        const finalStatus = allZero ? TransferStatus.CANCELLED : newStatus;
+
         // Optimistic lock via version
         const lockResult = await tx.transfer.updateMany({
           where: {
@@ -280,7 +284,7 @@ export class TransfersService {
             status: TransferStatus.SENT,
           },
           data: {
-            status: newStatus,
+            status: finalStatus,
             acceptedAt: new Date(),
             version: transfer.version + 1,
           },
@@ -292,12 +296,15 @@ export class TransfersService {
           );
         }
 
-        // If discrepancy found — do NOT deduct sender, do NOT credit receiver.
-        // Transfer stays frozen in DISCREPANCY_FOUND until Admin/Office resolves.
-        if (hasDiscrepancy) {
+        // If CANCELLED (all zero) — no balance changes at all
+        // If DISCREPANCY_FOUND — freeze balances until Admin/Office resolves
+        // If ACCEPTED — deduct sender + credit receiver
+        if (finalStatus === TransferStatus.CANCELLED) {
+          // All zeros — nothing received, no balance changes
+        } else if (finalStatus === TransferStatus.DISCREPANCY_FOUND) {
           // Nothing happens to balances — frozen until resolve
         } else {
-          // No discrepancy: deduct sender (sentQty) + credit receiver (receivedQty)
+          // ACCEPTED: deduct sender (sentQty) + credit receiver (receivedQty)
           if (transfer.senderType !== EntityType.ADMIN) {
             const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
             for (const item of transfer.items) {
@@ -335,13 +342,14 @@ export class TransfersService {
 
         await this.storeDomainEvent(transferId, 'TransferAccepted', {
           previousStatus: TransferStatus.SENT,
-          newStatus,
+          newStatus: finalStatus,
           actorId,
           records,
           hasDiscrepancy,
+          allZero,
         });
 
-        this.logger.log(`Transfer ${transferId} ${newStatus}`);
+        this.logger.log(`Transfer ${transferId} ${finalStatus}`);
 
         // Fetch names for event payloads
         const acceptor = await tx.user.findUnique({
@@ -385,7 +393,9 @@ export class TransfersService {
           acceptedByName,
         };
 
-        if (hasDiscrepancy) {
+        if (allZero) {
+          this.eventEmitter.emit('transfer.cancelled', eventBase);
+        } else if (hasDiscrepancy) {
           this.eventEmitter.emit('transfer.discrepancy', {
             ...eventBase,
             records,

@@ -20,7 +20,7 @@ export default function Pagination({ page, totalPages, onPageChange }) {
       <button
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
-        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
+        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
       >
         <ChevronLeft size={18} />
       </button>
@@ -29,7 +29,7 @@ export default function Pagination({ page, totalPages, onPageChange }) {
         <>
           <button
             onClick={() => onPageChange(1)}
-            className="w-8 h-8 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+            className="w-8 h-8 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             1
           </button>
@@ -44,7 +44,7 @@ export default function Pagination({ page, totalPages, onPageChange }) {
           className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
             p === page
               ? 'bg-brand-600 text-white'
-              : 'text-gray-600 hover:bg-gray-100'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
           }`}
         >
           {p}
@@ -56,7 +56,7 @@ export default function Pagination({ page, totalPages, onPageChange }) {
           {end < totalPages - 1 && <span className="text-gray-300 text-xs px-1">…</span>}
           <button
             onClick={() => onPageChange(totalPages)}
-            className="w-8 h-8 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+            className="w-8 h-8 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             {totalPages}
           </button>
@@ -66,7 +66,7 @@ export default function Pagination({ page, totalPages, onPageChange }) {
       <button
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
-        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
+        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
       >
         <ChevronRight size={18} />
       </button>
