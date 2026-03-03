@@ -9,7 +9,7 @@ import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import {
   Send, PackageCheck, Globe, MapPin,
-  ArrowRight, Package, Activity,
+  ArrowRight, Activity,
   CalendarDays, Boxes, Map as MapIcon, AlertTriangle,
 } from 'lucide-react';
 
@@ -117,9 +117,6 @@ export default function Dashboard() {
     user.role === 'COUNTRY' ? (user.country?.name || 'Страна') :
     (user.city?.name || 'Город');
 
-  const totalBracelets = transfers.reduce((sum, t) =>
-    sum + (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
-
   const statusCounts = {};
   transfers.forEach((t) => { statusCounts[t.status] = (statusCounts[t.status] || 0) + 1; });
 
@@ -162,10 +159,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── Stats Grid ───────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-500', bg: 'bg-blue-50' },
-          { value: totalBracelets, label: 'Браслетов', icon: Package, iconColor: 'text-emerald-500', bg: 'bg-emerald-50' },
           { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-500', bg: 'bg-orange-50' },
           { value: stats.countries, label: 'Стран', icon: Globe, iconColor: 'text-violet-500', bg: 'bg-violet-50' },
           { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-amber-500', bg: 'bg-amber-50' },
