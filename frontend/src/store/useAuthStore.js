@@ -4,6 +4,9 @@ import { authApi } from '../api/auth';
 const TOKEN_KEY = 'impreza_access_token';
 const USER_KEY = 'impreza_user';
 
+// ── sessionStorage is per-tab, so two tabs can hold different accounts ──
+const ss = sessionStorage;
+
 export const useAuthStore = create((set, get) => ({
   token: null,
   user: null,
@@ -11,9 +14,9 @@ export const useAuthStore = create((set, get) => ({
 
   setToken: (token) => {
     if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
+      ss.setItem(TOKEN_KEY, token);
     } else {
-      localStorage.removeItem(TOKEN_KEY);
+      ss.removeItem(TOKEN_KEY);
     }
     set({ token });
   },
@@ -22,8 +25,8 @@ export const useAuthStore = create((set, get) => ({
     const { data } = await authApi.login(username, password);
     const result = data.data || data;
     const token = result.accessToken;
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    if (result.user) localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+    if (token) ss.setItem(TOKEN_KEY, token);
+    if (result.user) ss.setItem(USER_KEY, JSON.stringify(result.user));
     set({ token, user: result.user, loading: false });
     return result.user;
   },
@@ -34,46 +37,71 @@ export const useAuthStore = create((set, get) => ({
     } catch {
       // ignore
     }
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    ss.removeItem(TOKEN_KEY);
+    ss.removeItem(USER_KEY);
     set({ token: null, user: null, loading: false });
   },
 
   checkAuth: async () => {
     try {
-      // Restore token + cached user from localStorage for instant render
-      const savedToken = localStorage.getItem(TOKEN_KEY);
+      // ── One-time migration from shared localStorage → per-tab sessionStorage ──
+      if (!ss.getItem(TOKEN_KEY) && localStorage.getItem(TOKEN_KEY)) {
+        ss.setItem(TOKEN_KEY, localStorage.getItem(TOKEN_KEY));
+        const lu = localStorage.getItem(USER_KEY);
+        if (lu) ss.setItem(USER_KEY, lu);
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+      }
+
+      const savedToken = ss.getItem(TOKEN_KEY);
       const cachedUser = (() => {
-        try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; }
+        try { return JSON.parse(ss.getItem(USER_KEY)); } catch { return null; }
       })();
 
+      // ── Path A: this tab already has a token → verify it directly ──
       if (savedToken) {
         set({ token: savedToken, user: cachedUser });
-      }
 
-      // Try refreshing via HttpOnly cookie (rotates tokens)
-      let refreshed = false;
-      try {
-        const { data } = await authApi.refresh();
-        const result = data.data || data;
-        const newToken = result.accessToken;
-        if (newToken) {
-          localStorage.setItem(TOKEN_KEY, newToken);
-          set({ token: newToken });
-          refreshed = true;
+        try {
+          // Validate with /me — do NOT call refresh (cookie may belong to another tab)
+          const { data: meData } = await authApi.me();
+          const userData = meData?.data?.user || meData?.user || meData;
+          ss.setItem(USER_KEY, JSON.stringify(userData));
+          set({ user: userData, loading: false });
+          return; // ✓ stay on this account
+        } catch {
+          // Token expired → clear and fall through to cookie-based refresh
+          ss.removeItem(TOKEN_KEY);
+          ss.removeItem(USER_KEY);
         }
-      } catch {
-        // Refresh failed (cookie missing/expired) — fallback to saved token
       }
 
-      // Fetch fresh user info with current token (saved or refreshed)
+      // ── Path B: no per-tab token → try the HttpOnly refresh cookie ──
+      const { data } = await authApi.refresh();
+      const result = data.data || data;
+      const newToken = result.accessToken;
+      if (!newToken) throw new Error('no token');
+
+      ss.setItem(TOKEN_KEY, newToken);
+      set({ token: newToken });
+
       const { data: meData } = await authApi.me();
       const userData = meData?.data?.user || meData?.user || meData;
-      localStorage.setItem(USER_KEY, JSON.stringify(userData));
+
+      // Guard: if the tab previously held a DIFFERENT user, the cookie gave us
+      // the wrong session — log out instead of silently switching accounts.
+      if (cachedUser?.id && userData.id !== cachedUser.id) {
+        ss.removeItem(TOKEN_KEY);
+        ss.removeItem(USER_KEY);
+        set({ token: null, user: null, loading: false });
+        return;
+      }
+
+      ss.setItem(USER_KEY, JSON.stringify(userData));
       set({ user: userData, loading: false });
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
+      ss.removeItem(TOKEN_KEY);
+      ss.removeItem(USER_KEY);
       set({ token: null, user: null, loading: false });
     }
   },
