@@ -27,9 +27,10 @@ export interface TokenPair {
 export interface AuthenticatedUser {
   id: string;
   username: string;
-  email: string;
+  email: string | null;
   role: Role;
   displayName: string;
+  avatarUrl?: string | null;
   officeId: string | null;
   countryId: string | null;
   cityId: string | null;
@@ -68,6 +69,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
       officeId: user.officeId,
       countryId: user.countryId,
       cityId: user.cityId,
@@ -122,6 +124,7 @@ export class AuthService {
       email: storedToken.user.email,
       role: storedToken.user.role,
       displayName: storedToken.user.displayName,
+      avatarUrl: storedToken.user.avatarUrl,
       officeId: storedToken.user.officeId,
       countryId: storedToken.user.countryId,
       cityId: storedToken.user.cityId,
@@ -193,6 +196,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
       officeId: user.officeId,
       countryId: user.countryId,
       cityId: user.cityId,

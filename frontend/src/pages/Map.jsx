@@ -236,7 +236,7 @@ export default function MapPage() {
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Карта трансферов</h2>
         <button
           onClick={() => setShowStats(!showStats)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         >
           {showStats ? 'Скрыть статистику' : 'Показать статистику'}
         </button>
@@ -253,7 +253,7 @@ export default function MapPage() {
               { value: polylines.length, label: 'Маршрутов', color: 'text-blue-600' },
               { value: `${countries.length} / ${allCities.length}`, label: 'Стран / Городов', color: 'text-gray-700' },
             ].map(({ value, label, color }) => (
-              <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <div key={label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
                 <div className={`text-2xl font-bold ${color}`}>{value}</div>
                 <div className="text-xs text-gray-500 mt-1">{label}</div>
               </div>
@@ -262,8 +262,8 @@ export default function MapPage() {
 
           {/* Bracelets + Status */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Браслеты по цветам</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Браслеты по цветам</h3>
               {Object.keys(totalBraceletsByColor).length === 0 ? (
                 <div className="text-xs text-gray-400">Нет данных</div>
               ) : (
@@ -279,9 +279,9 @@ export default function MapPage() {
                             className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-200"
                             style={{ background: info.color }}
                           />
-                          <span className="text-xs text-gray-600 flex-1">{info.label}</span>
-                          <span className="text-xs font-medium text-gray-800">{qty}</span>
-                          <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{info.label}</span>
+                          <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{qty}</span>
+                          <div className="w-16 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all"
                               style={{ width: `${pct}%`, background: info.color }}
@@ -295,8 +295,8 @@ export default function MapPage() {
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Статусы трансферов</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Статусы трансферов</h3>
               {transfers.length === 0 ? (
                 <div className="text-xs text-gray-400">Нет данных</div>
               ) : (
@@ -307,13 +307,13 @@ export default function MapPage() {
                     return (
                       <div
                         key={status}
-                        className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 py-0.5 transition-colors"
+                        className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1 -mx-1 py-0.5 transition-colors"
                         onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
                       >
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                        <span className="text-xs text-gray-600 flex-1">{statusLabels[status] || status}</span>
-                        <span className="text-xs font-medium text-gray-800">{count}</span>
-                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{statusLabels[status] || status}</span>
+                        <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{count}</span>
+                        <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                           <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
                         </div>
                         <span className="text-[10px] text-gray-400 w-8 text-right">{pct}%</span>
@@ -327,8 +327,8 @@ export default function MapPage() {
 
           {/* Top routes + Recent */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Популярные маршруты</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Популярные маршруты</h3>
               {topRoutes.length === 0 ? (
                 <div className="text-xs text-gray-400">Нет данных о маршрутах</div>
               ) : (
@@ -364,8 +364,8 @@ export default function MapPage() {
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Последние трансферы</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Последние трансферы</h3>
               {recentTransfers.length === 0 ? (
                 <div className="text-xs text-gray-400">Нет трансферов</div>
               ) : (
@@ -428,7 +428,7 @@ export default function MapPage() {
             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
               statusFilter === key
                 ? 'text-white shadow-sm'
-                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
             }`}
             style={statusFilter === key ? { background: color } : undefined}
           >
@@ -457,7 +457,7 @@ export default function MapPage() {
       </div>
 
       {/* ── Map ───────────────────────────────────────── */}
-      <div className="h-[calc(100vh-260px)] min-h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <div className="h-[calc(100vh-260px)] min-h-[500px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm">
         <MapContainer
           center={[51.5, 10.0]}
           zoom={5}

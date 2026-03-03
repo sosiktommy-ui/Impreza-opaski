@@ -15,6 +15,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AuditModule } from './modules/audit/audit.module';
 import { HealthModule } from './modules/health/health.module';
 import { EventsModule } from './modules/events/events.module';
+import { ProfileModule } from './modules/profile/profile.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
 @Module({
@@ -88,6 +90,8 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     AuditModule,
     HealthModule,
     EventsModule,
+    ProfileModule,
+    ChatModule,
   ],
   providers: [
     {

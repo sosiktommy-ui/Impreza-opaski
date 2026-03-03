@@ -9,6 +9,8 @@ import {
   Users,
   MapPin,
   X,
+  MessageCircle,
+  UserCircle,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
@@ -22,6 +24,8 @@ const allLinks = [
   { to: '/inventory', icon: Boxes, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/users', icon: Users, label: 'Пользователи', roles: ['ADMIN', 'OFFICE'] },
   { to: '/map', icon: MapPin, label: 'Карта', roles: ['ADMIN', 'OFFICE'] },
+  { to: '/chat', icon: MessageCircle, label: 'Чат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+  { to: '/profile', icon: UserCircle, label: 'Профиль', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
 ];
 
 export default function Sidebar() {

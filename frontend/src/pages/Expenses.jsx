@@ -282,46 +282,46 @@ export default function Expenses() {
 
       {/* ── Statistics Cards ──────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
               <CalendarDays size={18} className="text-purple-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800">{stats.totalEvents}</div>
+              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.totalEvents}</div>
               <div className="text-xs text-gray-400">Мероприятий</div>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
               <TrendingDown size={18} className="text-red-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800">{stats.totalBracelets}</div>
+              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.totalBracelets}</div>
               <div className="text-xs text-gray-400">Израсходовано</div>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
               <BarChart3 size={18} className="text-blue-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800">{stats.avg}</div>
+              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.avg}</div>
               <div className="text-xs text-gray-400">Среднее</div>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
               <MapPin size={18} className="text-amber-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800">{cityNames.length}</div>
+              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{cityNames.length}</div>
               <div className="text-xs text-gray-400">Городов</div>
             </div>
           </div>
@@ -330,7 +330,7 @@ export default function Expenses() {
 
       {/* ── Color breakdown bar ───────────────────────── */}
       {stats.totalBracelets > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
             {[
               { key: 'BLACK', color: 'bg-gray-900', val: stats.byColor.BLACK },
@@ -371,7 +371,7 @@ export default function Expenses() {
             placeholder="Поиск по названию, месту, городу..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           />
         </div>
         <div className="flex gap-2">
@@ -379,7 +379,7 @@ export default function Expenses() {
             <select
               value={filterCity}
               onChange={(e) => setFilterCity(e.target.value)}
-              className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+              className="rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none"
             >
               <option value="all">Все города</option>
               {cityNames.map((name) => (
@@ -390,7 +390,7 @@ export default function Expenses() {
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value)}
-            className="rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:outline-none"
+            className="rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none"
           >
             <option value="newest">Новые ↓</option>
             <option value="oldest">Старые ↑</option>
@@ -414,12 +414,12 @@ export default function Expenses() {
             return (
               <div
                 key={ex.id}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
               >
                 <div className="p-4 space-y-2.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
                         <CalendarDays size={16} className="text-purple-500 flex-shrink-0" />
                         <span className="truncate">{ex.eventName}</span>
                       </h3>
@@ -477,11 +477,11 @@ export default function Expenses() {
 
       {/* ── Summary Footer ────────────────────────────── */}
       {filteredExpenses.length > 0 && (
-        <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+        <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 border border-gray-100 dark:border-gray-700">
           <span className="text-xs text-gray-500">
             Показано {filteredExpenses.length} из {expenses.length} мероприятий
           </span>
-          <span className="text-sm font-semibold text-gray-700">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Итого: {filteredExpenses.reduce(
               (s, ex) => s + (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0),
               0,
@@ -499,14 +499,14 @@ export default function Expenses() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* AURA events dropdown */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Мероприятие (AURA)
             </label>
             {auraEvents.length > 0 ? (
                 <select
                   value={selectedEvent}
                   onChange={handleEventSelect}
-                  className="w-full rounded-lg border border-gray-200 text-sm px-3 py-2 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
                 >
                   <option value="">— Выберите мероприятие —</option>
                   {auraEvents.map((ev) => (
@@ -543,7 +543,7 @@ export default function Expenses() {
 
           {/* Bracelet quantities */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">Израсходовано браслетов</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Израсходовано браслетов</p>
             <div className="grid grid-cols-2 gap-3">
               {BRACELET_KEYS.map((key) => (
                 <Input
@@ -567,7 +567,7 @@ export default function Expenses() {
           />
 
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm px-3 py-2 rounded-lg">{error}</div>
           )}
 
           <Button type="submit" loading={sending} disabled={!selectedEvent} className="w-full">

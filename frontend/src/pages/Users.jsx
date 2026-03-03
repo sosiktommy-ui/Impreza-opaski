@@ -42,7 +42,7 @@ export default function Users() {
 
   const loadData = async () => {
     try {
-      const promises = [usersApi.getAll(), usersApi.getCountries()];
+      const promises = [usersApi.getAll({ limit: 500 }), usersApi.getCountries()];
       // try to load offices (may fail if endpoint doesn't exist yet)
       promises.push(usersApi.getOffices().catch(() => ({ data: [] })));
       const [usersRes, countriesRes, officesRes] = await Promise.all(promises);
@@ -334,16 +334,22 @@ export default function Users() {
               { value: 'CITY', label: 'Город' },
             ]}
           />
-          {form.role === 'OFFICE' && offices.length > 0 && (
-            <Select
-              label="Офис"
-              value={form.officeId}
-              onChange={(e) => setForm((p) => ({ ...p, officeId: e.target.value }))}
-              options={[
-                { value: '', label: '— Выберите офис —' },
-                ...offices.map((o) => ({ value: o.id, label: o.name })),
-              ]}
-            />
+          {form.role === 'OFFICE' && (
+            offices.length > 0 ? (
+              <Select
+                label="Офис"
+                value={form.officeId}
+                onChange={(e) => setForm((p) => ({ ...p, officeId: e.target.value }))}
+                options={[
+                  { value: '', label: '— Выберите офис —' },
+                  ...offices.map((o) => ({ value: o.id, label: o.name })),
+                ]}
+              />
+            ) : (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm px-3 py-2 rounded-lg">
+                Нет доступных офисов. Создайте офис в базе данных.
+              </div>
+            )
           )}
           {(form.role === 'COUNTRY' || form.role === 'CITY') && (
             <Select

@@ -305,7 +305,7 @@ export default function Inventory() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-xs text-gray-400">
+                <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
                   <th className="text-left py-2 px-2">Страна</th>
                   {COLORS.map((c) => (
                     <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
@@ -325,19 +325,19 @@ export default function Inventory() {
                   return (
                     <tr
                       key={country.id}
-                      className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
                       onClick={() => {
                         setSelectedCountry(country.id);
                         handleCountrySelect({ target: { value: country.id } });
                       }}
                     >
-                      <td className="py-2.5 px-2 font-medium text-gray-700">{country.name}</td>
+                      <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-300">{country.name}</td>
                       {COLORS.map((c) => (
-                        <td key={c} className="text-center py-2.5 px-2 text-gray-600">
+                        <td key={c} className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-400">
                           {(country.totals[c] || 0) + (citiesTotal[c] || 0)}
                         </td>
                       ))}
-                      <td className="text-center py-2.5 px-2 font-semibold text-gray-800">{allTotal}</td>
+                      <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{allTotal}</td>
                     </tr>
                   );
                 })}
@@ -381,7 +381,7 @@ export default function Inventory() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-xs text-gray-400">
+                <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
                   <th className="text-left py-2 px-2">Город</th>
                   {COLORS.map((c) => (
                     <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
@@ -411,17 +411,17 @@ export default function Inventory() {
                       return (
                         <tr
                           key={cityId}
-                          className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
                           onClick={() => {
                             setSelectedCity(cityId);
                             loadBalance('CITY', cityId);
                           }}
                         >
-                          <td className="py-2.5 px-2 font-medium text-gray-700">{data.name}</td>
+                          <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-300">{data.name}</td>
                           {COLORS.map((c) => (
-                            <td key={c} className="text-center py-2.5 px-2 text-gray-600">{data.totals[c]}</td>
+                            <td key={c} className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-400">{data.totals[c]}</td>
                           ))}
-                          <td className="text-center py-2.5 px-2 font-semibold text-gray-800">{cityTotal}</td>
+                          <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{cityTotal}</td>
                         </tr>
                       );
                     });
@@ -460,7 +460,7 @@ export default function Inventory() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-xs text-gray-400">
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
                     <th className="text-left py-2 px-2">Город</th>
                     {COLORS.map((c) => (
                       <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
@@ -474,19 +474,19 @@ export default function Inventory() {
                     return (
                       <tr
                         key={city.id}
-                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                        className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
                         onClick={() => {
                           setSelectedCity(city.id);
                           handleCitySelect({ target: { value: city.id } });
                         }}
                       >
-                        <td className="py-2.5 px-2 font-medium text-gray-700">{city.name}</td>
+                        <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-300">{city.name}</td>
                         {COLORS.map((c) => (
-                          <td key={c} className="text-center py-2.5 px-2 text-gray-600">
+                          <td key={c} className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-400">
                             {city.totals[c] || 0}
                           </td>
                         ))}
-                        <td className="text-center py-2.5 px-2 font-semibold text-gray-800">{cityTotal}</td>
+                        <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{cityTotal}</td>
                       </tr>
                     );
                   })}

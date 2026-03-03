@@ -81,12 +81,13 @@ enum AuditAction {
 
 model User {
   id            String   @id @default(uuid())
-  email         String   @unique
+  email         String?  @unique
   username      String   @unique
   passwordHash  String   @map("password_hash")
   role          Role
   displayName   String   @map("display_name")
   isActive      Boolean  @default(true) @map("is_active")
+  avatarUrl     String?  @map("avatar_url")
 
   // Scope — determines what this user manages
   officeId      String?  @map("office_id")
@@ -105,6 +106,8 @@ model User {
   notifications    Notification[]
   auditLogs        AuditLog[]          @relation("AuditActor")
   acceptanceRecords AcceptanceRecord[]
+  chatMessagesSent     ChatMessage[] @relation("ChatSender")
+  chatMessagesReceived ChatMessage[] @relation("ChatReceiver")
 
   @@map("users")
 }
@@ -340,7 +343,7 @@ model Expense {
   cityId      String   @map("city_id")
   city        City     @relation(fields: [cityId], references: [id])
   eventName   String   @map("event_name")
-  eventDate   DateTime @map("event_date")
+  eventDate   DateTime? @map("event_date")
   location    String?
   black       Int      @default(0)
   white       Int      @default(0)
@@ -418,4 +421,24 @@ model DomainEvent {
   @@index([eventType])
   @@index([createdAt])
   @@map("domain_events")
+}
+
+// ──────────────────────────────────────────────
+// CHAT MESSAGES
+// ──────────────────────────────────────────────
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  senderId   String   @map("sender_id")
+  sender     User     @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String   @map("receiver_id")
+  receiver   User     @relation("ChatReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  text       String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([senderId, receiverId])
+  @@index([receiverId, read])
+  @@index([createdAt])
+  @@map("chat_messages")
 }

@@ -95,7 +95,7 @@ export default function ProblematicTransfers() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <AlertTriangle className="text-amber-500" size={24} />
-        <h2 className="text-lg font-bold text-gray-800">Проблемные трансферы</h2>
+        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Проблемные трансферы</h2>
         <span className="text-sm text-gray-400">Расхождения при приёмке</span>
       </div>
 
@@ -119,11 +119,11 @@ export default function ProblematicTransfers() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={16} className="text-amber-500" />
-                    <span className="font-semibold text-gray-800 text-sm">
+                    <span className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                       {entityLabel(t, 'sender')}
                     </span>
                     <span className="text-gray-400">→</span>
-                    <span className="font-semibold text-gray-800 text-sm">
+                    <span className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                       {entityLabel(t, 'receiver')}
                     </span>
                   </div>
@@ -168,7 +168,7 @@ export default function ProblematicTransfers() {
                   )}
                   <button
                     onClick={() => setSelectedTransfer(t)}
-                    className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
                     title="Подробнее"
                   >
                     <Eye size={18} />
@@ -178,14 +178,14 @@ export default function ProblematicTransfers() {
 
               {/* Discrepancy summary */}
               {t.acceptanceRecords?.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {t.acceptanceRecords
                       .filter((r) => r.discrepancy !== 0)
                       .map((r) => (
                         <div
                           key={r.id}
-                          className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5"
+                          className="flex items-center gap-2 text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5"
                         >
                           <span className={`w-3 h-3 rounded-full ${ITEM_COLORS[r.itemType]?.bg || 'bg-gray-300'}`} />
                           <span className="font-medium">{ITEM_COLORS[r.itemType]?.label}</span>
@@ -249,7 +249,7 @@ export default function ProblematicTransfers() {
               <p className="text-gray-400 text-xs mb-2">Расхождения</p>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-gray-500 text-xs">
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 text-xs">
                     <th className="text-left py-1.5">Цвет</th>
                     <th className="text-center py-1.5">Отправлено</th>
                     <th className="text-center py-1.5">Получено</th>
@@ -258,7 +258,7 @@ export default function ProblematicTransfers() {
                 </thead>
                 <tbody>
                   {selectedTransfer.acceptanceRecords?.map((r) => (
-                    <tr key={r.id} className="border-b border-gray-50">
+                    <tr key={r.id} className="border-b border-gray-50 dark:border-gray-700">
                       <td className="py-1.5 flex items-center gap-2">
                         <span className={`w-3 h-3 rounded-full ${ITEM_COLORS[r.itemType]?.bg || 'bg-gray-300'}`} />
                         {ITEM_COLORS[r.itemType]?.label}
@@ -284,7 +284,7 @@ export default function ProblematicTransfers() {
             )}
 
             {canResolve && (
-              <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
                 <Button
                   variant="success"
                   onClick={() => handleResolve(selectedTransfer.id, 'accept_received')}

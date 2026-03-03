@@ -52,17 +52,25 @@ export const useAuthStore = create((set, get) => ({
       }
 
       // Try refreshing via HttpOnly cookie (rotates tokens)
-      const { data } = await authApi.refresh();
-      const result = data.data || data;
-      const newToken = result.accessToken;
-      if (newToken) localStorage.setItem(TOKEN_KEY, newToken);
-      set({ token: newToken, loading: false });
+      let refreshed = false;
+      try {
+        const { data } = await authApi.refresh();
+        const result = data.data || data;
+        const newToken = result.accessToken;
+        if (newToken) {
+          localStorage.setItem(TOKEN_KEY, newToken);
+          set({ token: newToken });
+          refreshed = true;
+        }
+      } catch {
+        // Refresh failed (cookie missing/expired) — fallback to saved token
+      }
 
-      // Fetch fresh user info (includes city/country relations now)
+      // Fetch fresh user info with current token (saved or refreshed)
       const { data: meData } = await authApi.me();
       const userData = meData?.data?.user || meData?.user || meData;
       localStorage.setItem(USER_KEY, JSON.stringify(userData));
-      set({ user: userData });
+      set({ user: userData, loading: false });
     } catch {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);

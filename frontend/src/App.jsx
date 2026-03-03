@@ -12,6 +12,8 @@ import Inventory from './pages/Inventory';
 import Users from './pages/Users';
 import MapPage from './pages/Map';
 import ProblematicTransfers from './pages/ProblematicTransfers';
+import Profile from './pages/Profile';
+import Chat from './pages/Chat';
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuthStore();
@@ -119,6 +121,9 @@ export default function App() {
             </PrivateRoute>
           }
         />
+
+        <Route path="profile" element={<Profile />} />
+        <Route path="chat" element={<Chat />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

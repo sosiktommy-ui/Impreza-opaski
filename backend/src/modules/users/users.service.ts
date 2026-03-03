@@ -177,7 +177,7 @@ export class UsersService {
   async createUser(data: {
     username: string;
     password: string;
-    email: string;
+    email?: string;
     role: Role;
     displayName: string;
     officeId?: string;
@@ -190,11 +190,13 @@ export class UsersService {
     });
     if (existingUsername) throw new ConflictException('Username already exists');
 
-    // Check email uniqueness
-    const existingEmail = await this.prisma.user.findFirst({
-      where: { email: data.email },
-    });
-    if (existingEmail) throw new ConflictException('Email already in use');
+    // Check email uniqueness (if provided)
+    if (data.email) {
+      const existingEmail = await this.prisma.user.findFirst({
+        where: { email: data.email },
+      });
+      if (existingEmail) throw new ConflictException('Email already in use');
+    }
 
     if (data.password.length < 6) {
       throw new BadRequestException('Password must be at least 6 characters');
@@ -206,7 +208,7 @@ export class UsersService {
       data: {
         username: data.username,
         passwordHash,
-        email: data.email,
+        email: data.email || null,
         role: data.role,
         displayName: data.displayName,
         officeId: data.officeId || null,

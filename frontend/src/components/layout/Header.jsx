@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Menu, Bell, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
@@ -10,6 +11,7 @@ const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Стр�
 
 export default function Header() {
   const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
   const { toggleSidebar } = useAppStore();
   const { unreadCount, fetchUnreadCount } = useNotificationStore();
   const { theme, toggleTheme } = useThemeStore();
@@ -61,10 +63,21 @@ export default function Header() {
           )}
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-sm">
+        <button
+          onClick={() => navigate('/profile')}
+          className="hidden sm:flex items-center gap-2 text-sm hover:opacity-80 transition-opacity"
+          title="Профиль"
+        >
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-600 dark:text-brand-300 flex items-center justify-center text-xs font-bold">
+              {(user?.displayName || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
           <span className="font-medium text-gray-700 dark:text-gray-200">{user?.displayName}</span>
           <span className="text-xs text-gray-400 dark:text-gray-500">{ROLE_LABELS[user?.role]}</span>
-        </div>
+        </button>
 
         <button
           onClick={logout}
