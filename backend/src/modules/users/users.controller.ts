@@ -13,6 +13,8 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../auth/auth.service';
 import { Role } from '@prisma/client';
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsEmail, MinLength } from 'class-validator';
 
@@ -72,8 +74,12 @@ export class UsersController {
   }
 
   @Get('countries')
-  getCountries() {
-    return this.usersService.getCountries();
+  getCountries(@CurrentUser() user?: AuthenticatedUser) {
+    return this.usersService.getCountries({
+      role: user?.role,
+      countryId: user?.countryId ?? undefined,
+      cityId: user?.cityId ?? undefined,
+    });
   }
 
   @Get('offices')

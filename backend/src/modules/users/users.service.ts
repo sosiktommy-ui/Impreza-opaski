@@ -120,8 +120,25 @@ export class UsersService {
     });
   }
 
-  async getCountries() {
+  async getCountries(params?: { role?: Role; countryId?: string; cityId?: string }) {
+    const where: Prisma.CountryWhereInput = {};
+
+    if (params?.role === Role.COUNTRY && params.countryId) {
+      where.id = params.countryId;
+    } else if (params?.role === Role.CITY && params.cityId) {
+      // Find which country this city belongs to
+      const city = await this.prisma.city.findUnique({
+        where: { id: params.cityId },
+        select: { countryId: true },
+      });
+      if (city?.countryId) {
+        where.id = city.countryId;
+      }
+    }
+    // ADMIN / OFFICE — no filter, return all
+
     return this.prisma.country.findMany({
+      where,
       include: {
         office: { select: { id: true, name: true, code: true } },
         cities: {

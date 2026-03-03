@@ -142,8 +142,13 @@ export default function Inventory() {
     try {
       const { data } = await inventoryApi.getBalance(entityType, entityId);
       const payload = data?.data || data;
+      const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
       if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-        setBalances(Object.entries(payload).map(([itemType, quantity]) => ({ itemType, quantity })));
+        setBalances(
+          Object.entries(payload)
+            .filter(([key]) => VALID_TYPES.includes(key))
+            .map(([itemType, quantity]) => ({ itemType, quantity: Number(quantity) || 0 }))
+        );
       } else {
         setBalances(Array.isArray(payload) ? payload : []);
       }

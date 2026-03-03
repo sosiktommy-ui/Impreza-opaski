@@ -48,8 +48,8 @@ export default function Expenses() {
 
   const loadExpenses = async () => {
     try {
-      const { data } = await inventoryApi.getExpenses();
-      const list = data?.data || data;
+      const { data } = await inventoryApi.getExpenses({ limit: 100 });
+      const list = Array.isArray(data) ? data : (data?.data || []);
       setExpenses(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);

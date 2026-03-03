@@ -412,12 +412,12 @@ export class TransfersService {
     });
     if (transfer) {
       if (transfer.senderType !== EntityType.ADMIN) {
-        const senderEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId;
+        const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
         if (senderEntityId) {
           await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
         }
       }
-      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId;
+      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
       if (receiverEntityId) {
         await this.redis.invalidateInventory(transfer.receiverType, receiverEntityId);
       }
@@ -1047,12 +1047,12 @@ export class TransfersService {
     });
     if (resolvedTransfer) {
       if (resolvedTransfer.senderType !== EntityType.ADMIN) {
-        const senderEntityId = resolvedTransfer.senderOfficeId || resolvedTransfer.senderCityId || resolvedTransfer.senderCountryId;
+        const senderEntityId = resolvedTransfer.senderOfficeId || resolvedTransfer.senderCountryId || resolvedTransfer.senderCityId;
         if (senderEntityId) {
           await this.redis.invalidateInventory(resolvedTransfer.senderType, senderEntityId as string);
         }
       }
-      const receiverEntityId = resolvedTransfer.receiverOfficeId || resolvedTransfer.receiverCityId || resolvedTransfer.receiverCountryId;
+      const receiverEntityId = resolvedTransfer.receiverOfficeId || resolvedTransfer.receiverCountryId || resolvedTransfer.receiverCityId;
       if (receiverEntityId) {
         await this.redis.invalidateInventory(resolvedTransfer.receiverType, receiverEntityId as string);
       }

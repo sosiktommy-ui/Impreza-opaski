@@ -242,6 +242,13 @@ async function main() {
     console.log(`   ✅ ${o.name} (${o.code})`);
   }
 
+  // Assign all countries to office_eu
+  console.log('\n🔗 Linking countries to office...');
+  await prisma.country.updateMany({
+    data: { officeId: officeMap['eu'] },
+  });
+  console.log(`   ✅ All ${COUNTRIES.length} countries → Офис Европа`);
+
   // ───── 4c. Create Office account ─────
   console.log('\n👤 Creating office account...');
   const officeAccounts = [

@@ -59,7 +59,7 @@ export default function Dashboard() {
       const pendPayload = pendData?.data || pendData;
       setPending(Array.isArray(pendPayload) ? pendPayload : []);
 
-      // Countries & cities count
+      // Countries & cities count (now role-filtered from backend)
       const countriesData = results[2].data;
       const countriesPayload = countriesData?.data || countriesData;
       const countriesList = Array.isArray(countriesPayload) ? countriesPayload : [];
@@ -75,6 +75,7 @@ export default function Dashboard() {
       if (results[4]) {
         const d = results[4].data;
         const dPayload = d?.data || d;
+        const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 
         if (isAdminOrOffice && Array.isArray(dPayload)) {
           // Aggregate all inventory records into system totals
@@ -86,7 +87,11 @@ export default function Dashboard() {
           });
           setBalance(Object.entries(totals).map(([itemType, quantity]) => ({ itemType, quantity })));
         } else if (dPayload && typeof dPayload === 'object' && !Array.isArray(dPayload)) {
-          setBalance(Object.entries(dPayload).map(([itemType, quantity]) => ({ itemType, quantity })));
+          setBalance(
+            Object.entries(dPayload)
+              .filter(([key]) => VALID_TYPES.includes(key))
+              .map(([itemType, quantity]) => ({ itemType, quantity: Number(quantity) || 0 }))
+          );
         } else {
           setBalance(Array.isArray(dPayload) ? dPayload : []);
         }
@@ -311,7 +316,9 @@ export default function Dashboard() {
                 { key: 'DISCREPANCY_FOUND', label: 'Расхождение', color: 'bg-orange-400' },
                 { key: 'REJECTED', label: 'Отклонено', color: 'bg-red-400' },
                 { key: 'CANCELLED', label: 'Отменено', color: 'bg-gray-300' },
-              ].map(({ key, label, color }) => {
+              ]
+                .filter(({ key }) => (statusCounts[key] || 0) > 0)
+                .map(({ key, label, color }) => {
                 const count = statusCounts[key] || 0;
                 const pct = transfers.length > 0
                   ? Math.round((count / transfers.length) * 100)
