@@ -7,6 +7,8 @@ import { usersApi } from '../api/users';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
+import BraceletCard from '../components/ui/BraceletCard';
+import { DashboardSkeleton } from '../components/ui/Skeleton';
 import {
   Send, PackageCheck, Globe, MapPin,
   ArrowRight, Activity,
@@ -104,11 +106,7 @@ export default function Dashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-brand-200 border-t-brand-600 rounded-full" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const entityLabel =
@@ -197,38 +195,31 @@ export default function Dashboard() {
             </button>
           }
         >
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
-              const qty = balance.find((b) => b.itemType === type)?.quantity || 0;
-              const colors = {
-                BLACK: 'bg-gray-900 text-white',
-                WHITE: 'bg-white border-2 border-gray-200 text-gray-800',
-                RED: 'bg-red-500 text-white',
-                BLUE: 'bg-blue-500 text-white',
-              };
-              const labels = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
-              return (
-                <div key={type} className={`rounded-xl p-3 text-center ${colors[type]} shadow-sm`}>
-                  <div className="text-2xl font-bold">{qty}</div>
-                  <div className="text-xs mt-0.5 opacity-80">{labels[type]}</div>
-                </div>
-              );
-            })}
-          </div>
+          {(() => {
+            const total = balance.reduce((s, b) => s + (b.quantity || 0), 0);
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
+                  const qty = balance.find((b) => b.itemType === type)?.quantity || 0;
+                  return <BraceletCard key={type} type={type} quantity={qty} total={total} />;
+                })}
+              </div>
+            );
+          })()}
         </Card>
       )}
 
       {/* ── Pending Incoming ─────────────────────────── */}
       {pending.length > 0 && (
-        <div className="bg-yellow-50/60 rounded-xl border border-yellow-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-yellow-100">
-            <h3 className="font-semibold text-yellow-800 flex items-center gap-2">
+        <div className="bg-yellow-50/60 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-yellow-100 dark:border-yellow-800">
+            <h3 className="font-semibold text-yellow-800 dark:text-yellow-400 flex items-center gap-2">
               <PackageCheck size={16} />
               Ожидают приёмки ({pending.length})
             </h3>
             <button
               onClick={() => navigate('/acceptance')}
-              className="text-xs text-yellow-700 hover:text-yellow-800 flex items-center gap-1 font-medium"
+              className="text-xs text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 flex items-center gap-1 font-medium"
             >
               Открыть <ArrowRight size={12} />
             </button>
@@ -237,10 +228,10 @@ export default function Dashboard() {
             {pending.slice(0, 3).map((t) => (
               <div
                 key={t.id}
-                className="flex items-center justify-between p-3 bg-white rounded-lg border border-yellow-100"
+                className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-yellow-100 dark:border-yellow-800"
               >
                 <div>
-                  <div className="text-sm font-medium text-gray-700">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
                     От: {t.senderType === 'ADMIN'
                       ? 'Склад'
                       : t.senderType === 'CITY'
@@ -262,7 +253,7 @@ export default function Dashboard() {
             {pending.length > 3 && (
               <button
                 onClick={() => navigate('/acceptance')}
-                className="w-full text-center text-xs text-yellow-700 hover:text-yellow-800 py-2"
+                className="w-full text-center text-xs text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 py-2"
               >
                 Ещё {pending.length - 3} отправок →
               </button>
@@ -303,37 +294,57 @@ export default function Dashboard() {
           {transfers.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">Нет данных</p>
           ) : (
-            <div className="space-y-2.5">
-              {[
-                { key: 'SENT', label: 'Отправлено', color: 'bg-yellow-400' },
-                { key: 'ACCEPTED', label: 'Принято', color: 'bg-green-400' },
-                { key: 'DISCREPANCY_FOUND', label: 'Расхождение', color: 'bg-orange-400' },
-                { key: 'REJECTED', label: 'Отклонено', color: 'bg-red-400' },
-                { key: 'CANCELLED', label: 'Отменено', color: 'bg-gray-300' },
-              ]
-                .filter(({ key }) => (statusCounts[key] || 0) > 0)
-                .map(({ key, label, color }) => {
-                const count = statusCounts[key] || 0;
-                const pct = transfers.length > 0
-                  ? Math.round((count / transfers.length) * 100)
-                  : 0;
-                return (
-                  <div key={key} className="flex items-center gap-3">
-                    <span className={`w-2.5 h-2.5 rounded-full ${color} flex-shrink-0`} />
-                    <span className="text-sm text-gray-600 dark:text-gray-400 flex-1">{label}</span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 w-6 text-right">
-                      {count}
-                    </span>
-                    <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${color} transition-all`}
-                        style={{ width: `${pct}%` }}
-                      />
+            (() => {
+              const statuses = [
+                { key: 'SENT', label: 'Отправлено', color: 'bg-yellow-400', hex: '#facc15' },
+                { key: 'ACCEPTED', label: 'Принято', color: 'bg-green-400', hex: '#4ade80' },
+                { key: 'DISCREPANCY_FOUND', label: 'Расхождение', color: 'bg-orange-400', hex: '#fb923c' },
+                { key: 'REJECTED', label: 'Отклонено', color: 'bg-red-400', hex: '#f87171' },
+                { key: 'CANCELLED', label: 'Отменено', color: 'bg-gray-300', hex: '#d1d5db' },
+              ].filter(({ key }) => (statusCounts[key] || 0) > 0);
+
+              // Build conic gradient
+              let angle = 0;
+              const segments = statuses.map((s) => {
+                const pct = ((statusCounts[s.key] || 0) / transfers.length) * 100;
+                const from = angle;
+                angle += pct;
+                return `${s.hex} ${from}% ${angle}%`;
+              });
+              const gradient = `conic-gradient(${segments.join(', ')})`;
+
+              return (
+                <div className="flex gap-4 items-center">
+                  {/* Mini donut */}
+                  <div className="relative flex-shrink-0">
+                    <div
+                      className="w-20 h-20 rounded-full"
+                      style={{ background: gradient }}
+                    />
+                    <div className="absolute inset-2 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center">
+                      <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{transfers.length}</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                  {/* Legend */}
+                  <div className="flex-1 space-y-1.5">
+                    {statuses.map(({ key, label, color }) => {
+                      const count = statusCounts[key] || 0;
+                      const pct = Math.round((count / transfers.length) * 100);
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${color} flex-shrink-0`} />
+                          <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{label}</span>
+                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 tabular-nums">
+                            {count}
+                          </span>
+                          <span className="text-[10px] text-gray-400 w-8 text-right tabular-nums">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()
           )}
         </Card>
 

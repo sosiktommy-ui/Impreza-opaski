@@ -578,12 +578,37 @@ export class TransfersService {
       const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
       const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
 
+      // Resolve entity names
+      let fromEntityName = 'Unknown';
+      if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
+        const c = await tx.country.findUnique({ where: { id: transfer.senderCountryId }, select: { name: true } });
+        fromEntityName = c?.name || 'Unknown';
+      } else if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
+        const c = await tx.city.findUnique({ where: { id: transfer.senderCityId }, select: { name: true } });
+        fromEntityName = c?.name || 'Unknown';
+      } else if (transfer.senderType === EntityType.OFFICE && transfer.senderOfficeId) {
+        const o = await tx.office.findUnique({ where: { id: transfer.senderOfficeId }, select: { name: true } });
+        fromEntityName = o?.name || 'Склад';
+      } else if (transfer.senderType === EntityType.ADMIN) {
+        fromEntityName = 'Склад';
+      }
+      let toEntityName = 'Unknown';
+      if (transfer.receiverType === EntityType.COUNTRY && transfer.receiverCountryId) {
+        const c = await tx.country.findUnique({ where: { id: transfer.receiverCountryId }, select: { name: true } });
+        toEntityName = c?.name || 'Unknown';
+      } else if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
+        const c = await tx.city.findUnique({ where: { id: transfer.receiverCityId }, select: { name: true } });
+        toEntityName = c?.name || 'Unknown';
+      }
+
       this.eventEmitter.emit('transfer.cancelled', {
         transferId,
         fromEntityId,
         fromEntityType: transfer.senderType,
+        fromEntityName,
         toEntityId,
         toEntityType: transfer.receiverType,
+        toEntityName,
         actorId,
         cancelledByName: canceller?.displayName || canceller?.username || 'Unknown',
       });

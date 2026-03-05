@@ -15,7 +15,10 @@ import { Role } from '@prisma/client';
 
 @WebSocketGateway({
   namespace: '/chat',
-  cors: { origin: '*', credentials: true },
+  cors: {
+    origin: (origin: string | undefined, cb: (err: Error | null, ok?: boolean) => void) => cb(null, true),
+    credentials: true,
+  },
 })
 export class ChatGateway
   implements OnGatewayConnection, OnGatewayDisconnect

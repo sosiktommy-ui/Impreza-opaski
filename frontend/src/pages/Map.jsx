@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   MapContainer, TileLayer, Marker, Popup, Polyline,
   CircleMarker, Tooltip, useMap,
@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import { inventoryApi } from '../api/inventory';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
+import { Maximize2, Minimize2 } from 'lucide-react';
 
 // Fix default marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -81,6 +82,24 @@ export default function MapPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [flyToPos, setFlyToPos] = useState(null);
   const [showPanel, setShowPanel] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
+  const mapWrapRef = useRef(null);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement && mapWrapRef.current) {
+      mapWrapRef.current.requestFullscreen?.();
+      setFullscreen(true);
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+      setFullscreen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -281,7 +300,20 @@ export default function MapPage() {
       </div>
 
       {/* Map */}
-      <div className="h-[calc(100vh-260px)] min-h-[500px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div
+        ref={mapWrapRef}
+        className={`relative rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm ${
+          fullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-260px)] min-h-[500px]'
+        }`}
+      >
+        {/* Fullscreen button */}
+        <button
+          onClick={toggleFullscreen}
+          className="absolute top-3 right-3 z-[999] p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm transition-colors"
+          title={fullscreen ? 'Выйти из полноэкранного' : 'Полноэкранный режим'}
+        >
+          {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        </button>
         <MapContainer
           center={[48.5, 15.0]}
           zoom={5}

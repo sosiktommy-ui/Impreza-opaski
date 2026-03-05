@@ -212,7 +212,7 @@ export default function Users() {
             placeholder="Поиск по имени, логину, email…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -223,7 +223,7 @@ export default function Users() {
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                 roleFilter === r
                   ? 'bg-brand-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600'
               }`}
             >
               {r === 'all' ? 'Все' : ROLE_LABELS[r]}
@@ -403,8 +403,8 @@ export default function Users() {
               value={editForm.email}
               onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
             />
-            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-              <span className="text-sm text-gray-700">Аккаунт активен</span>
+            <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+              <span className="text-sm text-gray-700 dark:text-gray-300">Аккаунт активен</span>
               <button
                 type="button"
                 onClick={() => setEditForm((p) => ({ ...p, isActive: !p.isActive }))}

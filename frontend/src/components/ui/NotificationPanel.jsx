@@ -3,12 +3,12 @@ import { Check, CheckCheck, X } from 'lucide-react';
 import { useNotificationStore } from '../../store/useNotificationStore';
 
 const TYPE_STYLES = {
-  INCOMING_TRANSFER: 'bg-blue-50 border-blue-200',
-  TRANSFER_ACCEPTED: 'bg-green-50 border-green-200',
-  TRANSFER_REJECTED: 'bg-red-50 border-red-200',
-  DISCREPANCY_ALERT: 'bg-amber-50 border-amber-200',
-  LOW_STOCK: 'bg-orange-50 border-orange-200',
-  ZERO_STOCK: 'bg-red-50 border-red-200',
+  INCOMING_TRANSFER: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800',
+  TRANSFER_ACCEPTED: 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800',
+  TRANSFER_REJECTED: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800',
+  DISCREPANCY_ALERT: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800',
+  LOW_STOCK: 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800',
+  ZERO_STOCK: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800',
 };
 
 function timeAgo(dateStr) {
@@ -61,14 +61,14 @@ export default function NotificationPanel({ onClose }) {
               <CheckCheck size={14} /> Прочитать все
             </button>
           )}
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400">
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400">
             <X size={16} />
           </button>
         </div>
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+      <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
         {loading && notifications.length === 0 && (
           <div className="p-6 text-center text-sm text-gray-400">Загрузка...</div>
         )}
@@ -80,21 +80,21 @@ export default function NotificationPanel({ onClose }) {
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer hover:bg-gray-50 ${
-              !n.read ? 'bg-blue-50/40' : ''
+            className={`px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 ${
+              !n.read ? 'bg-blue-50/40 dark:bg-blue-900/20' : ''
             }`}
             onClick={() => !n.read && markAsRead(n.id)}
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}>
                   {n.title}
                 </p>
-                <span className="text-[11px] text-gray-400 whitespace-nowrap flex-shrink-0">
+                <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
                   {timeAgo(n.createdAt)}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
             </div>
             {!n.read && (
               <div className="w-2 h-2 rounded-full bg-brand-500 flex-shrink-0 mt-1.5" />

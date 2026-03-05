@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
+import { useChatStore } from '../../store/useChatStore';
+import { useEffect } from 'react';
 
 const allLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
@@ -31,27 +33,41 @@ const allLinks = [
 export default function Sidebar() {
   const { user } = useAuthStore();
   const { sidebarOpen, closeSidebar } = useAppStore();
+  const { unreadCount, startPolling, stopPolling } = useChatStore();
   const location = useLocation();
+
+  useEffect(() => {
+    startPolling();
+    return () => stopPolling();
+  }, []);
 
   const links = allLinks.filter((l) => l.roles.includes(user?.role));
 
   const navContent = (
     <nav className="flex flex-col gap-1 p-3">
-      {links.map(({ to, icon: Icon, label }) => (
-        <NavLink
-          key={label}
-          to={to}
-          onClick={closeSidebar}
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-            ${isActive ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200'}`
-          }
-          end={to === '/'}
-        >
-          <Icon size={20} />
-          {label}
-        </NavLink>
-      ))}
+      {links.map(({ to, icon: Icon, label }) => {
+        const badge = to === '/chat' && unreadCount > 0 ? unreadCount : null;
+        return (
+          <NavLink
+            key={label}
+            to={to}
+            onClick={closeSidebar}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+              ${isActive ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200'}`
+            }
+            end={to === '/'}
+          >
+            <Icon size={20} />
+            <span className="flex-1">{label}</span>
+            {badge && (
+              <span className="min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5">
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
+          </NavLink>
+        );
+      })}
     </nav>
   );
 

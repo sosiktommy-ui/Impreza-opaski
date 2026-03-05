@@ -333,8 +333,8 @@ export default function Expenses() {
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
             {[
-              { key: 'BLACK', color: 'bg-gray-900', val: stats.byColor.BLACK },
-              { key: 'WHITE', color: 'bg-gray-300', val: stats.byColor.WHITE },
+              { key: 'BLACK', color: 'bg-gray-900 dark:bg-gray-300', val: stats.byColor.BLACK },
+              { key: 'WHITE', color: 'bg-gray-300 dark:bg-gray-500', val: stats.byColor.WHITE },
               { key: 'RED', color: 'bg-red-500', val: stats.byColor.RED },
               { key: 'BLUE', color: 'bg-blue-500', val: stats.byColor.BLUE },
             ].filter((c) => c.val > 0).map((c) => (
@@ -346,10 +346,10 @@ export default function Expenses() {
               />
             ))}
           </div>
-          <div className="flex justify-between mt-2 text-[11px] text-gray-500">
+          <div className="flex justify-between mt-2 text-[11px] text-gray-500 dark:text-gray-400">
             {[
-              { key: 'BLACK', dot: 'bg-gray-900' },
-              { key: 'WHITE', dot: 'bg-gray-300' },
+              { key: 'BLACK', dot: 'bg-gray-900 dark:bg-gray-300' },
+              { key: 'WHITE', dot: 'bg-gray-300 dark:bg-gray-500' },
               { key: 'RED', dot: 'bg-red-500' },
               { key: 'BLUE', dot: 'bg-blue-500' },
             ].map((c) => (

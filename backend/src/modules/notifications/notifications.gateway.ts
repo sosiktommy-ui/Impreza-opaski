@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // Will be locked down in production
+    origin: (origin: string | undefined, cb: (err: Error | null, ok?: boolean) => void) => cb(null, true),
     credentials: true,
   },
   namespace: '/notifications',
