@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import { CheckCircle, XCircle, AlertTriangle, Package, Search, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Package, Search, HelpCircle, PackageCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -132,7 +132,7 @@ export default function Acceptance() {
       setAcceptTarget(null);
       await loadTransfers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Ошибка приёмки');
+      setError(err.response?.data?.message || 'Ошибка получения');
     } finally {
       setProcessing(false);
     }
@@ -225,10 +225,10 @@ export default function Acceptance() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Приёмка</h2>
+      <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><PackageCheck size={22} className="text-brand-500" /> Получение</h2>
 
       {/* ── 3 Tabs ── */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+      <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
         {[
           { key: 'pending', label: 'Ожидают' },
           { key: 'accepted', label: 'Принятые' },
@@ -239,8 +239,8 @@ export default function Acceptance() {
             onClick={() => { setActiveTab(tab.key); setPage(1); setSearch(''); }}
             className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
-                ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                ? 'bg-surface-card text-content-primary'
+                : 'text-content-secondary hover:text-gray-700'
             }`}
           >
             {tab.label}
@@ -251,26 +251,26 @@ export default function Acceptance() {
       {/* ── Search (non-pending tabs) ── */}
       {activeTab !== 'pending' && (
         <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
           <input
             type="text"
             placeholder="Поиск по отправителю..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-brand-200 focus:border-brand-500 focus:outline-none"
+            className="w-full pl-9 pr-3 py-2 border border-edge bg-surface-card text-content-primary rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
           />
         </div>
       )}
 
       {error && !acceptTarget && !disagreeTarget && (
-        <div className="bg-red-50 text-red-600 text-sm px-4 py-2.5 rounded-lg">{error}</div>
+        <div className="bg-red-500/10 text-red-400 text-sm px-4 py-2.5 rounded-[var(--radius-sm)]">{error}</div>
       )}
 
       {/* ── PENDING TAB: Action cards ── */}
       {activeTab === 'pending' && (
         displayList.length === 0 ? (
           <Card>
-            <p className="text-sm text-gray-500 text-center py-8">Нет входящих отправок</p>
+            <p className="text-sm text-gray-500 text-center py-6">Нет входящих отправок</p>
           </Card>
         ) : (
           <div className="space-y-3">
@@ -289,7 +289,7 @@ export default function Acceptance() {
                             Отправитель: <span className="font-medium text-gray-700">{senderName}</span>
                           </div>
                         )}
-                        <div className="text-xs text-gray-400 mt-0.5">
+                        <div className="text-xs text-content-muted mt-0.5">
                           {new Date(t.createdAt).toLocaleDateString('ru-RU', {
                             day: '2-digit', month: 'long', year: 'numeric',
                             hour: '2-digit', minute: '2-digit',
@@ -303,10 +303,10 @@ export default function Acceptance() {
                       {(t.items || []).map((item) => (
                         <BraceletBadge key={item.itemType || item.id} type={item.itemType} count="?" />
                       ))}
-                      <span className="text-xs text-gray-400 ml-2">{t.items?.length || 0} цветов</span>
+                      <span className="text-xs text-content-muted ml-2">{t.items?.length || 0} цветов</span>
                     </div>
 
-                    {t.notes && <p className="text-xs text-gray-400">{t.notes}</p>}
+                    {t.notes && <p className="text-xs text-content-muted">{t.notes}</p>}
 
                     <div className="flex gap-2">
                       <Button size="sm" variant="success" onClick={() => openAccept(t)} loading={processing}>
@@ -333,7 +333,7 @@ export default function Acceptance() {
       {(activeTab === 'accepted' || activeTab === 'problematic') && (
         displayList.length === 0 ? (
           <Card>
-            <p className="text-sm text-gray-500 text-center py-8">
+            <p className="text-sm text-gray-500 text-center py-6">
               {activeTab === 'accepted' ? 'Нет принятых отправок' : 'Нет проблемных отправок'}
             </p>
           </Card>
@@ -346,56 +346,56 @@ export default function Acceptance() {
               return (
                 <div
                   key={t.id}
-                  className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                  className="bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden"
                 >
                   <div className="p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge status={t.status} />
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-content-muted">
                           {new Date(t.createdAt).toLocaleString('ru-RU', {
                             day: '2-digit', month: '2-digit', year: '2-digit',
                             hour: '2-digit', minute: '2-digit',
                           })}
                         </span>
-                        <span className="text-xs text-gray-300 font-mono">#{t.id?.slice(-6) || '—'}</span>
+                        <span className="text-xs text-content-muted font-mono">#{t.id?.slice(-6) || '—'}</span>
                       </div>
                       <button
                         onClick={() => setDetailTarget(t)}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-brand-600 transition-colors"
+                        className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600 transition-colors"
                         title="Подробнее"
                       >
-                        <Eye size={16} />
+                        <HelpCircle size={16} />
                       </button>
                     </div>
 
                     <div className="text-sm flex items-center gap-1.5">
-                      <span className="text-gray-300 flex-shrink-0">от</span>
-                      <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{getSenderLabel(t)}</span>
+                      <span className="text-content-muted flex-shrink-0">от</span>
+                      <span className="font-medium text-content-primary truncate">{getSenderLabel(t)}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       {(t.items || []).map((item) => (
                         <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} size="sm" />
                       ))}
-                      <span className="text-xs text-gray-400 ml-1">{totalQty} шт</span>
+                      <span className="text-xs text-content-muted ml-1">{totalQty} шт</span>
                     </div>
 
-                    {t.notes && <p className="text-xs text-gray-400 italic">{t.notes}</p>}
+                    {t.notes && <p className="text-xs text-content-muted italic">{t.notes}</p>}
 
                     {t.rejection && (
-                      <div className="bg-red-50 text-red-600 text-xs px-2 py-1.5 rounded-lg">
+                      <div className="bg-red-500/10 text-red-400 text-xs px-2 py-1.5 rounded-[var(--radius-sm)]">
                         Причина: {t.rejection.reason}
                       </div>
                     )}
 
                     {t.status === 'DISCREPANCY_FOUND' && t.acceptanceRecords?.length > 0 && (
-                      <div className="bg-orange-50 rounded-lg overflow-hidden border border-orange-100">
+                      <div className="bg-orange-50 rounded-[var(--radius-sm)] overflow-hidden border border-orange-100">
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : t.id)}
                           className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-orange-700 font-medium hover:bg-orange-100/50"
                         >
-                          <span>Расхождение при приёмке</span>
+                          <span>Расхождение при получении</span>
                           {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
                         {isExpanded && (
@@ -431,7 +431,7 @@ export default function Acceptance() {
       {activeTab !== 'pending' && transfers.length > 0 && (
         <div className="space-y-2">
           <Pagination page={page} totalPages={totalPages} onPageChange={(p) => loadTransfers(p)} />
-          <div className="text-xs text-gray-400 text-right">
+          <div className="text-xs text-content-muted text-right">
             Показано {displayList.length} из {transfers.length}
           </div>
         </div>
@@ -441,11 +441,11 @@ export default function Acceptance() {
       <Modal
         open={!!acceptTarget}
         onClose={() => setAcceptTarget(null)}
-        title="Подтверждение приёмки"
+        title="Подтверждение получения"
       >
         {acceptTarget && (
           <div className="space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <div className="bg-green-50 border border-green-200 rounded-[var(--radius-sm)] p-3">
               <p className="text-sm text-green-800 flex items-center gap-2">
                 <Package size={16} />
                 Вам отправлены следующие браслеты:
@@ -454,9 +454,9 @@ export default function Acceptance() {
 
             <div className="space-y-2">
               {acceptTarget.items?.map((item) => (
-                <div key={item.itemType} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
+                <div key={item.itemType} className="flex items-center justify-between bg-gray-50 rounded-[var(--radius-sm)] px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <BraceletBadge type={item.itemType} count={item.quantity} />
+                    <BraceletBadge type={item.itemType} />
                     <span className="text-sm font-medium text-gray-700">{ITEM_LABELS[item.itemType]}</span>
                   </div>
                   <span className="text-lg font-bold text-gray-800">{item.quantity} шт</span>
@@ -464,7 +464,7 @@ export default function Acceptance() {
               ))}
             </div>
 
-            <div className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between">
+            <div className="bg-gray-50 rounded-[var(--radius-sm)] px-4 py-3 flex items-center justify-between">
               <span className="text-sm text-gray-600">Итого:</span>
               <span className="text-lg font-bold text-gray-800">
                 {(acceptTarget.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} шт
@@ -476,7 +476,7 @@ export default function Acceptance() {
             </p>
 
             {error && (
-              <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+              <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
             )}
 
             <div className="flex gap-2">
@@ -508,7 +508,7 @@ export default function Acceptance() {
       >
         {disagreeTarget && (
           <div className="space-y-4">
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+            <div className="bg-orange-50 border border-orange-200 rounded-[var(--radius-sm)] p-3">
               <p className="text-sm text-orange-800 flex items-center gap-2">
                 <AlertTriangle size={16} />
                 Укажите сколько браслетов вы фактически насчитали.
@@ -548,7 +548,7 @@ export default function Acceptance() {
                 match: 'bg-green-50 text-green-700 border-green-200',
               };
               return (
-                <div className={`text-xs px-3 py-2 rounded-lg border ${colors[preview.type]}`}>
+                <div className={`text-xs px-3 py-2 rounded-[var(--radius-sm)] border ${colors[preview.type]}`}>
                   {preview.label}
                 </div>
               );
@@ -562,7 +562,7 @@ export default function Acceptance() {
             />
 
             {error && (
-              <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+              <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
             )}
 
             <Button
@@ -589,13 +589,13 @@ export default function Acceptance() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Badge status={detailTarget.status} />
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-content-muted">
                 {new Date(detailTarget.createdAt).toLocaleString('ru-RU')}
               </span>
             </div>
 
             <div className="text-sm">
-              <div className="text-xs text-gray-400 mb-1">Отправитель</div>
+              <div className="text-xs text-content-muted mb-1">Отправитель</div>
               <div className="font-medium">{getSenderLabel(detailTarget)}</div>
               {detailTarget.createdByUser?.displayName && (
                 <div className="text-xs text-gray-500 mt-0.5">
@@ -605,10 +605,10 @@ export default function Acceptance() {
             </div>
 
             <div>
-              <div className="text-xs text-gray-400 mb-2">Состав отправки</div>
+              <div className="text-xs text-content-muted mb-2">Состав отправки</div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-gray-400 border-b">
+                  <tr className="text-left text-xs text-content-muted border-b">
                     <th className="pb-1">Цвет</th>
                     <th className="pb-1 text-right">Отправлено</th>
                     {detailTarget.acceptanceRecords?.length > 0 && (
@@ -624,7 +624,7 @@ export default function Acceptance() {
                     return (
                       <tr key={item.itemType} className="border-b border-gray-50">
                         <td className="py-1.5">
-                          <BraceletBadge type={item.itemType} count={item.quantity} size="sm" />
+                          <BraceletBadge type={item.itemType} size="sm" />
                         </td>
                         <td className="py-1.5 text-right font-medium">{item.quantity}</td>
                         {detailTarget.acceptanceRecords?.length > 0 && (
@@ -645,14 +645,14 @@ export default function Acceptance() {
             </div>
 
             {detailTarget.notes && (
-              <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-600">
-                <div className="text-xs text-gray-400 mb-1">Комментарий</div>
+              <div className="bg-gray-50 p-3 rounded-[var(--radius-sm)] text-sm text-gray-600">
+                <div className="text-xs text-content-muted mb-1">Комментарий</div>
                 {detailTarget.notes}
               </div>
             )}
 
             {detailTarget.rejection && (
-              <div className="bg-red-50 p-3 rounded-lg text-sm text-red-600">
+              <div className="bg-red-500/10 p-3 rounded-[var(--radius-sm)] text-sm text-red-400">
                 <div className="text-xs text-red-400 mb-1">Причина отклонения</div>
                 {detailTarget.rejection.reason}
               </div>

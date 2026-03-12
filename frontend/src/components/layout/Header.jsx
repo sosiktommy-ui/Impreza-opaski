@@ -27,21 +27,21 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 h-14 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-surface-secondary border-b border-edge px-4 h-14 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <button
           onClick={toggleSidebar}
-          className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+          className="lg:hidden p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted transition-colors"
         >
           <Menu size={22} />
         </button>
-        <h1 className="text-lg font-bold text-brand-700 tracking-tight">IMPREZA</h1>
+        <h1 className="text-lg font-bold text-brand-500 tracking-tight">IMPREZA</h1>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <button
           onClick={toggleTheme}
-          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+          className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted transition-colors"
           title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
         >
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
@@ -49,12 +49,12 @@ export default function Header() {
 
         <button
           onClick={() => navigate('/chat')}
-          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 relative"
+          className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted relative transition-colors"
           title="Чат"
         >
           <MessageCircle size={20} />
           {chatUnread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-brand-500 text-white text-[10px] font-bold px-1 leading-none">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-brand-600 text-white text-[10px] font-bold px-1 leading-none">
               {chatUnread > 99 ? '99+' : chatUnread}
             </span>
           )}
@@ -63,7 +63,7 @@ export default function Header() {
         <div className="relative" ref={bellRef}>
           <button
             onClick={() => setShowNotifications((v) => !v)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 relative"
+            className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted relative transition-colors"
           >
             <Bell size={20} />
             {unreadCount > 0 && (
@@ -84,19 +84,19 @@ export default function Header() {
           title="Профиль"
         >
           {user?.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+            <img src={user.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover ring-1 ring-edge" />
           ) : (
-            <div className="w-7 h-7 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-600 dark:text-brand-300 flex items-center justify-center text-xs font-bold">
+            <div className="w-7 h-7 rounded-full bg-brand-600/15 text-brand-400 flex items-center justify-center text-xs font-bold">
               {(user?.displayName || '?').charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="font-medium text-gray-700 dark:text-gray-200">{user?.displayName}</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">{ROLE_LABELS[user?.role]}</span>
+          <span className="font-medium text-content-primary">{user?.displayName}</span>
+          <span className="text-xs text-content-muted">{ROLE_LABELS[user?.role]}</span>
         </button>
 
         <button
           onClick={logout}
-          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"
+          className="p-1.5 rounded-[var(--radius-sm)] hover:bg-red-500/10 text-content-muted hover:text-red-400 transition-colors"
           title="Выйти"
         >
           <LogOut size={18} />

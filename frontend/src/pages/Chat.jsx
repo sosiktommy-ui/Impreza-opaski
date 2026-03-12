@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { chatApi } from '../api/chat';
-import Button from '../components/ui/Button';
 import {
   MessageCircle,
   Send,
@@ -20,6 +19,13 @@ const ROLE_LABELS = {
   CITY: 'Город',
 };
 
+const ROLE_COLORS = {
+  ADMIN: 'bg-red-500/15 text-red-400',
+  OFFICE: 'bg-amber-500/15 text-amber-400',
+  COUNTRY: 'bg-sky-500/15 text-sky-400',
+  CITY: 'bg-emerald-500/15 text-emerald-400',
+};
+
 function ChatAvatar({ name, url, size = 'md' }) {
   const sizes = {
     sm: 'w-8 h-8 text-xs',
@@ -31,7 +37,7 @@ function ChatAvatar({ name, url, size = 'md' }) {
       <img
         src={url}
         alt={name}
-        className={`${sizes[size]} rounded-full object-cover flex-shrink-0`}
+        className={`${sizes[size]} rounded-full object-cover flex-shrink-0 ring-1 ring-edge`}
       />
     );
   }
@@ -43,7 +49,7 @@ function ChatAvatar({ name, url, size = 'md' }) {
     .slice(0, 2);
   return (
     <div
-      className={`${sizes[size]} rounded-full bg-brand-100 dark:bg-brand-900 text-brand-600 dark:text-brand-300 flex items-center justify-center font-semibold flex-shrink-0`}
+      className={`${sizes[size]} rounded-full bg-brand-600/15 text-brand-400 flex items-center justify-center font-semibold flex-shrink-0`}
     >
       {initials}
     </div>
@@ -82,20 +88,17 @@ export default function Chat() {
     });
 
     socket.on('new_message', (msg) => {
-      // Only add to current messages if it belongs to the active conversation
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
-        // Check if this message is part of the currently open conversation
         const currentUserId = useAuthStore.getState().user?.id;
         const otherId = msg.senderId === currentUserId ? msg.receiverId : msg.senderId;
-        // We store selectedUser in a ref-like way — check via DOM or prev messages
         if (prev.length > 0) {
           const firstMsg = prev[0];
           const prevOtherId =
             firstMsg.senderId === currentUserId
               ? firstMsg.receiverId
               : firstMsg.senderId;
-          if (otherId !== prevOtherId) return prev; // Not the current conversation
+          if (otherId !== prevOtherId) return prev;
         }
         return [...prev, msg];
       });
@@ -206,32 +209,28 @@ export default function Chat() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-brand-200 border-t-brand-600 rounded-full" />
+        <div className="animate-spin h-8 w-8 border-4 border-brand-600/20 border-t-brand-600 rounded-full" />
       </div>
     );
   }
 
   return (
     <div className="h-[calc(100dvh-8rem)] flex flex-col">
-      <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
-        Чат
-      </h2>
-
-      <div className="flex-1 flex bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden min-h-0">
-        {/* Left sidebar: Conversations */}
+      <div className="flex-1 flex bg-surface-card rounded-[var(--radius-md)] border border-edge overflow-hidden min-h-0">
+        {/* Left panel: Conversations */}
         <div
-          className={`w-full sm:w-80 border-r border-gray-100 dark:border-gray-700 flex flex-col flex-shrink-0 ${
+          className={`w-full sm:w-80 border-r border-edge flex flex-col flex-shrink-0 ${
             mobileView === 'chat' ? 'hidden sm:flex' : 'flex'
           }`}
         >
-          <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+          <div className="p-3 border-b border-edge">
             <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-200 flex-1">
+              <h3 className="font-semibold text-content-primary flex-1 text-sm">
                 Сообщения
               </h3>
               <button
                 onClick={handleNewChat}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-brand-600"
+                className="p-2 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-brand-500 transition-colors"
                 title="Новый чат"
               >
                 <Users size={18} />
@@ -240,14 +239,14 @@ export default function Chat() {
             <div className="relative">
               <Search
                 size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-content-muted"
               />
               <input
                 type="text"
                 placeholder="Поиск..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-brand-200 focus:border-brand-500 focus:outline-none dark:text-gray-100"
+                className="w-full pl-8 pr-3 py-1.5 bg-surface-primary border border-edge rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none text-content-primary placeholder:text-content-muted"
               />
             </div>
           </div>
@@ -255,39 +254,42 @@ export default function Chat() {
           <div className="flex-1 overflow-y-auto">
             {showNewChat ? (
               <div>
-                <div className="px-3 py-2 text-xs text-gray-400 font-medium uppercase tracking-wider">
+                <div className="px-3 py-2 text-2xs text-content-muted font-semibold uppercase tracking-widest">
                   Все пользователи
                 </div>
                 {filteredUsers.map((u) => (
                   <button
                     key={u.id}
                     onClick={() => openChat(u)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-card-hover transition-colors text-left"
                   >
                     <ChatAvatar name={u.displayName} url={u.avatarUrl} />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                      <div className="text-sm font-medium text-content-primary truncate">
                         {u.displayName}
                       </div>
-                      <div className="text-xs text-gray-400">
-                        @{u.username} · {ROLE_LABELS[u.role]}
+                      <div className="text-xs text-content-muted flex items-center gap-1.5">
+                        @{u.username}
+                        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${ROLE_COLORS[u.role] || ''}`}>
+                          {ROLE_LABELS[u.role]}
+                        </span>
                       </div>
                     </div>
                   </button>
                 ))}
                 {filteredUsers.length === 0 && (
-                  <p className="text-sm text-gray-400 text-center py-8">
+                  <p className="text-sm text-content-muted text-center py-8">
                     Нет пользователей
                   </p>
                 )}
               </div>
             ) : filteredConversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                <MessageCircle size={32} className="mb-2 opacity-50" />
+              <div className="flex flex-col items-center justify-center py-12 text-content-muted">
+                <MessageCircle size={32} className="mb-2 opacity-40" />
                 <p className="text-sm">Нет сообщений</p>
                 <button
                   onClick={handleNewChat}
-                  className="mt-2 text-xs text-brand-600 hover:text-brand-700"
+                  className="mt-2 text-xs text-brand-500 hover:text-brand-400"
                 >
                   Начать чат
                 </button>
@@ -297,9 +299,9 @@ export default function Chat() {
                 <button
                   key={conv.user.id}
                   onClick={() => openChat(conv.user)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left border-b border-gray-50 dark:border-gray-700 ${
+                  className={`w-full flex items-center gap-3 px-3 py-3 hover:bg-surface-card-hover transition-colors text-left ${
                     selectedUser?.id === conv.user.id
-                      ? 'bg-brand-50 dark:bg-brand-900/20'
+                      ? 'bg-brand-600/5'
                       : ''
                   }`}
                 >
@@ -309,10 +311,10 @@ export default function Chat() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                      <span className="text-sm font-medium text-content-primary truncate">
                         {conv.user.displayName}
                       </span>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0">
+                      <span className="text-[10px] text-content-muted flex-shrink-0">
                         {new Date(conv.lastMessage.createdAt).toLocaleTimeString(
                           'ru-RU',
                           { hour: '2-digit', minute: '2-digit' },
@@ -320,9 +322,9 @@ export default function Chat() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex-1">
+                      <p className="text-xs text-content-secondary truncate flex-1">
                         {conv.lastMessage.senderId === user.id && (
-                          <span className="text-gray-400">Вы: </span>
+                          <span className="text-content-muted">Вы: </span>
                         )}
                         {conv.lastMessage.text}
                       </p>
@@ -339,7 +341,7 @@ export default function Chat() {
           </div>
         </div>
 
-        {/* Right: Messages */}
+        {/* Right panel: Messages */}
         <div
           className={`flex-1 flex flex-col min-w-0 ${
             mobileView === 'list' ? 'hidden sm:flex' : 'flex'
@@ -347,10 +349,10 @@ export default function Chat() {
         >
           {selectedUser ? (
             <>
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-edge">
                 <button
                   onClick={goBack}
-                  className="sm:hidden p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
+                  className="sm:hidden p-1 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted"
                 >
                   <ArrowLeft size={20} />
                 </button>
@@ -359,43 +361,46 @@ export default function Chat() {
                   url={selectedUser.avatarUrl}
                 />
                 <div>
-                  <div className="font-medium text-gray-800 dark:text-gray-200 text-sm">
+                  <div className="font-medium text-content-primary text-sm">
                     {selectedUser.displayName}
                   </div>
-                  <div className="text-xs text-gray-400">
+                  <span className={`text-2xs px-1.5 py-0.5 rounded-full ${ROLE_COLORS[selectedUser.role] || 'text-content-muted'}`}>
                     {ROLE_LABELS[selectedUser.role] || selectedUser.role}
-                  </div>
+                  </span>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
                 {messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                  <div className="flex flex-col items-center justify-center h-full text-content-muted">
                     <MessageCircle size={32} className="mb-2 opacity-30" />
                     <p className="text-sm">Начните диалог</p>
                   </div>
                 )}
-                {messages.map((msg) => {
+                {messages.map((msg, i) => {
                   const isMe =
                     msg.senderId === user.id || msg.sender?.id === user.id;
+                  const prevMsg = messages[i - 1];
+                  const prevIsMe = prevMsg && (prevMsg.senderId === user.id || prevMsg.sender?.id === user.id);
+                  const sameAuthor = prevIsMe === isMe;
                   return (
                     <div
                       key={msg.id}
-                      className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                      className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${sameAuthor ? '' : 'mt-3'}`}
                     >
                       <div
-                        className={`max-w-[75%] rounded-2xl px-4 py-2 ${
+                        className={`max-w-[75%] px-3.5 py-2 ${
                           isMe
-                            ? 'bg-brand-600 text-white rounded-br-md'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-md'
+                            ? 'bg-brand-600 text-white rounded-2xl rounded-br-md'
+                            : 'bg-surface-secondary text-content-primary rounded-2xl rounded-bl-md'
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap break-words">
+                        <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                           {msg.text}
                         </p>
                         <div
-                          className={`text-[10px] mt-1 flex items-center gap-1 ${
-                            isMe ? 'text-brand-200 justify-end' : 'text-gray-400'
+                          className={`text-[10px] mt-0.5 flex items-center gap-1 ${
+                            isMe ? 'text-white/50 justify-end' : 'text-content-muted'
                           }`}
                         >
                           {new Date(msg.createdAt).toLocaleTimeString('ru-RU', {
@@ -418,7 +423,7 @@ export default function Chat() {
 
               <form
                 onSubmit={handleSend}
-                className="p-3 border-t border-gray-100 dark:border-gray-700"
+                className="p-3 border-t border-edge"
               >
                 <div className="flex items-center gap-2">
                   <input
@@ -426,13 +431,13 @@ export default function Chat() {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     placeholder="Сообщение..."
-                    className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-brand-200 focus:border-brand-500 focus:outline-none dark:text-gray-100"
+                    className="flex-1 px-4 py-2.5 bg-surface-primary border border-edge rounded-[var(--radius-md)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none text-content-primary placeholder:text-content-muted"
                     autoFocus
                   />
                   <button
                     type="submit"
                     disabled={!inputText.trim() || sending}
-                    className="p-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
+                    className="p-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-[var(--radius-md)] transition-colors"
                   >
                     <Send size={18} />
                   </button>
@@ -440,8 +445,8 @@ export default function Chat() {
               </form>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-              <MessageCircle size={48} className="mb-3 opacity-30" />
+            <div className="flex-1 flex flex-col items-center justify-center text-content-muted">
+              <MessageCircle size={48} className="mb-3 opacity-20" />
               <p className="text-sm">Выберите чат или начните новый</p>
             </div>
           )}

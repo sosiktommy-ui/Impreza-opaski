@@ -1,10 +1,10 @@
 const variants = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
-  secondary: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600',
-  danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm',
-  ghost: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700',
-  success: 'bg-green-600 text-white hover:bg-green-700 shadow-sm',
-  outline: 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 bg-transparent',
+  primary: 'bg-brand-600 text-white hover:bg-brand-500 shadow-sm hover:shadow-glow',
+  secondary: 'bg-surface-card text-content-primary border border-edge hover:bg-surface-card-hover',
+  danger: 'bg-red-600 text-white hover:bg-red-500 shadow-sm',
+  ghost: 'text-content-secondary hover:bg-surface-card hover:text-content-primary',
+  success: 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm',
+  outline: 'border border-edge text-content-primary hover:bg-surface-card-hover bg-transparent',
 };
 
 const sizes = {
@@ -25,8 +25,9 @@ export default function Button({
   return (
     <button
       className={`
-        inline-flex items-center justify-center gap-2 rounded-lg font-medium
-        transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed
+        inline-flex items-center justify-center gap-2 font-medium
+        rounded-[var(--radius-sm)] transition-all duration-150
+        disabled:opacity-50 disabled:cursor-not-allowed
         ${variants[variant]} ${sizes[size]} ${className}
       `}
       disabled={disabled || loading}

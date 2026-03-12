@@ -10,7 +10,8 @@ import Acceptance from './pages/Acceptance';
 import Expenses from './pages/Expenses';
 import Inventory from './pages/Inventory';
 import Users from './pages/Users';
-import MapPage from './pages/Map';
+import Overview from './pages/Overview';
+import History from './pages/History';
 import ProblematicTransfers from './pages/ProblematicTransfers';
 import Profile from './pages/Profile';
 import Chat from './pages/Chat';
@@ -38,10 +39,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-dvh flex items-center justify-center bg-surface-primary">
         <div className="text-center">
-          <div className="animate-spin h-10 w-10 border-4 border-brand-200 border-t-brand-600 rounded-full mx-auto" />
-          <p className="text-sm text-gray-400 mt-4">Загрузка...</p>
+          <div className="animate-spin h-10 w-10 border-4 border-brand-600/20 border-t-brand-600 rounded-full mx-auto" />
+          <p className="text-sm text-content-muted mt-4">Загрузка...</p>
         </div>
       </div>
     );
@@ -114,10 +115,19 @@ export default function App() {
         />
 
         <Route
-          path="map"
+          path="overview"
           element={
-            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
-              <MapPage />
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY']}>
+              <Overview />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="history"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
+              <History />
             </PrivateRoute>
           }
         />

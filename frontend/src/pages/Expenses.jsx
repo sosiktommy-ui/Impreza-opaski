@@ -270,8 +270,8 @@ export default function Expenses() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Мероприятия</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Учёт расхода браслетов по событиям AURA</p>
+          <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><CalendarDays size={22} className="text-brand-500" /> Мероприятия</h2>
+          <p className="text-xs text-content-muted mt-0.5">Учёт расхода браслетов по событиям AURA</p>
         </div>
         {user.role === 'CITY' && (
           <Button onClick={openCreate} size="sm">
@@ -282,47 +282,47 @@ export default function Expenses() {
 
       {/* ── Statistics Cards ──────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
               <CalendarDays size={18} className="text-purple-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.totalEvents}</div>
-              <div className="text-xs text-gray-400">Мероприятий</div>
+              <div className="text-2xl font-bold text-content-primary">{stats.totalEvents}</div>
+              <div className="text-xs text-content-muted">Мероприятий</div>
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-red-500/10 flex items-center justify-center">
               <TrendingDown size={18} className="text-red-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.totalBracelets}</div>
-              <div className="text-xs text-gray-400">Израсходовано</div>
+              <div className="text-2xl font-bold text-content-primary">{stats.totalBracelets}</div>
+              <div className="text-xs text-content-muted">Израсходовано</div>
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
               <BarChart3 size={18} className="text-blue-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats.avg}</div>
-              <div className="text-xs text-gray-400">Среднее</div>
+              <div className="text-2xl font-bold text-content-primary">{stats.avg}</div>
+              <div className="text-xs text-content-muted">Среднее</div>
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
               <MapPin size={18} className="text-amber-500" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{cityNames.length}</div>
-              <div className="text-xs text-gray-400">Городов</div>
+              <div className="text-2xl font-bold text-content-primary">{cityNames.length}</div>
+              <div className="text-xs text-content-muted">Городов</div>
             </div>
           </div>
         </div>
@@ -330,7 +330,7 @@ export default function Expenses() {
 
       {/* ── Color breakdown bar ───────────────────────── */}
       {stats.totalBracelets > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
           <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
             {[
               { key: 'BLACK', color: 'bg-gray-900 dark:bg-gray-300', val: stats.byColor.BLACK },
@@ -346,7 +346,7 @@ export default function Expenses() {
               />
             ))}
           </div>
-          <div className="flex justify-between mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+          <div className="flex justify-between mt-2 text-[11px] text-content-secondary">
             {[
               { key: 'BLACK', dot: 'bg-gray-900 dark:bg-gray-300' },
               { key: 'WHITE', dot: 'bg-gray-300 dark:bg-gray-500' },
@@ -365,13 +365,13 @@ export default function Expenses() {
       {/* ── Filters ───────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
           <input
             type="text"
             placeholder="Поиск по названию, месту, городу..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            className="w-full pl-9 pr-3 py-2 rounded-[var(--radius-sm)] border border-edge bg-surface-card text-content-primary text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
           />
         </div>
         <div className="flex gap-2">
@@ -379,7 +379,7 @@ export default function Expenses() {
             <select
               value={filterCity}
               onChange={(e) => setFilterCity(e.target.value)}
-              className="rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none"
+              className="rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
             >
               <option value="all">Все города</option>
               {cityNames.map((name) => (
@@ -390,7 +390,7 @@ export default function Expenses() {
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value)}
-            className="rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none"
+            className="rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
           >
             <option value="newest">Новые ↓</option>
             <option value="oldest">Старые ↑</option>
@@ -403,7 +403,7 @@ export default function Expenses() {
       {/* ── Expenses List ─────────────────────────────── */}
       {filteredExpenses.length === 0 ? (
         <Card>
-          <p className="text-sm text-gray-500 text-center py-8">
+          <p className="text-sm text-gray-500 text-center py-6">
             {expenses.length === 0 ? 'Нет мероприятий' : 'Ничего не найдено'}
           </p>
         </Card>
@@ -414,24 +414,24 @@ export default function Expenses() {
             return (
               <div
                 key={ex.id}
-                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                className="bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden"
               >
                 <div className="p-4 space-y-2.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      <h3 className="font-semibold text-content-primary flex items-center gap-2">
                         <CalendarDays size={16} className="text-purple-500 flex-shrink-0" />
                         <span className="truncate">{ex.eventName}</span>
                       </h3>
-                      {ex.location && (
-                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 ml-6">
+                      {ex.location && ex.location.toLowerCase() !== (ex.city?.name || '').toLowerCase() && (
+                        <div className="text-xs text-content-muted mt-0.5 flex items-center gap-1 ml-6">
                           <MapPin size={11} />
                           {ex.location}
                         </div>
                       )}
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="text-xs text-gray-400">
+                      <div className="text-xs text-content-muted">
                         {ex.eventDate
                           ? new Date(ex.eventDate).toLocaleDateString('ru-RU')
                           : new Date(ex.createdAt).toLocaleDateString('ru-RU')}
@@ -448,7 +448,7 @@ export default function Expenses() {
                     size="sm"
                   />
 
-                  <div className="flex items-center justify-between text-xs text-gray-400">
+                  <div className="flex items-center justify-between text-xs text-content-muted">
                     <span className="flex items-center gap-1">
                       <MapPin size={11} />
                       {ex.city?.name || 'Город'}
@@ -460,7 +460,7 @@ export default function Expenses() {
                       {(user.role === 'ADMIN' || user.role === 'OFFICE') && (
                         <button
                           onClick={() => handleDelete(ex.id)}
-                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                          className="p-1 rounded hover:bg-red-500/10 text-content-muted hover:text-red-500 transition-colors"
                           title="Удалить"
                         >
                           <Trash2 size={14} />
@@ -477,11 +477,11 @@ export default function Expenses() {
 
       {/* ── Summary Footer ────────────────────────────── */}
       {filteredExpenses.length > 0 && (
-        <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 border border-gray-100 dark:border-gray-700">
+        <div className="flex items-center justify-between bg-surface-card rounded-[var(--radius-md)] px-4 py-3 border border-edge">
           <span className="text-xs text-gray-500">
             Показано {filteredExpenses.length} из {expenses.length} мероприятий
           </span>
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+          <span className="text-sm font-semibold text-content-primary">
             Итого: {filteredExpenses.reduce(
               (s, ex) => s + (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0),
               0,
@@ -499,14 +499,14 @@ export default function Expenses() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* AURA events dropdown */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-content-primary mb-1">
               Мероприятие (AURA)
             </label>
             {auraEvents.length > 0 ? (
                 <select
                   value={selectedEvent}
                   onChange={handleEventSelect}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                  className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
                 >
                   <option value="">— Выберите мероприятие —</option>
                   {auraEvents.map((ev) => (
@@ -516,14 +516,14 @@ export default function Expenses() {
                   ))}
                 </select>
               ) : (
-                <div className="text-sm text-gray-400 bg-gray-50 px-3 py-2.5 rounded-lg">
+                <div className="text-sm text-content-muted bg-surface-secondary px-3 py-2.5 rounded-[var(--radius-sm)]">
                   Нет мероприятий AURA для выбранного города
                 </div>
               )}
 
               {/* Show selected event details */}
               {selectedEvent && eventName && (
-                <div className="mt-2 bg-brand-50 text-brand-700 rounded-lg px-3 py-2 text-sm space-y-0.5">
+                <div className="mt-2 bg-brand-600/10 text-brand-500 rounded-[var(--radius-sm)] px-3 py-2 text-sm space-y-0.5">
                   <div className="font-medium">{eventName}</div>
                   {eventDate && (
                     <div className="text-xs flex items-center gap-1">
@@ -543,7 +543,7 @@ export default function Expenses() {
 
           {/* Bracelet quantities */}
           <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Израсходовано браслетов</p>
+            <p className="text-sm font-medium text-content-primary mb-2">Израсходовано браслетов</p>
             <div className="grid grid-cols-2 gap-3">
               {BRACELET_KEYS.map((key) => (
                 <Input
@@ -567,7 +567,7 @@ export default function Expenses() {
           />
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
           )}
 
           <Button type="submit" loading={sending} disabled={!selectedEvent} className="w-full">

@@ -1,24 +1,28 @@
 const COLORS = {
-  BLACK: { bg: 'bg-gray-900', text: 'text-white', label: 'Чёрный' },
-  WHITE: { bg: 'bg-white border border-gray-300', text: 'text-gray-800', label: 'Белый' },
-  RED: { bg: 'bg-red-600', text: 'text-white', label: 'Красный' },
-  BLUE: { bg: 'bg-blue-600', text: 'text-white', label: 'Синий' },
+  BLACK: { bg: 'bg-gray-700', label: 'Чёрный' },
+  WHITE: { bg: 'bg-gray-200 border border-gray-300', label: 'Белый' },
+  RED: { bg: 'bg-red-500', label: 'Красный' },
+  BLUE: { bg: 'bg-blue-500', label: 'Синий' },
 };
 
 export default function BraceletBadge({ type, count, size = 'md' }) {
   const color = COLORS[type] || COLORS.BLACK;
-  const sizeClass = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-9 h-9 text-sm';
+  const dotSize = size === 'sm' ? 'w-4 h-4' : 'w-6 h-6';
+  const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
 
   return (
     <div className="flex items-center gap-1.5">
       <div
-        className={`${sizeClass} rounded-full ${color.bg} ${color.text} flex items-center justify-center font-bold shadow-sm`}
+        className={`${dotSize} rounded-full ${color.bg} shadow-sm flex-shrink-0`}
         title={color.label}
-      >
-        {count !== undefined ? count : ''}
-      </div>
-      {count !== undefined && size !== 'sm' && (
-        <span className="text-xs text-gray-500">{color.label}</span>
+      />
+      {count !== undefined && count !== '?' && (
+        <span className={`${textSize} font-semibold text-gray-700 dark:text-gray-300`}>
+          {count}
+        </span>
+      )}
+      {count === '?' && (
+        <span className={`${textSize} font-semibold text-gray-400`}>?</span>
       )}
     </div>
   );

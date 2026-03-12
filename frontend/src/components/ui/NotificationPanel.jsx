@@ -45,56 +45,56 @@ export default function NotificationPanel({ onClose }) {
   return (
     <div
       ref={panelRef}
-      className="absolute right-0 top-full mt-2 w-96 max-h-[480px] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col z-50 overflow-hidden"
+      className="absolute right-0 top-full mt-2 w-96 max-h-[480px] bg-surface-elevated rounded-[var(--radius-md)] shadow-lg border border-edge flex flex-col z-50 overflow-hidden animate-scaleIn"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-        <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">
-          Уведомления {unreadCount > 0 && <span className="text-red-500">({unreadCount})</span>}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
+        <h3 className="font-semibold text-content-primary text-sm">
+          Уведомления {unreadCount > 0 && <span className="text-brand-500">({unreadCount})</span>}
         </h3>
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+              className="text-xs text-brand-500 hover:text-brand-400 font-medium flex items-center gap-1 transition-colors"
             >
               <CheckCheck size={14} /> Прочитать все
             </button>
           )}
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400">
+          <button onClick={onClose} className="p-1 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted transition-colors">
             <X size={16} />
           </button>
         </div>
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
+      <div className="flex-1 overflow-y-auto divide-y divide-edge">
         {loading && notifications.length === 0 && (
-          <div className="p-6 text-center text-sm text-gray-400">Загрузка...</div>
+          <div className="p-6 text-center text-sm text-content-muted">Загрузка...</div>
         )}
 
         {!loading && notifications.length === 0 && (
-          <div className="p-6 text-center text-sm text-gray-400">Нет уведомлений</div>
+          <div className="p-6 text-center text-sm text-content-muted">Нет уведомлений</div>
         )}
 
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 ${
-              !n.read ? 'bg-blue-50/40 dark:bg-blue-900/20' : ''
+            className={`px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer hover:bg-surface-card-hover ${
+              !n.read ? 'bg-brand-500/5' : ''
             }`}
             onClick={() => !n.read && markAsRead(n.id)}
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}>
+                <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-content-primary' : 'text-content-secondary'}`}>
                   {n.title}
                 </p>
-                <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
+                <span className="text-2xs text-content-muted whitespace-nowrap flex-shrink-0">
                   {timeAgo(n.createdAt)}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
+              <p className="text-xs text-content-muted mt-0.5 line-clamp-2">{n.message}</p>
             </div>
             {!n.read && (
               <div className="w-2 h-2 rounded-full bg-brand-500 flex-shrink-0 mt-1.5" />

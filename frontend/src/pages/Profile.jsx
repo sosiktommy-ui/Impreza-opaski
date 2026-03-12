@@ -16,7 +16,7 @@ function Avatar({ url, name, size = 'lg' }) {
       <img
         src={url}
         alt={name}
-        className={`${sizes[size]} rounded-full object-cover border-2 border-gray-200 dark:border-gray-700`}
+        className={`${sizes[size]} rounded-full object-cover border-2 border-edge`}
       />
     );
   }
@@ -28,7 +28,7 @@ function Avatar({ url, name, size = 'lg' }) {
     .slice(0, 2);
   return (
     <div
-      className={`${sizes[size]} rounded-full bg-brand-100 dark:bg-brand-900 text-brand-600 dark:text-brand-300 flex items-center justify-center font-bold border-2 border-brand-200 dark:border-brand-800`}
+      className={`${sizes[size]} rounded-full bg-brand-100 dark:bg-brand-900 text-brand-500 flex items-center justify-center font-bold border-2 border-brand-200 dark:border-brand-800`}
     >
       {initials}
     </div>
@@ -131,10 +131,10 @@ export default function Profile() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Профиль</h2>
+      <h2 className="text-xl font-bold text-content-primary">Профиль</h2>
 
       {/* Header card */}
-      <div className="bg-gradient-to-br from-brand-600 via-brand-500 to-brand-400 rounded-2xl p-6 text-white shadow-lg">
+      <div className="bg-gradient-to-br from-brand-600 via-brand-500 to-brand-400 rounded-[var(--radius-md)] p-6 text-white">
         <div className="flex items-center gap-5">
           <Avatar url={avatarUrl} name={displayName} size="lg" />
           <div>
@@ -180,18 +180,18 @@ export default function Profile() {
           />
           {avatarUrl && (
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Предпросмотр:</span>
+              <span className="text-xs text-content-secondary">Предпросмотр:</span>
               <Avatar url={avatarUrl} name={displayName} size="sm" />
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm px-3 py-2 rounded-lg">
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">
               {error}
             </div>
           )}
           {success && (
-            <div className="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm px-3 py-2 rounded-lg flex items-center gap-2">
+            <div className="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm px-3 py-2 rounded-[var(--radius-sm)] flex items-center gap-2">
               <Check size={16} /> {success}
             </div>
           )}
@@ -229,12 +229,12 @@ export default function Profile() {
           />
 
           {pwError && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm px-3 py-2 rounded-lg">
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">
               {pwError}
             </div>
           )}
           {pwSuccess && (
-            <div className="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm px-3 py-2 rounded-lg flex items-center gap-2">
+            <div className="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-sm px-3 py-2 rounded-[var(--radius-sm)] flex items-center gap-2">
               <Check size={16} /> {pwSuccess}
             </div>
           )}

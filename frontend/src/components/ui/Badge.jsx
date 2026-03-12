@@ -1,9 +1,9 @@
 const STATUS = {
-  SENT: { color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400', label: 'Отправлена' },
-  ACCEPTED: { color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400', label: 'Принята' },
-  DISCREPANCY_FOUND: { color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400', label: 'Расхождение' },
-  REJECTED: { color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400', label: 'Отклонена' },
-  CANCELLED: { color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400', label: 'Отменена' },
+  SENT: { color: 'bg-amber-500/15 text-amber-400 border border-amber-500/20', label: 'Отправлена' },
+  ACCEPTED: { color: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20', label: 'Принята' },
+  DISCREPANCY_FOUND: { color: 'bg-orange-500/15 text-orange-400 border border-orange-500/20', label: 'Расхождение' },
+  REJECTED: { color: 'bg-red-500/15 text-red-400 border border-red-500/20', label: 'Отклонена' },
+  CANCELLED: { color: 'bg-gray-500/15 text-gray-400 border border-gray-500/20', label: 'Отменена' },
 };
 
 export default function Badge({ status, children, className = '' }) {
@@ -16,7 +16,7 @@ export default function Badge({ status, children, className = '' }) {
     );
   }
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 ${className}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-card text-content-secondary border border-edge ${className}`}>
       {children}
     </span>
   );

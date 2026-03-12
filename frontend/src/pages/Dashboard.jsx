@@ -12,7 +12,7 @@ import { DashboardSkeleton } from '../components/ui/Skeleton';
 import {
   Send, PackageCheck, Globe, MapPin,
   ArrowRight, Activity,
-  CalendarDays, Boxes, Map as MapIcon, AlertTriangle,
+  CalendarDays, Boxes, Eye, AlertTriangle,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -125,32 +125,32 @@ export default function Dashboard() {
   const quickActions = [
     { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
     { label: 'Вернуть опаски', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['CITY'] },
-    { label: 'Приёмка', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Получение', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'] },
     { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Карта', icon: MapIcon, path: '/map', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE'] },
+    { label: 'Обзор', icon: Eye, path: '/overview', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   ].filter((a) => a.roles.includes(user.role));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Gradient Header ──────────────────────────── */}
-      <div className="bg-gradient-to-br from-brand-600 via-brand-500 to-brand-400 rounded-2xl p-6 text-white shadow-lg">
+      <div className="bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500 rounded-[var(--radius-md)] p-6 text-white">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
               Привет, {user.displayName}!
             </h1>
-            <p className="text-brand-100 mt-1 text-sm flex items-center gap-1.5">
+            <p className="text-white/60 mt-1 text-sm flex items-center gap-1.5">
               {(user.role === 'ADMIN' || user.role === 'OFFICE') ? <Globe size={14} /> : <MapPin size={14} />}
               {entityLabel}
             </p>
           </div>
-          <div className="hidden sm:flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3">
-            <Activity size={22} className="text-brand-200" />
+          <div className="hidden sm:flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-[var(--radius-sm)] px-4 py-3">
+            <Activity size={22} className="text-white/60" />
             <div>
               <div className="text-xl font-bold">{transfers.length}</div>
-              <div className="text-[11px] text-brand-200 leading-tight">трансферов</div>
+              <div className="text-[11px] text-white/50 leading-tight">отправок</div>
             </div>
           </div>
         </div>
@@ -159,19 +159,19 @@ export default function Dashboard() {
       {/* ── Stats Grid ───────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-500', bg: 'bg-blue-50' },
-          { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-500', bg: 'bg-orange-50' },
-          { value: stats.countries, label: 'Стран', icon: Globe, iconColor: 'text-violet-500', bg: 'bg-violet-50' },
-          { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-amber-500', bg: 'bg-amber-50' },
-        ].map(({ value, label, icon: Icon, iconColor, bg }) => (
-          <div key={label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm hover:shadow-md transition-shadow">
+          { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-400', bg: 'bg-blue-500/10' },
+          { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-400', bg: 'bg-orange-500/10', tooltip: (user.role === 'CITY' || user.role === 'COUNTRY') ? 'Если есть проблемные отправки — обратитесь к администратору или офису для решения' : null },
+          { value: stats.countries, label: 'Стран', icon: Globe, iconColor: 'text-violet-400', bg: 'bg-violet-500/10' },
+          { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-amber-400', bg: 'bg-amber-500/10' },
+        ].map(({ value, label, icon: Icon, iconColor, bg, tooltip }) => (
+          <div key={label} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 hover:border-edge/80 transition-colors" title={tooltip || undefined} style={tooltip ? { cursor: 'help' } : undefined}>
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg ${bg} dark:opacity-80 flex items-center justify-center flex-shrink-0`}>
+              <div className={`w-10 h-10 rounded-[var(--radius-sm)] ${bg} flex items-center justify-center flex-shrink-0`}>
                 <Icon size={18} className={iconColor} />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</div>
-                <div className="text-xs text-gray-400">{label}</div>
+                <div className="text-2xl font-bold text-content-primary">{value}</div>
+                <div className="text-xs text-content-muted">{label}</div>
               </div>
             </div>
           </div>
@@ -189,7 +189,7 @@ export default function Dashboard() {
           action={
             <button
               onClick={() => navigate('/inventory')}
-              className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1"
+              className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1"
             >
               Подробнее <ArrowRight size={12} />
             </button>
@@ -211,15 +211,15 @@ export default function Dashboard() {
 
       {/* ── Pending Incoming ─────────────────────────── */}
       {pending.length > 0 && (
-        <div className="bg-yellow-50/60 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-yellow-100 dark:border-yellow-800">
-            <h3 className="font-semibold text-yellow-800 dark:text-yellow-400 flex items-center gap-2">
+        <div className="bg-amber-500/5 rounded-[var(--radius-md)] border border-amber-500/20 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-amber-500/10">
+            <h3 className="font-semibold text-amber-400 flex items-center gap-2">
               <PackageCheck size={16} />
-              Ожидают приёмки ({pending.length})
+              Ожидают получения ({pending.length})
             </h3>
             <button
               onClick={() => navigate('/acceptance')}
-              className="text-xs text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 flex items-center gap-1 font-medium"
+              className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium"
             >
               Открыть <ArrowRight size={12} />
             </button>
@@ -228,10 +228,10 @@ export default function Dashboard() {
             {pending.slice(0, 3).map((t) => (
               <div
                 key={t.id}
-                className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-yellow-100 dark:border-yellow-800"
+                className="flex items-center justify-between p-3 bg-surface-card rounded-[var(--radius-sm)] border border-edge"
               >
                 <div>
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                  <div className="text-sm font-medium text-content-primary">
                     От: {t.senderType === 'ADMIN'
                       ? 'Склад'
                       : t.senderType === 'CITY'
@@ -239,11 +239,11 @@ export default function Dashboard() {
                         : (t.senderCountry?.name || 'Отправитель')}
                   </div>
                   {t.createdByUser?.displayName && (
-                    <div className="text-[10px] text-gray-400">
+                    <div className="text-[10px] text-content-muted">
                       {t.createdByUser.displayName}
                     </div>
                   )}
-                  <div className="text-xs text-gray-400 mt-0.5">
+                  <div className="text-xs text-content-muted mt-0.5">
                     Пересчитайте и примите
                   </div>
                 </div>
@@ -253,7 +253,7 @@ export default function Dashboard() {
             {pending.length > 3 && (
               <button
                 onClick={() => navigate('/acceptance')}
-                className="w-full text-center text-xs text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 py-2"
+                className="w-full text-center text-xs text-amber-400 hover:text-amber-300 py-2"
               >
                 Ещё {pending.length - 3} отправок →
               </button>
@@ -264,7 +264,7 @@ export default function Dashboard() {
 
       {/* ── Quick Actions ────────────────────────────── */}
       <div>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        <h3 className="text-2xs font-semibold text-content-muted uppercase tracking-widest mb-3">
           Быстрые действия
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -272,14 +272,14 @@ export default function Dashboard() {
             <button
               key={action.label}
               onClick={() => navigate(action.path)}
-              className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 text-left hover:shadow-md hover:border-gray-200 dark:hover:border-gray-600 transition-all"
+              className="group bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 text-left hover:border-edge/80 transition-all"
             >
               <div
-                className={`w-10 h-10 ${action.color} rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
+                className={`w-10 h-10 ${action.color} rounded-[var(--radius-sm)] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
               >
                 <action.icon size={20} className="text-white" />
               </div>
-              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100">
+              <div className="text-sm font-medium text-content-primary">
                 {action.label}
               </div>
             </button>
@@ -292,7 +292,7 @@ export default function Dashboard() {
         {/* Status breakdown */}
         <Card title="Статусы отправок">
           {transfers.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Нет данных</p>
+            <p className="text-sm text-content-muted text-center py-4">Нет данных</p>
           ) : (
             (() => {
               const statuses = [
@@ -300,10 +300,9 @@ export default function Dashboard() {
                 { key: 'ACCEPTED', label: 'Принято', color: 'bg-green-400', hex: '#4ade80' },
                 { key: 'DISCREPANCY_FOUND', label: 'Расхождение', color: 'bg-orange-400', hex: '#fb923c' },
                 { key: 'REJECTED', label: 'Отклонено', color: 'bg-red-400', hex: '#f87171' },
-                { key: 'CANCELLED', label: 'Отменено', color: 'bg-gray-300', hex: '#d1d5db' },
+                { key: 'CANCELLED', label: 'Отменено', color: 'bg-gray-500', hex: '#6b7280' },
               ].filter(({ key }) => (statusCounts[key] || 0) > 0);
 
-              // Build conic gradient
               let angle = 0;
               const segments = statuses.map((s) => {
                 const pct = ((statusCounts[s.key] || 0) / transfers.length) * 100;
@@ -315,17 +314,15 @@ export default function Dashboard() {
 
               return (
                 <div className="flex gap-4 items-center">
-                  {/* Mini donut */}
                   <div className="relative flex-shrink-0">
                     <div
                       className="w-20 h-20 rounded-full"
                       style={{ background: gradient }}
                     />
-                    <div className="absolute inset-2 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center">
-                      <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{transfers.length}</span>
+                    <div className="absolute inset-2 rounded-full bg-surface-card flex items-center justify-center">
+                      <span className="text-sm font-bold text-content-primary">{transfers.length}</span>
                     </div>
                   </div>
-                  {/* Legend */}
                   <div className="flex-1 space-y-1.5">
                     {statuses.map(({ key, label, color }) => {
                       const count = statusCounts[key] || 0;
@@ -333,11 +330,11 @@ export default function Dashboard() {
                       return (
                         <div key={key} className="flex items-center gap-2">
                           <span className={`w-2.5 h-2.5 rounded-full ${color} flex-shrink-0`} />
-                          <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{label}</span>
-                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 tabular-nums">
+                          <span className="text-xs text-content-secondary flex-1">{label}</span>
+                          <span className="text-xs font-semibold text-content-primary tabular-nums">
                             {count}
                           </span>
-                          <span className="text-[10px] text-gray-400 w-8 text-right tabular-nums">{pct}%</span>
+                          <span className="text-[10px] text-content-muted w-8 text-right tabular-nums">{pct}%</span>
                         </div>
                       );
                     })}
@@ -354,14 +351,14 @@ export default function Dashboard() {
           action={
             <button
               onClick={() => navigate('/transfers')}
-              className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1"
+              className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1"
             >
               Все <ArrowRight size={12} />
             </button>
           }
         >
           {recentTransfers.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Нет отправок</p>
+            <p className="text-sm text-content-muted text-center py-4">Нет отправок</p>
           ) : (
             <div className="space-y-1">
               {recentTransfers.map((t) => {
@@ -382,10 +379,10 @@ export default function Dashboard() {
                 return (
                   <div
                     key={t.id}
-                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-center gap-3 p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                      <div className="text-sm text-content-primary truncate">
                         {from} → {to}
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
@@ -395,7 +392,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <Badge status={t.status} />
-                    <span className="text-[10px] text-gray-300 flex-shrink-0">
+                    <span className="text-[10px] text-content-muted flex-shrink-0">
                       {new Date(t.createdAt).toLocaleDateString('ru-RU', {
                         day: '2-digit',
                         month: '2-digit',

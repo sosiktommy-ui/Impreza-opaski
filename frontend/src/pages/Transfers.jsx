@@ -251,8 +251,8 @@ export default function Transfers() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Мои отправки</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Send size={22} className="text-brand-500" /> Мои отправки</h2>
+          <p className="text-xs text-content-muted mt-0.5">
             Отправки от вашего аккаунта
           </p>
         </div>
@@ -264,7 +264,7 @@ export default function Transfers() {
       </div>
 
       {/* ── Tabs: Не завершённые / Завершённые ──────── */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+      <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
         {[
           { key: 'active', label: 'Не завершённые' },
           { key: 'completed', label: 'Завершённые' },
@@ -274,8 +274,8 @@ export default function Transfers() {
             onClick={() => { setActiveTab(tab.key); setPage(1); }}
             className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
-                ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                ? 'bg-surface-card text-content-primary'
+                : 'text-content-secondary hover:text-gray-700'
             }`}
           >
             {tab.label}
@@ -286,19 +286,19 @@ export default function Transfers() {
       {/* ── Filters Row ───────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
           <input
             type="text"
             placeholder="Поиск по получателю..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            className="w-full pl-9 pr-3 py-2 rounded-[var(--radius-sm)] border border-edge bg-surface-card text-content-primary text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
           />
         </div>
         <select
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value)}
-          className="rounded-lg border border-gray-200 dark:border-gray-600 text-sm px-3 py-2 bg-white dark:bg-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none"
+          className="rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
         >
           <option value="newest">Новые ↓</option>
           <option value="oldest">Старые ↑</option>
@@ -310,7 +310,7 @@ export default function Transfers() {
       {/* ── Transfers List ────────────────────────────── */}
       {filteredTransfers.length === 0 ? (
         <Card>
-          <p className="text-sm text-gray-500 text-center py-8">
+          <p className="text-sm text-gray-500 text-center py-6">
             {activeTab === 'active' ? 'Нет активных отправок' : 'Нет завершённых отправок'}
           </p>
         </Card>
@@ -330,27 +330,27 @@ export default function Transfers() {
             return (
               <div
                 key={t.id}
-                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                className="bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge status={t.status} />
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-content-muted">
                         {new Date(t.createdAt).toLocaleDateString('ru-RU', {
                           day: '2-digit',
                           month: 'long',
                           year: 'numeric',
                         })}
                       </span>
-                      <span className="text-xs text-gray-300 font-mono">
+                      <span className="text-xs text-content-muted font-mono">
                         #{t.id?.slice(-6) || '—'}
                       </span>
                     </div>
 
                     <div className="text-sm flex items-center gap-1.5">
-                      <span className="text-gray-300 flex-shrink-0">→</span>
-                      <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{to}</span>
+                      <span className="text-content-muted flex-shrink-0">→</span>
+                      <span className="font-medium text-content-primary truncate">{to}</span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -359,13 +359,13 @@ export default function Transfers() {
                           <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} />
                         ))}
                       </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0">
+                      <span className="text-xs text-content-muted flex-shrink-0">
                         Итого: {totalQty} шт
                       </span>
                     </div>
 
                     {t.notes && (
-                      <p className="text-xs text-gray-400 italic">{t.notes}</p>
+                      <p className="text-xs text-content-muted italic">{t.notes}</p>
                     )}
                   </div>
 
@@ -374,7 +374,7 @@ export default function Transfers() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleCancel(t.id)}
-                      className="flex-shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      className="flex-shrink-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
                     >
                       <X size={16} /> Отменить
                     </Button>
@@ -390,7 +390,7 @@ export default function Transfers() {
       {transfers.length > 0 && (
         <div className="space-y-2">
           <Pagination page={page} totalPages={totalPages} onPageChange={(p) => loadTransfers(p)} />
-          <div className="text-xs text-gray-400 text-right">
+          <div className="text-xs text-content-muted text-right">
             Показано {filteredTransfers.length} из {transfers.length} отправок
           </div>
         </div>
@@ -427,7 +427,7 @@ export default function Transfers() {
                       ...cities.map((c) => ({ value: c.id, label: c.name })),
                     ]}
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-content-muted mt-1">
                     {toCityId
                       ? 'Отправка будет адресована выбранному городу'
                       : 'Если город не выбран — отправка пойдёт на уровень страны'}
@@ -452,7 +452,7 @@ export default function Transfers() {
 
           {/* CITY: auto-receiver is parent country */}
           {user.role === 'CITY' && (
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg px-3 py-2.5">
+            <div className="flex items-center gap-2 bg-surface-card text-content-secondary rounded-[var(--radius-sm)] px-3 py-2.5">
               <Send size={14} />
               <span className="text-sm">
                 Отправка назад: <strong>{user.country?.name || 'Страна'}</strong>
@@ -462,7 +462,7 @@ export default function Transfers() {
 
           {/* Receiver hint */}
           {receiverLabel && (
-            <div className="flex items-center gap-2 bg-brand-50 text-brand-700 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 bg-brand-600/10 text-brand-500 rounded-[var(--radius-sm)] px-3 py-2">
               <Send size={14} />
               <span className="text-sm">
                 Получатель: <strong>{receiverLabel}</strong>
@@ -472,7 +472,7 @@ export default function Transfers() {
 
           {/* Bracelet quantities */}
           <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Количество браслетов</p>
+            <p className="text-sm font-medium text-content-primary mb-2">Количество браслетов</p>
             <div className="grid grid-cols-2 gap-3">
               {ITEM_TYPES.map((type) => (
                 <Input
@@ -498,7 +498,7 @@ export default function Transfers() {
           />
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm px-3 py-2 rounded-lg">
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">
               {error}
             </div>
           )}

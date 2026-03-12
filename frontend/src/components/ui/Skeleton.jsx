@@ -1,11 +1,11 @@
 export default function Skeleton({ className = '', count = 1 }) {
   if (count === 1) {
-    return <div className={`animate-pulse bg-gray-200 dark:bg-gray-700 rounded ${className}`} />;
+    return <div className={`animate-shimmer rounded-[var(--radius-sm)] ${className}`} />;
   }
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className={`animate-pulse bg-gray-200 dark:bg-gray-700 rounded ${className}`} />
+        <div key={i} className={`animate-shimmer rounded-[var(--radius-sm)] ${className}`} />
       ))}
     </>
   );
@@ -13,7 +13,7 @@ export default function Skeleton({ className = '', count = 1 }) {
 
 export function SkeletonCard({ lines = 3, className = '' }) {
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm ${className}`}>
+    <div className={`bg-surface-card rounded-[var(--radius-md)] border border-edge p-5 ${className}`}>
       <Skeleton className="h-4 w-1/3 mb-4" />
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton key={i} className={`h-3 ${i === lines - 1 ? 'w-2/3' : 'w-full'} mb-2`} />
@@ -24,41 +24,37 @@ export function SkeletonCard({ lines = 3, className = '' }) {
 
 export function DashboardSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
-      {/* Header skeleton */}
-      <div className="bg-gradient-to-br from-gray-300 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-2xl p-6 h-28" />
+    <div className="space-y-6">
+      <div className="rounded-[var(--radius-lg)] h-28 animate-shimmer" />
 
-      {/* Stats grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+          <div key={i} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700" />
+              <div className="w-10 h-10 rounded-[var(--radius-sm)] animate-shimmer" />
               <div className="flex-1">
-                <div className="h-6 w-12 bg-gray-200 dark:bg-gray-700 rounded mb-1" />
-                <div className="h-3 w-16 bg-gray-100 dark:bg-gray-600 rounded" />
+                <div className="h-6 w-12 animate-shimmer rounded mb-1" />
+                <div className="h-3 w-16 animate-shimmer rounded" />
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Balance cards */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
-        <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
+      <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-5">
+        <div className="h-4 w-32 animate-shimmer rounded mb-4" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-xl p-4 bg-gray-100 dark:bg-gray-700 h-20" />
+            <div key={i} className="rounded-[var(--radius-md)] animate-shimmer h-20" />
           ))}
         </div>
       </div>
 
-      {/* Quick actions */}
       <div>
-        <div className="h-3 w-28 bg-gray-200 dark:bg-gray-700 rounded mb-3" />
+        <div className="h-3 w-28 animate-shimmer rounded mb-3" />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 h-24" />
+            <div key={i} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 h-24 animate-shimmer" />
           ))}
         </div>
       </div>

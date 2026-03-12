@@ -24,14 +24,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 dark:from-gray-900 dark:to-gray-800 px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-surface-primary px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-brand-700 tracking-tight">IMPREZA</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Система учёта браслетов</p>
+          <h1 className="text-3xl font-bold text-brand-500 tracking-tight">IMPREZA</h1>
+          <p className="text-content-muted mt-1">Система учёта браслетов</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-6 space-y-4">
           <Input
             label="Логин"
             value={username}
@@ -51,7 +51,7 @@ export default function Login() {
           />
 
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)] border border-red-500/20">{error}</div>
           )}
 
           <Button type="submit" loading={loading} className="w-full">

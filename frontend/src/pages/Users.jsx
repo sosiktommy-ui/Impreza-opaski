@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX } from 'lucide-react';
+import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings } from 'lucide-react';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
@@ -197,7 +197,7 @@ export default function Users() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Пользователи</h2>
+        <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Settings size={22} className="text-brand-500" /> Пользователи</h2>
         <Button onClick={() => setShowCreate(true)} size="sm">
           <Plus size={18} /> Новый
         </Button>
@@ -206,13 +206,13 @@ export default function Users() {
       {/* Search & role filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
           <input
             type="text"
             placeholder="Поиск по имени, логину, email…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            className="w-full pl-9 pr-3 py-2 border border-edge rounded-[var(--radius-sm)] text-sm bg-surface-card text-content-primary placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -223,7 +223,7 @@ export default function Users() {
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                 roleFilter === r
                   ? 'bg-brand-600 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600'
+                  : 'bg-surface-card text-content-secondary hover:bg-surface-card-hover border border-edge'
               }`}
             >
               {r === 'all' ? 'Все' : ROLE_LABELS[r]}
@@ -232,7 +232,7 @@ export default function Users() {
         </div>
       </div>
 
-      <div className="text-xs text-gray-400">{filteredUsers.length} из {users.length} пользователей</div>
+      <div className="text-xs text-content-muted">{filteredUsers.length} из {users.length} пользователей</div>
 
       <div className="space-y-2">
         {filteredUsers.map((u) => (
@@ -249,7 +249,7 @@ export default function Users() {
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-gray-400 truncate">
+                <div className="text-xs text-content-muted truncate">
                   @{u.username}
                   {u.email && ` • ${u.email}`}
                   <span className="ml-1">
@@ -263,28 +263,28 @@ export default function Users() {
               <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                 <button
                   onClick={() => toggleActive(u)}
-                  className={`p-1.5 rounded-lg hover:bg-gray-100 ${u.isActive === false ? 'text-green-500' : 'text-gray-400 hover:text-orange-500'}`}
+                  className={`p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover ${u.isActive === false ? 'text-green-500' : 'text-content-muted hover:text-orange-500'}`}
                   title={u.isActive === false ? 'Активировать' : 'Деактивировать'}
                 >
                   {u.isActive === false ? <UserCheck size={16} /> : <UserX size={16} />}
                 </button>
                 <button
                   onClick={() => openEdit(u)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-brand-600"
+                  className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
                   title="Редактировать"
                 >
                   <Pencil size={16} />
                 </button>
                 <button
                   onClick={() => { setShowPassword(u.id); setNewPassword(''); setError(''); }}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-brand-600"
+                  className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
                   title="Сменить пароль"
                 >
                   <KeyRound size={16} />
                 </button>
                 <button
                   onClick={() => handleDelete(u.id, u.displayName)}
-                  className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"
+                  className="p-1.5 rounded-[var(--radius-sm)] hover:bg-red-500/10 text-content-muted hover:text-red-500"
                   title="Удалить"
                 >
                   <Trash2 size={16} />
@@ -346,7 +346,7 @@ export default function Users() {
                 ]}
               />
             ) : (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm px-3 py-2 rounded-lg">
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">
                 Нет доступных офисов. Создайте офис в базе данных.
               </div>
             )
@@ -375,7 +375,7 @@ export default function Users() {
           )}
 
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
           )}
 
           <Button type="submit" loading={saving} className="w-full">
@@ -403,8 +403,8 @@ export default function Users() {
               value={editForm.email}
               onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
             />
-            <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
-              <span className="text-sm text-gray-700 dark:text-gray-300">Аккаунт активен</span>
+            <div className="flex items-center justify-between bg-surface-secondary rounded-[var(--radius-sm)] px-3 py-2">
+              <span className="text-sm text-content-primary">Аккаунт активен</span>
               <button
                 type="button"
                 onClick={() => setEditForm((p) => ({ ...p, isActive: !p.isActive }))}
@@ -415,7 +415,7 @@ export default function Users() {
             </div>
 
             {error && (
-              <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+              <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
             )}
 
             <Button type="submit" loading={saving} className="w-full">
@@ -440,7 +440,7 @@ export default function Users() {
             placeholder="Минимум 6 символов"
           />
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
           )}
           <Button onClick={handleResetPassword} loading={saving} className="w-full">
             Сохранить

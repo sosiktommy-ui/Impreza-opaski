@@ -277,7 +277,7 @@ export default function Inventory() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Остатки</h2>
+        <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Boxes size={22} className="text-brand-500" /> Остатки</h2>
         {isAdminOrOffice && viewEntity.type && viewEntity.id && (
           <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline">
             <Plus size={16} /> Корректировка
@@ -290,7 +290,7 @@ export default function Inventory() {
         <Card title={`Общий баланс системы — ${systemTotal} шт`}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {COLORS.map((type) => (
-              <div key={type} className={`rounded-xl p-4 text-center ${COLOR_STYLES[type]} shadow-sm`}>
+              <div key={type} className={`rounded-[var(--radius-md)] p-4 text-center ${COLOR_STYLES[type]}`}>
                 <div className="text-3xl font-bold">{systemTotals[type]}</div>
                 <div className="text-sm mt-1 opacity-80">{COLOR_LABELS[type]}</div>
               </div>
@@ -305,7 +305,7 @@ export default function Inventory() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
+                <tr className="border-b border-edge text-xs text-content-muted">
                   <th className="text-left py-2 px-2">Страна</th>
                   {COLORS.map((c) => (
                     <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
@@ -325,19 +325,19 @@ export default function Inventory() {
                   return (
                     <tr
                       key={country.id}
-                      className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                      className="border-b border-edge hover:bg-surface-card-hover cursor-pointer transition-colors"
                       onClick={() => {
                         setSelectedCountry(country.id);
                         handleCountrySelect({ target: { value: country.id } });
                       }}
                     >
-                      <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-300">{country.name}</td>
+                      <td className="py-2.5 px-2 font-medium text-content-primary">{country.name}</td>
                       {COLORS.map((c) => (
-                        <td key={c} className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-400">
+                        <td key={c} className="text-center py-2.5 px-2 text-content-secondary">
                           {(country.totals[c] || 0) + (citiesTotal[c] || 0)}
                         </td>
                       ))}
-                      <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{allTotal}</td>
+                      <td className="text-center py-2.5 px-2 font-semibold text-content-primary">{allTotal}</td>
                     </tr>
                   );
                 })}
@@ -381,7 +381,7 @@ export default function Inventory() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
+                <tr className="border-b border-edge text-xs text-content-muted">
                   <th className="text-left py-2 px-2">Город</th>
                   {COLORS.map((c) => (
                     <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
@@ -411,17 +411,17 @@ export default function Inventory() {
                       return (
                         <tr
                           key={cityId}
-                          className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                          className="border-b border-edge hover:bg-surface-card-hover cursor-pointer transition-colors"
                           onClick={() => {
                             setSelectedCity(cityId);
                             loadBalance('CITY', cityId);
                           }}
                         >
-                          <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-300">{data.name}</td>
+                          <td className="py-2.5 px-2 font-medium text-content-primary">{data.name}</td>
                           {COLORS.map((c) => (
-                            <td key={c} className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-400">{data.totals[c]}</td>
+                            <td key={c} className="text-center py-2.5 px-2 text-content-secondary">{data.totals[c]}</td>
                           ))}
-                          <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{cityTotal}</td>
+                          <td className="text-center py-2.5 px-2 font-semibold text-content-primary">{cityTotal}</td>
                         </tr>
                       );
                     });
@@ -437,7 +437,7 @@ export default function Inventory() {
         <Card title={`Текущий баланс — ${totalBracelets} шт всего`}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {COLORS.map((type) => (
-              <div key={type} className={`rounded-xl p-4 text-center ${COLOR_STYLES[type]} shadow-sm`}>
+              <div key={type} className={`rounded-[var(--radius-md)] p-4 text-center ${COLOR_STYLES[type]}`}>
                 <div className="text-3xl font-bold">{balanceMap[type] || 0}</div>
                 <div className="text-sm mt-1 opacity-80">{COLOR_LABELS[type]}</div>
               </div>
@@ -460,7 +460,7 @@ export default function Inventory() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
+                  <tr className="border-b border-edge text-xs text-content-muted">
                     <th className="text-left py-2 px-2">Город</th>
                     {COLORS.map((c) => (
                       <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
@@ -474,19 +474,19 @@ export default function Inventory() {
                     return (
                       <tr
                         key={city.id}
-                        className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                        className="border-b border-edge hover:bg-surface-card-hover cursor-pointer transition-colors"
                         onClick={() => {
                           setSelectedCity(city.id);
                           handleCitySelect({ target: { value: city.id } });
                         }}
                       >
-                        <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-300">{city.name}</td>
+                        <td className="py-2.5 px-2 font-medium text-content-primary">{city.name}</td>
                         {COLORS.map((c) => (
-                          <td key={c} className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-400">
+                          <td key={c} className="text-center py-2.5 px-2 text-content-secondary">
                             {city.totals[c] || 0}
                           </td>
                         ))}
-                        <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{cityTotal}</td>
+                        <td className="text-center py-2.5 px-2 font-semibold text-content-primary">{cityTotal}</td>
                       </tr>
                     );
                   })}
