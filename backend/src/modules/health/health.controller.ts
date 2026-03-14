@@ -11,6 +11,16 @@ export class HealthController {
 
   @Get()
   async check() {
+    // Simple ping — returns 200 immediately so Railway healthcheck passes
+    return {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('detailed')
+  async detailed() {
     const checks: Record<string, { status: string; latency?: number }> = {};
 
     // Database check

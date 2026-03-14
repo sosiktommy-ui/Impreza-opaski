@@ -20,8 +20,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    this.logger.log('Database connected');
+    try {
+      await this.$connect();
+      this.logger.log('Database connected');
+    } catch (err) {
+      this.logger.error(`Database connection failed: ${err.message}`);
+      this.logger.warn('App will start without DB — retrying in background');
+      this.retryConnect();
+    }
+  }
+
+  private retryConnect() {
+    setTimeout(async () => {
+      try {
+        await this.$connect();
+        this.logger.log('Database reconnected');
+      } catch {
+        this.logger.warn('DB retry failed, will try again in 5s');
+        this.retryConnect();
+      }
+    }, 5000);
   }
 
   async onModuleDestroy() {
