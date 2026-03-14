@@ -39,7 +39,9 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
 
-    if (error.response?.status === 401 && !original._retry) {
+    // Don't intercept 401s from auth endpoints — let them propagate naturally
+    const isAuthUrl = original.url?.startsWith('/auth/');
+    if (error.response?.status === 401 && !original._retry && !isAuthUrl) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });

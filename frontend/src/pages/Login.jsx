@@ -17,7 +17,14 @@ export default function Login() {
     try {
       await login(username, password);
     } catch (err) {
-      setError(err.response?.data?.message || 'Ошибка входа');
+      const msg = err.response?.data?.message || '';
+      if (msg.includes('Invalid credentials')) {
+        setError('Неверный логин или пароль');
+      } else if (msg.includes('refresh token') || msg.includes('No refresh')) {
+        setError('Сессия истекла. Попробуйте ещё раз');
+      } else {
+        setError(msg || 'Ошибка входа');
+      }
     } finally {
       setLoading(false);
     }
