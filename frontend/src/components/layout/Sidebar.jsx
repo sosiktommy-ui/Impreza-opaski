@@ -10,7 +10,6 @@ import {
   X,
   MessageCircle,
   UserCircle,
-  Eye,
   History,
   PanelLeftClose,
   PanelLeft,
@@ -22,7 +21,6 @@ import { useEffect } from 'react';
 
 const allLinks = [
   { to: '/', icon: LayoutDashboard, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/overview', icon: Eye, label: 'Обзор', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   { to: '/transfers', icon: Send, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/problematic', icon: AlertTriangle, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'] },

@@ -12,7 +12,7 @@ import { DashboardSkeleton } from '../components/ui/Skeleton';
 import {
   Send, PackageCheck, Globe, MapPin,
   ArrowRight, Activity,
-  CalendarDays, Boxes, Eye, AlertTriangle,
+  CalendarDays, Boxes, AlertTriangle,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -129,7 +129,6 @@ export default function Dashboard() {
     { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'] },
     { label: 'Мероприятия', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
     { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Обзор', icon: Eye, path: '/overview', color: 'bg-teal-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   ].filter((a) => a.roles.includes(user.role));
 
   return (

@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useChatStore } from '../store/useChatStore';
 import { chatApi } from '../api/chat';
 import {
   MessageCircle,
@@ -70,6 +71,19 @@ export default function Chat() {
   const [mobileView, setMobileView] = useState('list');
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
+  const selectedUserRef = useRef(null);
+
+  // Keep ref in sync with state so socket callbacks always see current value
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  // Auto-scroll when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   useEffect(() => {
     loadConversations();
@@ -88,24 +102,38 @@ export default function Chat() {
     });
 
     socket.on('new_message', (msg) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        const currentUserId = useAuthStore.getState().user?.id;
-        const otherId = msg.senderId === currentUserId ? msg.receiverId : msg.senderId;
-        if (prev.length > 0) {
-          const firstMsg = prev[0];
-          const prevOtherId =
-            firstMsg.senderId === currentUserId
-              ? firstMsg.receiverId
-              : firstMsg.senderId;
-          if (otherId !== prevOtherId) return prev;
+      const currentUserId = useAuthStore.getState().user?.id;
+      const currentPartner = selectedUserRef.current;
+
+      // Determine who the "other" person is in this message
+      const otherId = msg.senderId === currentUserId ? msg.receiverId : msg.senderId;
+
+      // Only add to visible messages if this message belongs to the currently open conversation
+      if (currentPartner && otherId === currentPartner.id) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        // If the message is FROM the other person, mark as read
+        if (msg.senderId !== currentUserId) {
+          socket.emit('mark_read', { senderId: msg.senderId });
+          chatApi.markAsRead(msg.senderId).catch(() => {});
         }
-        return [...prev, msg];
-      });
+      }
+      // Always refresh conversation list for sidebar
       loadConversations();
+      useChatStore.getState().fetchUnreadCount();
     });
 
-    socket.on('messages_read', () => {
+    socket.on('messages_read', ({ readBy }) => {
+      // The other person read our messages — update checkmarks
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.senderId === useAuthStore.getState().user?.id && !m.read
+            ? { ...m, read: true }
+            : m,
+        ),
+      );
       loadConversations();
     });
 
@@ -142,44 +170,41 @@ export default function Chat() {
       const { data } = await chatApi.getMessages(otherUser.id);
       const list = data.data || data;
       setMessages(Array.isArray(list) ? list : []);
-      setTimeout(
-        () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }),
-        100,
-      );
+      // Mark messages as read (backend already does this in getMessages, but notify sender via socket)
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('mark_read', { senderId: otherUser.id });
+      }
+      useChatStore.getState().fetchUnreadCount();
+      loadConversations();
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleSend = async (e) => {
+  // Always send via REST API for reliability; socket is only for receiving
+  const handleSend = useCallback(async (e) => {
     e?.preventDefault();
-    if (!inputText.trim() || !selectedUser) return;
+    if (!inputText.trim() || !selectedUser || sending) return;
     const text = inputText.trim();
     setInputText('');
-
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('send_message', {
-        receiverId: selectedUser.id,
-        text,
+    setSending(true);
+    try {
+      const { data } = await chatApi.sendMessage(selectedUser.id, text);
+      const msg = data.data || data;
+      // Add to local messages (deduplicate in case socket event arrives first)
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
       });
-    } else {
-      setSending(true);
-      try {
-        const { data } = await chatApi.sendMessage(selectedUser.id, text);
-        const msg = data.data || data;
-        setMessages((prev) => [...prev, msg]);
-        loadConversations();
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setSending(false);
-      }
+      loadConversations();
+    } catch (err) {
+      console.error(err);
+      // Restore text if send failed so user doesn't lose their message
+      setInputText(text);
+    } finally {
+      setSending(false);
     }
-    setTimeout(
-      () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }),
-      100,
-    );
-  };
+  }, [inputText, selectedUser, sending]);
 
   const handleNewChat = async () => {
     setShowNewChat(true);
@@ -189,6 +214,7 @@ export default function Chat() {
   const goBack = () => {
     setMobileView('list');
     setSelectedUser(null);
+    setMessages([]);
     loadConversations();
   };
 

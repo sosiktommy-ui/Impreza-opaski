@@ -10,7 +10,6 @@ import Acceptance from './pages/Acceptance';
 import Expenses from './pages/Expenses';
 import Inventory from './pages/Inventory';
 import Users from './pages/Users';
-import Overview from './pages/Overview';
 import History from './pages/History';
 import ProblematicTransfers from './pages/ProblematicTransfers';
 import Profile from './pages/Profile';
@@ -110,15 +109,6 @@ export default function App() {
           element={
             <PrivateRoute roles={['ADMIN', 'OFFICE']}>
               <Users />
-            </PrivateRoute>
-          }
-        />
-
-        <Route
-          path="overview"
-          element={
-            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY']}>
-              <Overview />
             </PrivateRoute>
           }
         />
