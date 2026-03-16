@@ -25,7 +25,7 @@ export default function Expenses() {
   const [cities, setCities] = useState([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [auraEvents, setAuraEvents] = useState([]);
+  const [imprezaEvents, setimprezaEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState('');
 
   // Filters
@@ -72,17 +72,17 @@ export default function Expenses() {
     }
   };
 
-  // Load AURA events filtered by user's city (for CITY role)
-  const loadAuraEvents = async (targetCityName) => {
+  // Load IMPREZA events filtered by user's city (for CITY role)
+  const loadimprezaEvents = async (targetCityName) => {
     try {
       const params = {};
       // If we know the city name, filter on server side
       if (targetCityName) params.city = targetCityName;
       const { data } = await eventsApi.getEvents(params);
       const list = data?.data || data;
-      setAuraEvents(Array.isArray(list) ? list : []);
+      setimprezaEvents(Array.isArray(list) ? list : []);
     } catch (err) {
-      console.error('Failed to load AURA events', err);
+      console.error('Failed to load IMPREZA events', err);
     }
   };
 
@@ -145,16 +145,16 @@ export default function Expenses() {
     setShowCreate(true);
     setError('');
     setSelectedEvent('');
-    setAuraEvents([]);
+    setimprezaEvents([]);
 
     if (user.role === 'CITY') {
       setCityId(user.cityId);
       // Auto-load events for this city
       const cityName = user.city?.name;
       if (cityName) {
-        await loadAuraEvents(cityName);
+        await loadimprezaEvents(cityName);
       } else {
-        await loadAuraEvents();
+        await loadimprezaEvents();
       }
     }
   };
@@ -171,12 +171,12 @@ export default function Expenses() {
     if (id) {
       const city = cities.find((c) => c.id === id);
       if (city?.name) {
-        await loadAuraEvents(city.name);
+        await loadimprezaEvents(city.name);
       } else {
-        await loadAuraEvents();
+        await loadimprezaEvents();
       }
     } else {
-      setAuraEvents([]);
+      setimprezaEvents([]);
     }
   };
 
@@ -184,7 +184,7 @@ export default function Expenses() {
     const val = e.target.value;
     setSelectedEvent(val);
     if (val) {
-      const ev = auraEvents.find((ev) => String(ev.id) === val);
+      const ev = imprezaEvents.find((ev) => String(ev.id) === val);
       if (ev) {
         setEventName(ev.title);
         setEventDate(ev.date ? ev.date.slice(0, 10) : '');
@@ -203,7 +203,7 @@ export default function Expenses() {
 
     const targetCityId = user.role === 'CITY' ? user.cityId : cityId;
     if (!targetCityId) { setError('Выберите город'); return; }
-    if (!eventName.trim()) { setError('Выберите расход из списка AURA'); return; }
+    if (!eventName.trim()) { setError('Выберите расход из списка IMPREZA'); return; }
 
     const black = parseInt(quantities.black) || 0;
     const white = parseInt(quantities.white) || 0;
@@ -244,7 +244,7 @@ export default function Expenses() {
     setNotes('');
     setError('');
     setSelectedEvent('');
-    setAuraEvents([]);
+    setimprezaEvents([]);
   };
 
   const handleDelete = async (id) => {
@@ -271,7 +271,7 @@ export default function Expenses() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><CalendarDays size={22} className="text-brand-500" /> Расходы</h2>
-          <p className="text-xs text-content-muted mt-0.5">Учёт расхода браслетов по событиям AURA</p>
+          <p className="text-xs text-content-muted mt-0.5">Учёт расхода браслетов по событиям IMPREZA</p>
         </div>
         {user.role === 'CITY' && (
           <Button onClick={openCreate} size="sm">
@@ -497,19 +497,19 @@ export default function Expenses() {
         title="Новый расход"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* AURA events dropdown */}
+          {/* IMPREZA events dropdown */}
           <div>
             <label className="block text-sm font-medium text-content-primary mb-1">
-              Расход (AURA)
+              Расход (IMPREZA)
             </label>
-            {auraEvents.length > 0 ? (
+            {imprezaEvents.length > 0 ? (
                 <select
                   value={selectedEvent}
                   onChange={handleEventSelect}
                   className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
                 >
                   <option value="">— Выберите расход —</option>
-                  {auraEvents.map((ev) => (
+                  {imprezaEvents.map((ev) => (
                     <option key={ev.id} value={String(ev.id)}>
                       {ev.title} — {ev.city}{ev.date ? ` (${new Date(ev.date).toLocaleDateString('ru-RU')})` : ''}
                     </option>
@@ -517,7 +517,7 @@ export default function Expenses() {
                 </select>
               ) : (
                 <div className="text-sm text-content-muted bg-surface-secondary px-3 py-2.5 rounded-[var(--radius-sm)]">
-                  Нет расходов AURA для выбранного города
+                  Нет расходов IMPREZA для выбранного города
                 </div>
               )}
 
