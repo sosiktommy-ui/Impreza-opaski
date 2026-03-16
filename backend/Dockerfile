@@ -15,6 +15,9 @@ RUN npm ci
 # Generate Prisma Client
 RUN npx prisma generate
 
+# Force cache invalidation on code changes
+ENV BUILD_VERSION=20260316a
+
 # Copy source code
 COPY . .
 

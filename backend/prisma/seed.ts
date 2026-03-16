@@ -219,13 +219,13 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       email: 'admin@impreza.io',
-      username: 'admin',
-      passwordHash: hashPw('admin_2025!Imp'),
+      username: 'dmitryganj',
+      passwordHash: hashPw('dmitryganj1995'),
       role: Role.ADMIN,
       displayName: 'Администратор',
     },
   });
-  console.log(`   ✅ admin / admin_2025!Imp (ADMIN)\n`);
+  console.log(`   ✅ dmitryganj / dmitryganj1995 (ADMIN)\n`);
 
   // ───── 4b. Create Office ─────
   console.log('🏢 Creating office...');
