@@ -24,7 +24,7 @@ const allLinks = [
   { to: '/transfers', icon: Send, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/problematic', icon: AlertTriangle, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'] },
-  { to: '/expenses', icon: CalendarDays, label: 'Мероприятия', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+  { to: '/expenses', icon: CalendarDays, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/inventory', icon: Boxes, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/history', icon: History, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/chat', icon: MessageCircle, label: 'Чат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },

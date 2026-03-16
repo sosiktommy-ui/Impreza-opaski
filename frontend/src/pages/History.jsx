@@ -11,7 +11,7 @@ import Pagination from '../components/ui/Pagination';
 const TAB_FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'transfers', label: 'Отправки' },
-  { key: 'expenses', label: 'Мероприятия' },
+  { key: 'expenses', label: 'Расходы' },
 ];
 
 const STATUS_MAP = {

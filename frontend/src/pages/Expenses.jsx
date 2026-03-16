@@ -203,7 +203,7 @@ export default function Expenses() {
 
     const targetCityId = user.role === 'CITY' ? user.cityId : cityId;
     if (!targetCityId) { setError('Выберите город'); return; }
-    if (!eventName.trim()) { setError('Выберите мероприятие из списка AURA'); return; }
+    if (!eventName.trim()) { setError('Выберите расход из списка AURA'); return; }
 
     const black = parseInt(quantities.black) || 0;
     const white = parseInt(quantities.white) || 0;
@@ -248,7 +248,7 @@ export default function Expenses() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Удалить это мероприятие? Остатки будут восстановлены.')) return;
+    if (!confirm('Удалить этот расход? Остатки будут восстановлены.')) return;
     try {
       await inventoryApi.deleteExpense(id);
       await loadExpenses();
@@ -270,7 +270,7 @@ export default function Expenses() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><CalendarDays size={22} className="text-brand-500" /> Мероприятия</h2>
+          <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><CalendarDays size={22} className="text-brand-500" /> Расходы</h2>
           <p className="text-xs text-content-muted mt-0.5">Учёт расхода браслетов по событиям AURA</p>
         </div>
         {user.role === 'CITY' && (
@@ -289,7 +289,7 @@ export default function Expenses() {
             </div>
             <div>
               <div className="text-2xl font-bold text-content-primary">{stats.totalEvents}</div>
-              <div className="text-xs text-content-muted">Мероприятий</div>
+              <div className="text-xs text-content-muted">Расходов</div>
             </div>
           </div>
         </div>
@@ -404,7 +404,7 @@ export default function Expenses() {
       {filteredExpenses.length === 0 ? (
         <Card>
           <p className="text-sm text-gray-500 text-center py-6">
-            {expenses.length === 0 ? 'Нет мероприятий' : 'Ничего не найдено'}
+            {expenses.length === 0 ? 'Нет расходов' : 'Ничего не найдено'}
           </p>
         </Card>
       ) : (
@@ -479,7 +479,7 @@ export default function Expenses() {
       {filteredExpenses.length > 0 && (
         <div className="flex items-center justify-between bg-surface-card rounded-[var(--radius-md)] px-4 py-3 border border-edge">
           <span className="text-xs text-gray-500">
-            Показано {filteredExpenses.length} из {expenses.length} мероприятий
+            Показано {filteredExpenses.length} из {expenses.length} расходов
           </span>
           <span className="text-sm font-semibold text-content-primary">
             Итого: {filteredExpenses.reduce(
@@ -494,13 +494,13 @@ export default function Expenses() {
       <Modal
         open={showCreate}
         onClose={() => { setShowCreate(false); resetForm(); }}
-        title="Новое мероприятие"
+        title="Новый расход"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* AURA events dropdown */}
           <div>
             <label className="block text-sm font-medium text-content-primary mb-1">
-              Мероприятие (AURA)
+              Расход (AURA)
             </label>
             {auraEvents.length > 0 ? (
                 <select
@@ -508,7 +508,7 @@ export default function Expenses() {
                   onChange={handleEventSelect}
                   className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
                 >
-                  <option value="">— Выберите мероприятие —</option>
+                  <option value="">— Выберите расход —</option>
                   {auraEvents.map((ev) => (
                     <option key={ev.id} value={String(ev.id)}>
                       {ev.title} — {ev.city}{ev.date ? ` (${new Date(ev.date).toLocaleDateString('ru-RU')})` : ''}
@@ -517,7 +517,7 @@ export default function Expenses() {
                 </select>
               ) : (
                 <div className="text-sm text-content-muted bg-surface-secondary px-3 py-2.5 rounded-[var(--radius-sm)]">
-                  Нет мероприятий AURA для выбранного города
+                  Нет расходов AURA для выбранного города
                 </div>
               )}
 
