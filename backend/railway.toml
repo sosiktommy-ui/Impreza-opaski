@@ -1,5 +1,5 @@
 [deploy]
-startCommand = "node_modules/.bin/prisma migrate deploy || echo 'Migration skipped'; node dist/main.js"
+startCommand = "npx prisma migrate deploy && node dist/main.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

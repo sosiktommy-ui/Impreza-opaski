@@ -15,9 +15,6 @@ RUN npm ci
 # Generate Prisma Client
 RUN npx prisma generate
 
-# Force cache invalidation on code changes
-ENV BUILD_VERSION=20260316a
-
 # Copy source code
 COPY . .
 
@@ -40,4 +37,4 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy || echo 'Migration skipped'; node dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
