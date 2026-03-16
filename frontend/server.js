@@ -1,10 +1,12 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { join, extname, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const PORT = process.env.PORT || 3000;
-const DIST = join(import.meta.dirname, 'dist');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DIST = join(__dirname, 'dist');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
