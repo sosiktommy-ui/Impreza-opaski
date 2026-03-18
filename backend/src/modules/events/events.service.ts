@@ -178,7 +178,7 @@ export class EventsService {
         seen.set(key, {
           id: t.id,
           title: t.event_name.trim(),
-          date: t.event_date,
+          date: this.parseEventDate(t.event_date),
           city: (t.city_name || '').trim(),
           country: (t.country_code || '').trim(),
           venue: t.venue ? String(t.venue).trim() : undefined,
@@ -189,6 +189,28 @@ export class EventsService {
     const events = [...seen.values()];
     this.logger.log(`Fetched ${events.length} unique events from IMPREZA`);
     return events;
+  }
+
+  private parseEventDate(raw: string | undefined): string {
+    if (!raw) return '';
+    const trimmed = raw.trim();
+    // Format "DD.MM" -> YYYY-MM-DD (current year)
+    const ddmm = trimmed.match(/^(\d{1,2})\.(\d{1,2})$/);
+    if (ddmm) {
+      const day = ddmm[1].padStart(2, '0');
+      const month = ddmm[2].padStart(2, '0');
+      return `${new Date().getFullYear()}-${month}-${day}`;
+    }
+    // Format "DD.MM.YYYY" -> YYYY-MM-DD
+    const ddmmyyyy = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (ddmmyyyy) {
+      const day = ddmmyyyy[1].padStart(2, '0');
+      const month = ddmmyyyy[2].padStart(2, '0');
+      return `${ddmmyyyy[3]}-${month}-${day}`;
+    }
+    // Already ISO or unknown — validate
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? '' : trimmed;
   }
 
   private async getCachedEvents(): Promise<EventInfo[] | null> {

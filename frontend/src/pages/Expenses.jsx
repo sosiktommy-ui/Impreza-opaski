@@ -187,7 +187,7 @@ export default function Expenses() {
       const ev = imprezaEvents.find((ev) => String(ev.id) === val);
       if (ev) {
         setEventName(ev.title);
-        setEventDate(ev.date ? ev.date.slice(0, 10) : '');
+        setEventDate(ev.date && !isNaN(new Date(ev.date).getTime()) ? ev.date.slice(0, 10) : '');
         setLocation(ev.venue || ev.city || '');
       }
     } else {
@@ -432,7 +432,7 @@ export default function Expenses() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="text-xs text-content-muted">
-                        {ex.eventDate
+                        {ex.eventDate && !isNaN(new Date(ex.eventDate).getTime())
                           ? new Date(ex.eventDate).toLocaleDateString('ru-RU')
                           : new Date(ex.createdAt).toLocaleDateString('ru-RU')}
                       </div>
@@ -511,7 +511,7 @@ export default function Expenses() {
                   <option value="">— Выберите расход —</option>
                   {imprezaEvents.map((ev) => (
                     <option key={ev.id} value={String(ev.id)}>
-                      {ev.title} — {ev.city}{ev.date ? ` (${new Date(ev.date).toLocaleDateString('ru-RU')})` : ''}
+                      {ev.title}
                     </option>
                   ))}
                 </select>
@@ -525,7 +525,7 @@ export default function Expenses() {
               {selectedEvent && eventName && (
                 <div className="mt-2 bg-brand-600/10 text-brand-500 rounded-[var(--radius-sm)] px-3 py-2 text-sm space-y-0.5">
                   <div className="font-medium">{eventName}</div>
-                  {eventDate && (
+                  {eventDate && !isNaN(new Date(eventDate).getTime()) && (
                     <div className="text-xs flex items-center gap-1">
                       <CalendarDays size={12} />
                       {new Date(eventDate).toLocaleDateString('ru-RU')}

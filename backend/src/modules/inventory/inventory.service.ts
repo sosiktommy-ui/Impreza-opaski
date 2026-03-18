@@ -246,7 +246,7 @@ export class InventoryService {
         data: {
           cityId,
           eventName,
-          eventDate: eventDate ? new Date(eventDate) : new Date(),
+          eventDate: eventDate && !isNaN(new Date(eventDate).getTime()) ? new Date(eventDate) : new Date(),
           location: location || null,
           black,
           white,
