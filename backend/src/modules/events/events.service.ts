@@ -163,11 +163,11 @@ export class EventsService {
   }
 
   private parseTickets(data: unknown): EventInfo[] {
-    const tickets: ImprezaTicket[] = Array.isArray(data)
+    const tickets = (Array.isArray(data)
       ? data
       : (data as Record<string, unknown>)?.tickets ??
         (data as Record<string, unknown>)?.results ??
-        (data as Record<string, unknown>)?.data ?? [];
+        (data as Record<string, unknown>)?.data ?? []) as ImprezaTicket[];
 
     // Deduplicate by event_name + event_date
     const seen = new Map<string, EventInfo>();
