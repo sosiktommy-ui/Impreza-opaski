@@ -13,6 +13,7 @@ import {
   History,
   PanelLeftClose,
   PanelLeft,
+  MapIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
@@ -26,6 +27,7 @@ const allLinks = [
   { to: '/problematic', icon: AlertTriangle, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'] },
   { to: '/expenses', icon: CalendarDays, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/inventory', icon: Boxes, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+  { to: '/map', icon: MapIcon, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
   { to: '/history', icon: History, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/chat', icon: MessageCircle, label: 'Чат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   { to: '/users', icon: Settings, label: 'Настройки', roles: ['ADMIN', 'OFFICE'] },
