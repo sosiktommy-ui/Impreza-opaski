@@ -39,6 +39,11 @@ export default function Transfers() {
   const [quantities, setQuantities] = useState({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
   const [notes, setNotes] = useState('');
 
+  // Office receiver (for ADMIN)
+  const [receiverMode, setReceiverMode] = useState('location'); // 'location' | 'office'
+  const [offices, setOffices] = useState([]);
+  const [toOfficeId, setToOfficeId] = useState('');
+
   useEffect(() => {
     loadTransfers();
   }, [activeTab]);
@@ -106,6 +111,15 @@ export default function Transfers() {
       } catch (err) {
         console.error(err);
       }
+      if (user.role === 'ADMIN') {
+        try {
+          const { data } = await usersApi.getOffices();
+          const result = data.data || data;
+          setOffices(Array.isArray(result) ? result : []);
+        } catch (err) {
+          console.error(err);
+        }
+      }
     } else if (user.role === 'COUNTRY') {
       try {
         const { data } = await usersApi.getCities(user.countryId);
@@ -151,7 +165,14 @@ export default function Transfers() {
 
     let receiverType, receiverCountryId, receiverCityId, receiverOfficeId;
 
-    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+    if (user.role === 'ADMIN' && receiverMode === 'office') {
+      if (!toOfficeId) {
+        setError('Выберите офис-получатель');
+        return;
+      }
+      receiverType = 'OFFICE';
+      receiverOfficeId = toOfficeId;
+    } else if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       if (!toCountryId) {
         setError('Выберите страну-получателя');
         return;
@@ -214,6 +235,8 @@ export default function Transfers() {
   const resetForm = () => {
     setToCountryId('');
     setToCityId('');
+    setToOfficeId('');
+    setReceiverMode('location');
     setCities([]);
     setQuantities({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
     setNotes('');
@@ -222,6 +245,11 @@ export default function Transfers() {
 
   // Receiver label for the summary hint
   const receiverLabel = useMemo(() => {
+    if (user.role === 'ADMIN' && receiverMode === 'office') {
+      const office = offices.find((o) => o.id === toOfficeId);
+      if (office) return `Офис: ${office.name}`;
+      return null;
+    }
     if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       const country = countries.find((c) => c.id === toCountryId);
       const city = cities.find((c) => c.id === toCityId);
@@ -236,7 +264,7 @@ export default function Transfers() {
       return user.country?.name || 'Страна';
     }
     return null;
-  }, [user.role, toCountryId, toCityId, countries, cities]);
+  }, [user.role, receiverMode, toCountryId, toCityId, toOfficeId, countries, cities, offices]);
 
   if (loading && transfers.length === 0) {
     return (
@@ -403,8 +431,31 @@ export default function Transfers() {
         title="Новая отправка"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* ADMIN: toggle between location and office */}
+          {user.role === 'ADMIN' && offices.length > 0 && (
+            <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
+              {[
+                { key: 'location', label: 'Страна / Город' },
+                { key: 'office', label: 'Офис' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => { setReceiverMode(tab.key); setToCountryId(''); setToCityId(''); setToOfficeId(''); setCities([]); }}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                    receiverMode === tab.key
+                      ? 'bg-surface-card text-content-primary shadow-sm'
+                      : 'text-content-secondary hover:text-content-primary'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* ADMIN/OFFICE: country → city (cascading) */}
-          {(user.role === 'ADMIN' || user.role === 'OFFICE') && (
+          {(user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'location' && (
             <>
               <Select
                 label="Страна-получатель"
@@ -435,6 +486,19 @@ export default function Transfers() {
                 </div>
               )}
             </>
+          )}
+
+          {/* ADMIN: office receiver */}
+          {user.role === 'ADMIN' && receiverMode === 'office' && (
+            <Select
+              label="Офис-получатель"
+              value={toOfficeId}
+              onChange={(e) => setToOfficeId(e.target.value)}
+              options={[
+                { value: '', label: '— Выберите офис —' },
+                ...offices.map((o) => ({ value: o.id, label: o.name })),
+              ]}
+            />
           )}
 
           {/* COUNTRY: just city selector */}
