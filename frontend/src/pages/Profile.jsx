@@ -10,22 +10,24 @@ import { Lock, Save, Check } from 'lucide-react';
 const ROLE_LABELS = { ADMIN: 'Администратор', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
 function Avatar({ url, name, size = 'lg' }) {
+  const [imgError, setImgError] = useState(false);
   const sizes = { sm: 'w-10 h-10 text-sm', md: 'w-16 h-16 text-xl', lg: 'w-24 h-24 text-3xl' };
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt={name}
-        className={`${sizes[size]} rounded-full object-cover border-2 border-edge`}
-      />
-    );
-  }
   const initials = (name || '?')
     .split(' ')
     .map((w) => w[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
+  if (url && !imgError) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        onError={() => setImgError(true)}
+        className={`${sizes[size]} rounded-full object-cover border-2 border-edge`}
+      />
+    );
+  }
   return (
     <div
       className={`${sizes[size]} rounded-full bg-brand-100 dark:bg-brand-900 text-brand-500 flex items-center justify-center font-bold border-2 border-brand-200 dark:border-brand-800`}
@@ -172,12 +174,17 @@ export default function Profile() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Необязательно"
           />
-          <Input
-            label="URL аватара"
-            value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
-            placeholder="https://example.com/avatar.jpg"
-          />
+          <div>
+            <Input
+              label="URL аватара"
+              value={avatarUrl}
+              onChange={(e) => setAvatarUrl(e.target.value)}
+              placeholder="https://example.com/avatar.jpg"
+            />
+            <p className="text-xs text-content-muted mt-1">
+              Вставьте прямую ссылку на изображение (.jpg, .png, .webp). Нажмите правой кнопкой на картинку → &laquo;Копировать адрес изображения&raquo;
+            </p>
+          </div>
           {avatarUrl && (
             <div className="flex items-center gap-3">
               <span className="text-xs text-content-secondary">Предпросмотр:</span>
