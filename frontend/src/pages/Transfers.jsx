@@ -42,6 +42,7 @@ export default function Transfers() {
   // Office receiver (for ADMIN)
   const [receiverMode, setReceiverMode] = useState('location'); // 'location' | 'office'
   const [offices, setOffices] = useState([]);
+  const [officesLoading, setOfficesLoading] = useState(false);
   const [toOfficeId, setToOfficeId] = useState('');
 
   useEffect(() => {
@@ -112,13 +113,7 @@ export default function Transfers() {
         console.error(err);
       }
       if (user.role === 'ADMIN') {
-        try {
-          const { data } = await usersApi.getOffices();
-          const result = data.data || data;
-          setOffices(Array.isArray(result) ? result : []);
-        } catch (err) {
-          console.error(err);
-        }
+        loadOffices();
       }
     } else if (user.role === 'COUNTRY') {
       try {
@@ -127,6 +122,20 @@ export default function Transfers() {
       } catch (err) {
         console.error(err);
       }
+    }
+  };
+
+  const loadOffices = async () => {
+    setOfficesLoading(true);
+    try {
+      const res = await usersApi.getOffices();
+      const payload = res.data?.data ?? res.data;
+      const list = Array.isArray(payload) ? payload : [];
+      setOffices(list);
+    } catch (err) {
+      console.error('Failed to load offices:', err);
+    } finally {
+      setOfficesLoading(false);
     }
   };
 
@@ -432,7 +441,7 @@ export default function Transfers() {
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* ADMIN: toggle between location and office */}
-          {user.role === 'ADMIN' && offices.length > 0 && (
+          {user.role === 'ADMIN' && (
             <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
               {[
                 { key: 'location', label: 'Страна / Город' },
@@ -441,7 +450,7 @@ export default function Transfers() {
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => { setReceiverMode(tab.key); setToCountryId(''); setToCityId(''); setToOfficeId(''); setCities([]); }}
+                  onClick={() => { setReceiverMode(tab.key); setToCountryId(''); setToCityId(''); setToOfficeId(''); setCities([]); if (tab.key === 'office' && offices.length === 0) loadOffices(); }}
                   className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                     receiverMode === tab.key
                       ? 'bg-surface-card text-content-primary shadow-sm'
@@ -495,7 +504,7 @@ export default function Transfers() {
               value={toOfficeId}
               onChange={(e) => setToOfficeId(e.target.value)}
               options={[
-                { value: '', label: '— Выберите офис —' },
+                { value: '', label: officesLoading ? 'Загрузка...' : offices.length === 0 ? 'Нет офисов' : '— Выберите офис —' },
                 ...offices.map((o) => ({ value: o.id, label: o.name })),
               ]}
             />
