@@ -50,9 +50,15 @@ export class AuthService {
     username: string,
     password: string,
   ): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findUnique({
+    // Try by username first, then by email
+    let user = await this.prisma.user.findUnique({
       where: { username },
     });
+    if (!user && username.includes('@')) {
+      user = await this.prisma.user.findFirst({
+        where: { email: username },
+      });
+    }
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Invalid credentials');

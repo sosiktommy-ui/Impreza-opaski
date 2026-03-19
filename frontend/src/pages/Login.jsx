@@ -40,10 +40,10 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-6 space-y-4">
           <Input
-            label="Логин"
+            label="Логин или Email"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Введите логин"
+            placeholder="Введите логин или email"
             autoComplete="username"
             required
           />
