@@ -28,6 +28,7 @@ function TransferRow({ t }) {
   const st = STATUS_MAP[t.status] || { label: t.status, variant: 'default' };
   const senderName = t.senderCity?.name || t.senderCountry?.name || t.senderOffice?.name || '—';
   const receiverName = t.receiverCity?.name || t.receiverCountry?.name || t.receiverOffice?.name || '—';
+  const creatorName = t.createdByUser?.displayName || t.createdByUser?.username || null;
 
   return (
     <div className="flex items-start gap-3 p-3">
@@ -48,6 +49,7 @@ function TransferRow({ t }) {
         </div>
         <p className="text-2xs text-content-muted mt-1">
           {new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          {creatorName && <span className="ml-2 text-content-secondary">· отправил: {creatorName}</span>}
           {t.notes && <span className="ml-2 text-content-secondary">· {t.notes}</span>}
         </p>
       </div>
