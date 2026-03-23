@@ -96,7 +96,11 @@ export default function Dashboard() {
 
         if (isAdminOrOffice && Array.isArray(dPayload)) {
           const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+          // Filter out ADMIN and OFFICE inventory - only count COUNTRY and CITY balances
           dPayload.forEach((inv) => {
+            if (inv.entityType === 'ADMIN' || inv.entityType === 'OFFICE') {
+              return; // Skip admin/office balances
+            }
             if (totals[inv.itemType] !== undefined) {
               totals[inv.itemType] += inv.quantity || 0;
             }
@@ -143,7 +147,7 @@ export default function Dashboard() {
     { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'], badge: badgeProblematic },
     { label: 'Зависшие', icon: Clock, path: '/pending', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badge: pendingCount },
     { label: 'Статистика', icon: BarChart3, path: '/statistics', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-600', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Баланс', icon: Boxes, path: '/balance', color: 'bg-amber-600', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   ].filter((a) => a.roles.includes(user.role));
 
   // Helper for sender/receiver labels
@@ -202,12 +206,18 @@ export default function Dashboard() {
       {/* ── Stats Grid ───────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-400', bg: 'bg-orange-500/10', tooltip: (user.role === 'CITY' || user.role === 'COUNTRY') ? 'Если есть проблемные отправки — обратитесь к администратору или офису для решения' : null },
-          { value: stats.countries, label: 'Стран', icon: Globe, iconColor: 'text-violet-400', bg: 'bg-violet-500/10' },
-          { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-amber-400', bg: 'bg-amber-500/10' },
-        ].map(({ value, label, icon: Icon, iconColor, bg, tooltip }) => (
-          <div key={label} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 hover:border-edge/80 transition-colors" title={tooltip || undefined} style={tooltip ? { cursor: 'help' } : undefined}>
+          { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-400', bg: 'bg-blue-500/10', path: '/history' },
+          { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-400', bg: 'bg-orange-500/10', tooltip: (user.role === 'CITY' || user.role === 'COUNTRY') ? 'Если есть проблемные отправки — обратитесь к администратору или офису для решения' : null, path: user.role === 'ADMIN' || user.role === 'OFFICE' ? '/problematic' : null },
+          { value: pendingCount || pending.length, label: 'Зависшие', icon: Clock, iconColor: 'text-amber-400', bg: 'bg-amber-500/10', path: '/pending' },
+          { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-violet-400', bg: 'bg-violet-500/10' },
+        ].map(({ value, label, icon: Icon, iconColor, bg, tooltip, path }) => (
+          <div
+            key={label}
+            onClick={() => path && navigate(path)}
+            className={`bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 hover:border-edge/80 transition-colors ${path ? 'cursor-pointer hover:bg-surface-card-hover' : ''}`}
+            title={tooltip || undefined}
+            style={tooltip ? { cursor: 'help' } : undefined}
+          >
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-[var(--radius-sm)] ${bg} flex items-center justify-center flex-shrink-0`}>
                 <Icon size={18} className={iconColor} />
@@ -231,7 +241,7 @@ export default function Dashboard() {
           }
           action={
             <button
-              onClick={() => navigate('/inventory')}
+              onClick={() => navigate('/balance')}
               className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1"
             >
               Подробнее <ArrowRight size={12} />

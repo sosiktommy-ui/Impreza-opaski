@@ -7,8 +7,8 @@ import Select from '../components/ui/Select';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-import BraceletBadge from '../components/ui/BraceletBadge';
-import { Boxes, Plus, Minus } from 'lucide-react';
+import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
+import { Boxes, Plus, Minus, Package, History, RefreshCw } from 'lucide-react';
 
 const COLORS = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const COLOR_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -18,10 +18,17 @@ const COLOR_STYLES = {
   RED: 'bg-red-600 text-white',
   BLUE: 'bg-blue-600 text-white',
 };
+const BRACELET_KEYS = ['black', 'white', 'red', 'blue'];
+const BRACELET_LABELS = { black: 'Чёрные', white: 'Белые', red: 'Красные', blue: 'Синие' };
 
 export default function Inventory() {
   const { user } = useAuthStore();
   const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
+  
+  // Tab state: 'my' = Мой баланс (склад), 'system' = Баланс системы
+  const [activeTab, setActiveTab] = useState(isAdminOrOffice ? 'my' : 'system');
+  
+  // System balance state (existing inventory)
   const [balances, setBalances] = useState([]);
   const [allInventory, setAllInventory] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -33,23 +40,54 @@ export default function Inventory() {
   const [showAdjust, setShowAdjust] = useState(false);
   const [adjustForm, setAdjustForm] = useState({ itemType: 'BLACK', delta: 0, reason: '' });
   const [adjusting, setAdjusting] = useState(false);
+  
+  // Warehouse (Мой баланс) state
+  const [warehouseBalance, setWarehouseBalance] = useState(null);
+  const [warehouseHistory, setWarehouseHistory] = useState([]);
+  const [offices, setOffices] = useState([]);
+  const [selectedOfficeId, setSelectedOfficeId] = useState('');
+  const [warehouseLoading, setWarehouseLoading] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ black: '', white: '', red: '', blue: '', notes: '' });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   useEffect(() => {
     init();
   }, []);
 
+  // Load warehouse data when tab changes to 'my'
+  useEffect(() => {
+    if (activeTab === 'my' && isAdminOrOffice) {
+      loadWarehouseData();
+    }
+  }, [activeTab, selectedOfficeId]);
+
   const init = async () => {
     if (isAdminOrOffice) {
       try {
-        const [countriesRes, inventoryRes] = await Promise.all([
+        const [countriesRes, inventoryRes, officesRes] = await Promise.all([
           usersApi.getCountries(),
           inventoryApi.getAll(),
+          usersApi.getOffices().catch(() => ({ data: [] })),
         ]);
         const cPayload = countriesRes.data?.data || countriesRes.data;
         setCountries(Array.isArray(cPayload) ? cPayload : []);
 
+        // Filter out ADMIN and OFFICE inventory from system totals
         const iPayload = inventoryRes.data?.data || inventoryRes.data;
-        setAllInventory(Array.isArray(iPayload) ? iPayload : []);
+        const filtered = (Array.isArray(iPayload) ? iPayload : []).filter(
+          inv => inv.entityType !== 'ADMIN' && inv.entityType !== 'OFFICE'
+        );
+        setAllInventory(filtered);
+
+        const oPayload = officesRes.data?.data || officesRes.data;
+        setOffices(Array.isArray(oPayload) ? oPayload : []);
+
+        // Auto-select office for OFFICE users
+        if (user.role === 'OFFICE' && user.officeId) {
+          setSelectedOfficeId(user.officeId);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -262,6 +300,73 @@ export default function Inventory() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────
+  // WAREHOUSE (Мой баланс) FUNCTIONS
+  // ─────────────────────────────────────────────────────────────────────
+  const loadWarehouseData = async () => {
+    setWarehouseLoading(true);
+    try {
+      const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
+      const [balanceRes, historyRes] = await Promise.all([
+        inventoryApi.getWarehouseBalance(officeId || undefined),
+        inventoryApi.getWarehouseCreationHistory({ officeId: officeId || undefined, take: 50 }),
+      ]);
+      setWarehouseBalance(balanceRes.data);
+      const histList = historyRes.data?.data || historyRes.data;
+      setWarehouseHistory(Array.isArray(histList) ? histList : []);
+    } catch (err) {
+      console.error('Failed to load warehouse data', err);
+    } finally {
+      setWarehouseLoading(false);
+    }
+  };
+
+  const handleCreateBracelets = async (e) => {
+    e.preventDefault();
+    setCreateError('');
+    const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
+    if (!officeId) {
+      setCreateError('Выберите офис');
+      return;
+    }
+    const black = parseInt(createForm.black) || 0;
+    const white = parseInt(createForm.white) || 0;
+    const red = parseInt(createForm.red) || 0;
+    const blue = parseInt(createForm.blue) || 0;
+    if (black + white + red + blue === 0) {
+      setCreateError('Укажите количество браслетов');
+      return;
+    }
+    setCreating(true);
+    try {
+      await inventoryApi.createBracelets({
+        officeId,
+        black,
+        white,
+        red,
+        blue,
+        notes: createForm.notes.trim() || undefined,
+      });
+      setShowCreate(false);
+      setCreateForm({ black: '', white: '', red: '', blue: '', notes: '' });
+      await loadWarehouseData();
+    } catch (err) {
+      setCreateError(err.response?.data?.message || 'Ошибка создания браслетов');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Warehouse stats
+  const warehouseStats = useMemo(() => {
+    if (!warehouseBalance) return { total: 0, black: 0, white: 0, red: 0, blue: 0 };
+    const black = warehouseBalance.black || 0;
+    const white = warehouseBalance.white || 0;
+    const red = warehouseBalance.red || 0;
+    const blue = warehouseBalance.blue || 0;
+    return { total: black + white + red + blue, black, white, red, blue };
+  }, [warehouseBalance]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -276,14 +381,219 @@ export default function Inventory() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Boxes size={22} className="text-brand-500" /> Остатки</h2>
-        {isAdminOrOffice && viewEntity.type && viewEntity.id && (
-          <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline">
-            <Plus size={16} /> Корректировка
-          </Button>
+      {/* ── Header with Tabs for Admin/Office ─────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 className="text-xl font-bold text-content-primary flex items-center gap-2">
+          <Boxes size={22} className="text-brand-500" /> Баланс
+        </h2>
+        
+        {isAdminOrOffice && (
+          <div className="flex items-center gap-2 bg-surface-secondary rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('my')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'my'
+                  ? 'bg-brand-500 text-white shadow-sm'
+                  : 'text-content-secondary hover:text-content-primary hover:bg-surface-card-hover'
+              }`}
+            >
+              <Package size={16} className="inline mr-2" />
+              Мой баланс
+            </button>
+            <button
+              onClick={() => setActiveTab('system')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'system'
+                  ? 'bg-brand-500 text-white shadow-sm'
+                  : 'text-content-secondary hover:text-content-primary hover:bg-surface-card-hover'
+              }`}
+            >
+              <Boxes size={16} className="inline mr-2" />
+              Баланс системы
+            </button>
+          </div>
         )}
       </div>
+      
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/* TAB: Мой баланс (Warehouse) - ADMIN/OFFICE only */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {isAdminOrOffice && activeTab === 'my' && (
+        <div className="space-y-4">
+          {/* Office selector (ADMIN only) */}
+          {user.role === 'ADMIN' && offices.length > 0 && (
+            <Card>
+              <Select
+                label="Офис"
+                value={selectedOfficeId}
+                onChange={(e) => setSelectedOfficeId(e.target.value)}
+              >
+                <option value="">Все офисы</option>
+                {offices.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name} ({o.code})</option>
+                ))}
+              </Select>
+            </Card>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => loadWarehouseData()} variant="outline" size="sm" disabled={warehouseLoading}>
+              <RefreshCw size={16} className={warehouseLoading ? 'animate-spin' : ''} />
+            </Button>
+            <Button onClick={() => setShowCreate(true)} size="sm">
+              <Plus size={18} /> Создать браслеты
+            </Button>
+          </div>
+
+          {/* Balance Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
+                  <Package size={18} className="text-brand-500" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-content-primary">{warehouseStats.total.toLocaleString()}</div>
+                  <div className="text-xs text-content-muted">Всего</div>
+                </div>
+              </div>
+            </div>
+            {BRACELET_KEYS.map((key) => {
+              const colors = {
+                black: { bg: 'bg-gray-100 dark:bg-gray-800', dot: 'bg-gray-900 dark:bg-gray-300' },
+                white: { bg: 'bg-gray-50 dark:bg-gray-700', dot: 'bg-gray-300 dark:bg-gray-500 border border-gray-400' },
+                red: { bg: 'bg-red-50 dark:bg-red-900/30', dot: 'bg-red-500' },
+                blue: { bg: 'bg-blue-50 dark:bg-blue-900/30', dot: 'bg-blue-500' },
+              };
+              return (
+                <div key={key} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-[var(--radius-sm)] ${colors[key].bg} flex items-center justify-center`}>
+                      <div className={`w-4 h-4 rounded-full ${colors[key].dot}`} />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-content-primary">{warehouseStats[key].toLocaleString()}</div>
+                      <div className="text-xs text-content-muted">{BRACELET_LABELS[key]}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Creation History */}
+          <Card title={<span className="flex items-center gap-2"><History size={18} /> История создания</span>}>
+            {warehouseLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin h-6 w-6 border-2 border-brand-200 border-t-brand-600 rounded-full" />
+              </div>
+            ) : warehouseHistory.length === 0 ? (
+              <div className="text-center py-8 text-content-muted">
+                <Package size={32} className="mx-auto mb-2 opacity-30" />
+                <p>История пуста</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-edge -mx-4">
+                {warehouseHistory.map((item) => (
+                  <div key={item.id} className="px-4 py-3 hover:bg-surface-hover transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-medium text-content-primary">
+                          {item.office?.name || 'Офис'}
+                        </div>
+                        <div className="text-xs text-content-muted mt-1">
+                          {new Date(item.createdAt).toLocaleString('ru-RU')}
+                          {item.createdByUser && (
+                            <span className="ml-2">• {item.createdByUser.displayName || item.createdByUser.username}</span>
+                          )}
+                        </div>
+                        {item.notes && (
+                          <div className="text-xs text-content-secondary mt-1 italic">{item.notes}</div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-green-600">+{item.totalAmount?.toLocaleString()}</div>
+                        <BraceletRow black={item.black} white={item.white} red={item.red} blue={item.blue} size="sm" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Create Modal */}
+          <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Создать браслеты">
+            <form onSubmit={handleCreateBracelets} className="space-y-4">
+              {createError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-[var(--radius-md)] text-red-600 dark:text-red-400 text-sm">
+                  {createError}
+                </div>
+              )}
+              {user.role === 'ADMIN' && (
+                <Select
+                  label="Офис *"
+                  value={selectedOfficeId}
+                  onChange={(e) => setSelectedOfficeId(e.target.value)}
+                  required
+                >
+                  <option value="">Выберите офис</option>
+                  {offices.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name} ({o.code})</option>
+                  ))}
+                </Select>
+              )}
+              {user.role === 'OFFICE' && (
+                <div className="text-sm text-content-secondary">
+                  Офис: <span className="font-medium">{user.office?.name || 'Ваш офис'}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                {BRACELET_KEYS.map((key) => (
+                  <Input
+                    key={key}
+                    type="number"
+                    label={BRACELET_LABELS[key]}
+                    value={createForm[key]}
+                    onChange={(e) => setCreateForm({ ...createForm, [key]: e.target.value })}
+                    min="0"
+                    placeholder="0"
+                  />
+                ))}
+              </div>
+              <Input
+                label="Примечание"
+                value={createForm.notes}
+                onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
+                placeholder="Опционально: партия, поставщик и т.д."
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
+                  Отмена
+                </Button>
+                <Button type="submit" disabled={creating}>
+                  {creating ? 'Создание...' : 'Создать'}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/* TAB: Баланс системы (System Inventory) */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {(activeTab === 'system' || !isAdminOrOffice) && (
+        <div className="space-y-4">
+          {/* Action button for adjustments */}
+          {isAdminOrOffice && viewEntity.type && viewEntity.id && (
+            <div className="flex justify-end">
+              <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline">
+                <Plus size={16} /> Корректировка
+              </Button>
+            </div>
+          )}
 
       {/* ── System Totals (Admin/Office) ──────────────── */}
       {isAdminOrOffice && allInventory.length > 0 && (
@@ -496,8 +806,12 @@ export default function Inventory() {
           </Card>
         );
       })()}
+        </div>
+      )}
 
-      {/* Adjust balance modal */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/* SHARED: Adjust balance modal */}
+      {/* ════════════════════════════════════════════════════════════════ */}
       <Modal open={showAdjust} onClose={() => setShowAdjust(false)} title="Корректировка остатков">
         <div className="space-y-4">
           <div className="text-sm text-gray-500">

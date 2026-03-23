@@ -113,3 +113,29 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
+
+/* ── Admin Transfer Highlighting ───────────── */
+.transfer-admin {
+  border-left: 3px solid #7C3AED;
+  background: rgba(124, 58, 237, 0.03);
+}
+.dark .transfer-admin {
+  background: rgba(124, 58, 237, 0.08);
+}
+.transfer-admin:hover {
+  background: rgba(124, 58, 237, 0.06);
+}
+.dark .transfer-admin:hover {
+  background: rgba(124, 58, 237, 0.12);
+}
+.badge-admin {
+  background: linear-gradient(135deg, #7C3AED 0%, #A855F7 100%);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}

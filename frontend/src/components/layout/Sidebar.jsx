@@ -16,7 +16,6 @@ import {
   MapPinned,
   Clock,
   BarChart3,
-  Package,
   TrendingDown,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -33,9 +32,8 @@ const allLinks = [
   { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'], badgeKey: 'problematic' },
   { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
   { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/warehouse', icon: Package, label: 'Склад', roles: ['ADMIN', 'OFFICE'], badgeKey: null },
   { to: '/company-losses', icon: TrendingDown, label: 'Минус компании', roles: ['ADMIN', 'OFFICE'], badgeKey: 'companyLoss' },
-  { to: '/inventory', icon: Warehouse, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/balance', icon: Warehouse, label: 'Баланс', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
   { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/statistics', icon: BarChart3, label: 'Статистика', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },

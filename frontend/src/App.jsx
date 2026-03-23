@@ -16,7 +16,6 @@ import ProblematicTransfers from './pages/ProblematicTransfers';
 import Profile from './pages/Profile';
 import Chat from './pages/Chat';
 import Map from './pages/Map';
-import Warehouse from './pages/Warehouse';
 import CompanyLosses from './pages/CompanyLosses';
 import { transfersApi } from './api/transfers';
 import { eventsApi } from './api/events';
@@ -48,11 +47,24 @@ function PendingTransfers() {
   const loadPendingTransfers = async () => {
     setLoading(true);
     try {
-      const params = { status: 'PENDING' };
-      if (countryId) params.countryId = countryId;
-      if (cityId) params.cityId = cityId;
-      const { data } = await transfersApi.getAll(params);
-      setTransfers(data.data || data || []);
+      // Use getPending() which returns SENT transfers (pending acceptance)
+      const { data } = await transfersApi.getPending();
+      const transfers = data?.data || data || [];
+      // Optionally filter by country/city if filters are set
+      let filtered = transfers;
+      if (countryId) {
+        filtered = filtered.filter(t => 
+          t.senderCountryId === countryId || t.receiverCountryId === countryId ||
+          t.sender?.countryId === countryId || t.receiver?.countryId === countryId
+        );
+      }
+      if (cityId) {
+        filtered = filtered.filter(t => 
+          t.senderCityId === cityId || t.receiverCityId === cityId ||
+          t.sender?.cityId === cityId || t.receiver?.cityId === cityId
+        );
+      }
+      setTransfers(filtered);
     } catch (err) {
       setError('Не удалось загрузить зависшие переводы');
       console.error(err);
@@ -139,10 +151,16 @@ function PendingTransfers() {
         </div>
       ) : (
         <div className="grid gap-3">
-          {transfers.map((transfer) => (
+          {transfers.map((transfer) => {
+            const isAdmin = transfer.senderType === 'ADMIN' || transfer.senderType === 'OFFICE';
+            const senderName = transfer.createdByUser?.displayName || 
+              transfer.senderCity?.name || 
+              transfer.senderCountry?.name || 
+              (isAdmin ? 'Админ' : 'Отправитель');
+            return (
             <div
               key={transfer.id}
-              className={`p-4 rounded-xl border transition-all ${getSeverityColor(transfer.createdAt)}`}
+              className={`p-4 rounded-xl border transition-all ${getSeverityColor(transfer.createdAt)} ${isAdmin ? 'transfer-admin' : ''}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
@@ -153,20 +171,23 @@ function PendingTransfers() {
                     <span className="text-xs px-2 py-0.5 rounded bg-orange-500/20 text-orange-400">
                       Ожидает {getPendingDuration(transfer.createdAt)}
                     </span>
+                    {isAdmin && <span className="badge-admin">👑 ADMIN</span>}
                   </div>
 
                   <div className="flex items-center gap-2 text-sm mb-3">
                     <span className="font-medium text-content-primary">
-                      {transfer.sender?.city?.name || transfer.senderCity?.name || 'Отправитель'}
+                      {senderName}
                     </span>
                     <ArrowRightLeft size={14} className="text-content-muted" />
                     <span className="font-medium text-content-primary">
-                      {transfer.receiver?.city?.name || transfer.receiverCity?.name || 'Получатель'}
+                      {transfer.receiverCity?.name || transfer.receiverCountry?.name || 'Получатель'}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3 flex-wrap">
-                    {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
+                    {transfer.items?.map((item) => (
+                      <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity || item.sentQuantity || 0} />
+                    )) || ['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
                       const count = transfer[type.toLowerCase()] || transfer[`${type.toLowerCase()}Count`] || 0;
                       if (count <= 0) return null;
                       return <BraceletBadge key={type} type={type} count={count} />;
@@ -191,7 +212,8 @@ function PendingTransfers() {
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>
@@ -226,63 +248,53 @@ function Statistics() {
       if (cityId) params.cityId = cityId;
       if (eventId) params.eventId = eventId;
 
-      const [transfersRes, usersRes, eventsRes] = await Promise.all([
-        transfersApi.getAll({ limit: 1000, ...params }).catch(() => ({ data: [] })),
+      // Use dedicated stats endpoint instead of fetching all transfers
+      const [statsRes, usersRes, eventsRes] = await Promise.all([
+        transfersApi.getStats(params).catch(() => ({ data: null })),
         usersApi.getUsers().catch(() => ({ data: [] })),
         eventsApi.getAll().catch(() => ({ data: [] })),
       ]);
 
-      // Process transfer statistics
-      const transfers = transfersRes.data?.data || transfersRes.data || [];
-      const now = new Date();
-      let startDate = new Date();
-      
-      if (dateRange === 'week') startDate.setDate(now.getDate() - 7);
-      else if (dateRange === 'month') startDate.setMonth(now.getMonth() - 1);
-      else if (dateRange === 'quarter') startDate.setMonth(now.getMonth() - 3);
-      else if (dateRange === 'year') startDate.setFullYear(now.getFullYear() - 1);
+      // Process transfer statistics from stats endpoint
+      const stats = statsRes.data;
+      if (stats) {
+        // Build daily trend from stats.trend
+        const dailyTrend = (stats.trend || []).slice(-14).map(item => ({
+          date: new Date(item.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+          sent: item.count,
+          received: 0,
+          problematic: 0,
+        }));
 
-      const filteredTransfers = transfers.filter(t => new Date(t.createdAt) >= startDate);
-      
-      const byStatus = filteredTransfers.reduce((acc, t) => {
-        acc[t.status] = (acc[t.status] || 0) + 1;
-        return acc;
-      }, {});
-
-      const byType = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-      filteredTransfers.forEach(t => {
-        byType.BLACK += t.black || t.blackCount || 0;
-        byType.WHITE += t.white || t.whiteCount || 0;
-        byType.RED += t.red || t.redCount || 0;
-        byType.BLUE += t.blue || t.blueCount || 0;
-      });
-
-      // Group by day for trend chart
-      const byDay = {};
-      filteredTransfers.forEach(t => {
-        const day = new Date(t.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-        if (!byDay[day]) byDay[day] = { sent: 0, received: 0, problematic: 0 };
-        if (t.status === 'DELIVERED') byDay[day].received++;
-        else if (t.status === 'DISCREPANCY') byDay[day].problematic++;
-        else byDay[day].sent++;
-      });
-
-      const dailyTrend = Object.entries(byDay)
-        .sort(([a], [b]) => {
-          const [dayA, monthA] = a.split('.').map(Number);
-          const [dayB, monthB] = b.split('.').map(Number);
-          return monthA - monthB || dayA - dayB;
-        })
-        .slice(-14)
-        .map(([date, data]) => ({ date, ...data }));
-
-      setTransferStats({
-        total: filteredTransfers.length,
-        byStatus,
-        byType,
-        dailyTrend,
-        totalBracelets: Object.values(byType).reduce((a, b) => a + b, 0),
-      });
+        setTransferStats({
+          total: stats.summary?.totalTransfers || 0,
+          byStatus: {
+            SENT: stats.statusBreakdown?.pending || 0,
+            ACCEPTED: stats.statusBreakdown?.accepted || 0,
+            DISCREPANCY_FOUND: stats.statusBreakdown?.discrepancy || 0,
+            CANCELLED: stats.statusBreakdown?.cancelled || 0,
+          },
+          byType: {
+            BLACK: stats.braceletBreakdown?.black || 0,
+            WHITE: stats.braceletBreakdown?.white || 0,
+            RED: stats.braceletBreakdown?.red || 0,
+            BLUE: stats.braceletBreakdown?.blue || 0,
+          },
+          dailyTrend,
+          totalBracelets: stats.summary?.totalBracelets || 0,
+          totalLoss: stats.summary?.totalLoss || 0,
+        });
+      } else {
+        // Fallback if stats endpoint fails
+        setTransferStats({
+          total: 0,
+          byStatus: {},
+          byType: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
+          dailyTrend: [],
+          totalBracelets: 0,
+          totalLoss: 0,
+        });
+      }
 
       // Process user statistics
       const users = usersRes.data?.data || usersRes.data || [];
@@ -321,22 +333,24 @@ function Statistics() {
   const statusPieData = useMemo(() => {
     if (!transferStats?.byStatus) return [];
     const statusLabels = {
-      PENDING: 'Ожидание',
-      IN_TRANSIT: 'В пути',
-      DELIVERED: 'Доставлено',
-      DISCREPANCY: 'Расхождение',
+      SENT: 'Ожидание',
+      ACCEPTED: 'Принято',
+      DISCREPANCY_FOUND: 'Расхождение',
+      CANCELLED: 'Отменено',
     };
     const statusColors = {
-      PENDING: '#f59e0b',
-      IN_TRANSIT: '#3b82f6',
-      DELIVERED: '#10b981',
-      DISCREPANCY: '#ef4444',
+      SENT: '#f59e0b',
+      ACCEPTED: '#10b981',
+      DISCREPANCY_FOUND: '#ef4444',
+      CANCELLED: '#6b7280',
     };
-    return Object.entries(transferStats.byStatus).map(([status, count]) => ({
-      name: statusLabels[status] || status,
-      value: count,
-      color: statusColors[status] || '#6b7280',
-    }));
+    return Object.entries(transferStats.byStatus)
+      .filter(([_, count]) => count > 0)
+      .map(([status, count]) => ({
+        name: statusLabels[status] || status,
+        value: count,
+        color: statusColors[status] || '#6b7280',
+      }));
   }, [transferStats]);
 
   const braceletBarData = useMemo(() => {
@@ -742,14 +756,7 @@ export default function App() {
             </PrivateRoute>
           }
         />
-        <Route
-          path="warehouse"
-          element={
-            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
-              <Warehouse />
-            </PrivateRoute>
-          }
-        />
+
         <Route
           path="company-losses"
           element={
@@ -759,7 +766,7 @@ export default function App() {
           }
         />
         <Route
-          path="inventory"
+          path="balance"
           element={
             <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
               <Inventory />
