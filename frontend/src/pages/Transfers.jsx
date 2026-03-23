@@ -354,6 +354,17 @@ export default function Transfers() {
       ) : (
         <div className="space-y-3">
           {filteredTransfers.map((t) => {
+            // Sender info
+            const from = 
+              t.senderType === 'ADMIN'
+                ? 'Админ'
+                : t.senderType === 'OFFICE'
+                  ? (t.senderOffice?.name || 'Офис')
+                  : t.senderType === 'CITY'
+                    ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
+                    : t.senderCountry?.name || t.senderType || 'Отправитель';
+            
+            // Receiver info
             const to =
               t.receiverType === 'ADMIN'
                 ? 'Админ'
@@ -385,9 +396,10 @@ export default function Transfers() {
                       </span>
                     </div>
 
-                    <div className="text-sm flex items-center gap-1.5">
+                    <div className="text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-blue-400 truncate max-w-[120px]" title={from}>{from}</span>
                       <span className="text-content-muted flex-shrink-0">→</span>
-                      <span className="font-medium text-content-primary truncate">{to}</span>
+                      <span className="font-medium text-emerald-400 truncate max-w-[120px]" title={to}>{to}</span>
                     </div>
 
                     <div className="flex items-center gap-3">

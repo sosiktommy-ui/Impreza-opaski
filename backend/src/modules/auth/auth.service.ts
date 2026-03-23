@@ -211,4 +211,20 @@ export class AuthService {
       city: user.city || undefined,
     } as AuthenticatedUser & { office?: any; country?: any; city?: any };
   }
+
+  /**
+   * Verify password for 2FA confirmation (used in discrepancy resolution)
+   */
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.isActive) {
+      return false;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    return isPasswordValid;
+  }
 }

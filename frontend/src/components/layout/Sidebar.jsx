@@ -14,42 +14,76 @@ import {
   PanelLeftClose,
   PanelLeft,
   MapPinned,
+  Clock,
+  BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, useBadgeStore } from '../../store/useAppStore';
 import { useChatStore } from '../../store/useChatStore';
 import { useEffect } from 'react';
+import { transfersApi } from '../../api/transfers';
 
 const allLinks = [
-  { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/transfers', icon: Truck, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
-  { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'] },
-  { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/inventory', icon: Warehouse, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
-  { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/chat', icon: MessagesSquare, label: 'Чат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-  { to: '/users', icon: SlidersHorizontal, label: 'Настройки', roles: ['ADMIN', 'OFFICE'] },
-  { to: '/profile', icon: CircleUserRound, label: 'Профиль', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+  { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/transfers', icon: Truck, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
+  { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'incoming' },
+  { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'], badgeKey: 'problematic' },
+  { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
+  { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/inventory', icon: Warehouse, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
+  { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/statistics', icon: BarChart3, label: 'Статистика', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/chat', icon: MessagesSquare, label: 'Чат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'chat' },
+  { to: '/users', icon: SlidersHorizontal, label: 'Настройки', roles: ['ADMIN', 'OFFICE'], badgeKey: null },
+  { to: '/profile', icon: CircleUserRound, label: 'Профиль', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
 ];
 
 export default function Sidebar() {
   const { user } = useAuthStore();
   const { sidebarOpen, closeSidebar, sidebarCollapsed, toggleCollapsed } = useAppStore();
-  const { unreadCount, startPolling, stopPolling } = useChatStore();
+  const { unreadCount: chatUnread, startPolling, stopPolling } = useChatStore();
+  const { pendingCount, problematicCount, incomingCount, refreshCounts } = useBadgeStore();
 
   useEffect(() => {
     startPolling();
-    return () => stopPolling();
+    // Initial fetch and polling for badge counts
+    refreshCounts(transfersApi);
+    const badgeInterval = setInterval(() => refreshCounts(transfersApi), 30000);
+    return () => {
+      stopPolling();
+      clearInterval(badgeInterval);
+    };
   }, []);
 
   const links = allLinks.filter((l) => l.roles.includes(user?.role));
 
+  // Get badge count for a link
+  const getBadge = (badgeKey) => {
+    switch (badgeKey) {
+      case 'chat': return chatUnread > 0 ? chatUnread : null;
+      case 'incoming': return incomingCount > 0 ? incomingCount : null;
+      case 'problematic': return problematicCount > 0 ? problematicCount : null;
+      case 'pending': return pendingCount > 0 ? pendingCount : null;
+      default: return null;
+    }
+  };
+
+  // Get badge color class
+  const getBadgeColor = (badgeKey) => {
+    switch (badgeKey) {
+      case 'problematic': return 'bg-amber-500';
+      case 'pending': return 'bg-orange-500';
+      case 'incoming': return 'bg-emerald-500';
+      default: return 'bg-brand-600';
+    }
+  };
+
   const navContent = (collapsed) => (
     <nav className="flex flex-col gap-1 p-2">
-      {links.map(({ to, icon: Icon, label }) => {
-        const badge = to === '/chat' && unreadCount > 0 ? unreadCount : null;
+      {links.map(({ to, icon: Icon, label, badgeKey }) => {
+        const badge = getBadge(badgeKey);
+        const badgeColor = getBadgeColor(badgeKey);
         return (
           <NavLink
             key={label}
@@ -73,12 +107,12 @@ export default function Sidebar() {
                 <Icon size={20} strokeWidth={isActive ? 2 : 1.6} className="flex-shrink-0 transition-all" />
                 {!collapsed && <span className="flex-1 truncate">{label}</span>}
                 {!collapsed && badge && (
-                  <span className="min-w-[20px] h-5 flex items-center justify-center rounded-full bg-brand-600 text-white text-2xs font-bold px-1.5 animate-pulse">
+                  <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full ${badgeColor} text-white text-2xs font-bold px-1.5 animate-pulse`}>
                     {badge > 99 ? '99+' : badge}
                   </span>
                 )}
                 {collapsed && badge && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-brand-500 rounded-full ring-2 ring-surface-secondary" />
+                  <span className={`absolute top-1 right-1 w-2.5 h-2.5 ${badgeColor} rounded-full ring-2 ring-surface-secondary`} />
                 )}
               </>
             )}

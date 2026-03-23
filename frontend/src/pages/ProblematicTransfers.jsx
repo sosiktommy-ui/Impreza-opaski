@@ -1,13 +1,19 @@
-import { useState, useEffect } from 'react';
-import { AlertTriangle, HelpCircle, CheckCircle, XCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { 
+  AlertTriangle, HelpCircle, CheckCircle, XCircle, 
+  UserCheck, Users, Scale, ShieldAlert, RefreshCw,
+  ArrowRight, TrendingDown, Lock
+} from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import { transfersApi } from '../api/transfers';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import Modal from '../components/ui/Modal';
+import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 
 const ITEM_COLORS = {
   BLACK: { label: 'Чёрный', bg: 'bg-gray-800', text: 'text-white' },
@@ -16,9 +22,40 @@ const ITEM_COLORS = {
   BLUE: { label: 'Синий', bg: 'bg-blue-500', text: 'text-white' },
 };
 
+// Resolution types matching backend enum
+const RESOLUTION_TYPES = {
+  ACCEPT_SENDER: {
+    key: 'ACCEPT_SENDER',
+    label: 'Принять от отправителя',
+    shortLabel: 'От отправителя',
+    icon: UserCheck,
+    description: 'Верим отправителю — зачисляем отправленное количество, разница идёт в убыток компании',
+    color: 'bg-blue-500 hover:bg-blue-600',
+    textColor: 'text-blue-400',
+  },
+  ACCEPT_RECEIVER: {
+    key: 'ACCEPT_RECEIVER', 
+    label: 'Принять от получателя',
+    shortLabel: 'От получателя',
+    icon: UserCheck,
+    description: 'Верим получателю — зачисляем полученное количество, разница идёт в убыток компании',
+    color: 'bg-emerald-500 hover:bg-emerald-600',
+    textColor: 'text-emerald-400',
+  },
+  ACCEPT_COMPROMISE: {
+    key: 'ACCEPT_COMPROMISE',
+    label: 'Компромисс',
+    shortLabel: 'Компромисс',
+    icon: Scale,
+    description: 'Распределить разницу между сторонами — вы указываете сколько зачислить',
+    color: 'bg-amber-500 hover:bg-amber-600',
+    textColor: 'text-amber-400',
+  },
+};
+
 function entityLabel(transfer, prefix) {
   const type = transfer[`${prefix}Type`];
-  if (type === 'ADMIN') return 'Админ';
+  if (type === 'ADMIN') return 'Склад';
   if (type === 'OFFICE') {
     const o = transfer[`${prefix}Office`];
     return o?.name || 'Офис';
@@ -43,20 +80,67 @@ function formatDate(str) {
   });
 }
 
+// Calculate company loss for a resolution type
+function calculateLoss(transfer, resolutionType, compromiseValues = {}) {
+  const loss = { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+  
+  if (!transfer?.acceptanceRecords) return loss;
+  
+  transfer.acceptanceRecords.forEach((r) => {
+    const sent = r.sentQuantity || 0;
+    const received = r.receivedQuantity || 0;
+    const itemKey = r.itemType.toLowerCase();
+    
+    let diff = 0;
+    if (resolutionType === 'ACCEPT_SENDER') {
+      // Trust sender: difference is sent - received (negative = receiver got more = no loss)
+      diff = Math.max(0, sent - received);
+    } else if (resolutionType === 'ACCEPT_RECEIVER') {
+      // Trust receiver: difference is sent - received (positive = loss for company)
+      diff = Math.max(0, sent - received);
+    } else if (resolutionType === 'ACCEPT_COMPROMISE') {
+      // Compromise: loss is sent - compromiseValue
+      const compromiseVal = compromiseValues[r.itemType] || 0;
+      diff = Math.max(0, sent - compromiseVal);
+    }
+    
+    if (loss[itemKey] !== undefined) {
+      loss[itemKey] = diff;
+      loss.total += diff;
+    }
+  });
+  
+  return loss;
+}
+
 export default function ProblematicTransfers() {
   const { user } = useAuthStore();
+  const { countryId, cityId } = useFilterStore();
   const canResolve = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  
+  // Detail/Resolution modal
   const [selectedTransfer, setSelectedTransfer] = useState(null);
+  const [selectedResolution, setSelectedResolution] = useState(null);
+  const [compromiseValues, setCompromiseValues] = useState({});
+  
+  // 2FA Modal
+  const [show2FA, setShow2FA] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState('');
 
   const fetchData = async (p = 1) => {
     setLoading(true);
     try {
-      const { data } = await transfersApi.getProblematic({ page: p, limit: 20 });
+      const params = { page: p, limit: 20 };
+      if (countryId) params.countryId = countryId;
+      if (cityId) params.cityId = cityId;
+      
+      const { data } = await transfersApi.getProblematic(params);
       const payload = data?.data || data;
       const list = Array.isArray(payload) ? payload : [];
       setTransfers(list);
@@ -72,31 +156,115 @@ export default function ProblematicTransfers() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [countryId, cityId]);
 
-  const handleResolve = async (transferId, action) => {
-    const msg = action === 'accept_received'
-      ? 'Принять как есть? Получателю зачислится то что он насчитал.'
-      : 'Отменить отправку? Опаски вернутся отправителю, получателю ничего не зачислится.';
-    if (!confirm(msg)) return;
+  // Open resolution modal for a transfer
+  const openResolveModal = (transfer) => {
+    setSelectedTransfer(transfer);
+    setSelectedResolution(null);
+    setResolveError('');
+    // Initialize compromise values with received quantities
+    const initValues = {};
+    transfer.acceptanceRecords?.forEach((r) => {
+      initValues[r.itemType] = r.receivedQuantity || 0;
+    });
+    setCompromiseValues(initValues);
+  };
+
+  // Select a resolution type and show 2FA
+  const selectResolution = (resType) => {
+    setSelectedResolution(resType);
+    setResolveError('');
+  };
+
+  // Initiate 2FA confirmation
+  const initiate2FA = () => {
+    if (!selectedResolution) return;
+    setShow2FA(true);
+  };
+
+  // Handle 2FA confirmation and resolve
+  const handleResolveConfirm = async (password) => {
+    if (!selectedTransfer || !selectedResolution) return;
+    
     setResolving(true);
+    setResolveError('');
+    
     try {
-      await transfersApi.resolveDiscrepancy(transferId, action);
+      const payload = {
+        resolutionType: selectedResolution,
+        password, // 2FA password for verification
+      };
+      
+      // For compromise, include the adjusted values
+      if (selectedResolution === 'ACCEPT_COMPROMISE') {
+        payload.compromiseValues = compromiseValues;
+      }
+      
+      await transfersApi.resolveDiscrepancy(selectedTransfer.id, payload);
+      
+      setShow2FA(false);
       setSelectedTransfer(null);
+      setSelectedResolution(null);
       await fetchData(page);
     } catch (err) {
-      alert(err.response?.data?.message || 'Ошибка');
+      const message = err.response?.data?.message || 'Ошибка разрешения';
+      setResolveError(message);
+      throw new Error(message); // Re-throw for TwoFactorModal to handle
     } finally {
       setResolving(false);
     }
   };
 
+  // Calculate consequences for the selected resolution
+  const consequences = useMemo(() => {
+    if (!selectedTransfer || !selectedResolution) return null;
+    return calculateLoss(selectedTransfer, selectedResolution, compromiseValues);
+  }, [selectedTransfer, selectedResolution, compromiseValues]);
+
+  // Build consequences description based on resolution type
+  const getConsequencesDescription = () => {
+    if (!selectedTransfer || !selectedResolution || !consequences) return [];
+    
+    const items = [];
+    const res = RESOLUTION_TYPES[selectedResolution];
+    
+    items.push(`Решение: ${res.label}`);
+    
+    if (consequences.total > 0) {
+      items.push(`Убыток компании: ${consequences.total} браслетов`);
+      const breakdown = [];
+      if (consequences.black > 0) breakdown.push(`Чёрных: ${consequences.black}`);
+      if (consequences.white > 0) breakdown.push(`Белых: ${consequences.white}`);
+      if (consequences.red > 0) breakdown.push(`Красных: ${consequences.red}`);
+      if (consequences.blue > 0) breakdown.push(`Синих: ${consequences.blue}`);
+      if (breakdown.length > 0) items.push(breakdown.join(', '));
+    } else {
+      items.push('Убыток компании: 0');
+    }
+    
+    return items;
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <AlertTriangle className="text-amber-500" size={24} />
-        <h2 className="text-lg font-bold text-content-primary">Проблемные отправки</h2>
-        <span className="text-sm text-content-muted">Расхождения при получении</span>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+            <ShieldAlert className="text-amber-500" size={22} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-content-primary">Проблемные отправки</h2>
+            <p className="text-sm text-content-muted">{transfers.length} расхождений требуют решения</p>
+          </div>
+        </div>
+        <button
+          onClick={() => fetchData(page)}
+          className="p-2 rounded-lg hover:bg-surface-card-hover transition-colors"
+        >
+          <RefreshCw size={18} className="text-content-muted" />
+        </button>
       </div>
 
       {loading && (
@@ -107,166 +275,171 @@ export default function ProblematicTransfers() {
 
       {!loading && transfers.length === 0 && (
         <Card className="text-center py-12 text-gray-400">
-          Нет проблемных отправок
+          <div className="flex flex-col items-center gap-3">
+            <CheckCircle size={48} className="text-emerald-500/50" />
+            <p>Нет проблемных отправок</p>
+            <p className="text-xs">Все расхождения разрешены</p>
+          </div>
         </Card>
       )}
 
       {!loading && transfers.length > 0 && (
         <div className="grid gap-3">
-          {transfers.map((t) => (
-            <Card key={t.id} className="p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle size={16} className="text-amber-500" />
-                    <span className="font-semibold text-content-primary text-sm">
-                      {entityLabel(t, 'sender')}
-                    </span>
-                    <span className="text-content-muted">→</span>
-                    <span className="font-semibold text-content-primary text-sm">
-                      {entityLabel(t, 'receiver')}
-                    </span>
-                  </div>
+          {transfers.map((t) => {
+            const totalSent = t.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
+            const totalReceived = t.acceptanceRecords?.reduce((s, r) => s + (r.receivedQuantity || 0), 0) || 0;
+            const totalDiff = totalSent - totalReceived;
+            
+            return (
+              <div
+                key={t.id}
+                className="bg-surface-card rounded-xl border border-amber-500/30 hover:border-amber-500/50 transition-all overflow-hidden"
+              >
+                <div className="p-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* Transfer info */}
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <AlertTriangle size={16} className="text-amber-500" />
+                        <span className="font-medium text-blue-400">
+                          {entityLabel(t, 'sender')}
+                        </span>
+                        <ArrowRight size={14} className="text-content-muted" />
+                        <span className="font-medium text-emerald-400">
+                          {entityLabel(t, 'receiver')}
+                        </span>
+                        <span className="text-xs text-content-muted font-mono">
+                          #{t.id?.slice(-6)}
+                        </span>
+                      </div>
 
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <span>Отправитель: {t.createdByUser?.displayName || '—'}</span>
-                    <span className="text-content-muted">|</span>
-                    <span>{formatDate(t.createdAt)}</span>
-                  </div>
+                      <div className="flex items-center gap-4 text-xs text-content-muted">
+                        <span>Отправитель: {t.createdByUser?.displayName || '—'}</span>
+                        <span>{formatDate(t.createdAt)}</span>
+                      </div>
 
-                  {/* Color breakdown */}
-                  <div className="flex items-center gap-1.5 mt-1">
-                    {t.items?.map((item) => (
-                      <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity} />
-                    ))}
-                  </div>
-                </div>
+                      {/* Bracelet breakdown with discrepancy */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {t.acceptanceRecords?.map((r) => {
+                          const diff = (r.sentQuantity || 0) - (r.receivedQuantity || 0);
+                          return (
+                            <div key={r.itemType} className="flex items-center gap-1">
+                              <BraceletBadge type={r.itemType} count={r.sentQuantity} />
+                              {diff !== 0 && (
+                                <span className={`text-xs font-bold ${diff > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                  ({diff > 0 ? `-${diff}` : `+${Math.abs(diff)}`})
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                <div className="flex items-center gap-2">
-                  <Badge variant="warning">Расхождение</Badge>
-                  {canResolve && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="success"
-                        onClick={() => handleResolve(t.id, 'accept_received')}
-                        disabled={resolving}
-                        title="Принять как есть"
-                      >
-                        <CheckCircle size={14} /> Принять
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => handleResolve(t.id, 'cancel')}
-                        disabled={resolving}
-                        title="Отменить отправку"
-                      >
-                        <XCircle size={14} /> Отменить
-                      </Button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => setSelectedTransfer(t)}
-                    className="p-2 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-gray-500"
-                    title="Подробнее"
-                  >
-                    <HelpCircle size={18} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Discrepancy summary */}
-              {t.acceptanceRecords?.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-edge">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {t.acceptanceRecords
-                      .filter((r) => r.discrepancy !== 0)
-                      .map((r) => (
-                        <div
-                          key={r.id}
-                          className="flex items-center gap-2 text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-[var(--radius-sm)] px-2.5 py-1.5"
-                        >
-                          <span className={`w-3 h-3 rounded-full ${ITEM_COLORS[r.itemType]?.bg || 'bg-gray-300'}`} />
-                          <span className="font-medium">{ITEM_COLORS[r.itemType]?.label}</span>
-                          <span className="text-amber-700">
-                            отпр. {r.sentQuantity} / получ. {r.receivedQuantity}
+                      {/* Total discrepancy indicator */}
+                      {totalDiff !== 0 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <TrendingDown size={14} className="text-red-400" />
+                          <span className="text-red-400 font-medium">
+                            Недостача: {totalDiff} шт
                           </span>
-                          <span className={`font-bold ${r.discrepancy > 0 ? 'text-red-400' : 'text-green-600'}`}>
-                            {r.discrepancy > 0 ? `-${r.discrepancy}` : `+${Math.abs(r.discrepancy)}`}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Badge variant="warning">Расхождение</Badge>
+                      {canResolve && (
+                        <Button
+                          size="sm"
+                          onClick={() => openResolveModal(t)}
+                          className="bg-amber-500 hover:bg-amber-600 text-white"
+                        >
+                          <Lock size={14} className="mr-1" /> Решить
+                        </Button>
+                      )}
+                      <button
+                        onClick={() => setSelectedTransfer(t)}
+                        className="p-2 rounded-lg hover:bg-surface-card-hover text-content-muted"
+                        title="Подробнее"
+                      >
+                        <HelpCircle size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick discrepancy summary */}
+                {t.acceptanceRecords?.some(r => r.discrepancy !== 0) && (
+                  <div className="bg-amber-500/5 border-t border-amber-500/20 px-4 py-2">
+                    <div className="flex items-center gap-4 flex-wrap text-xs">
+                      {t.acceptanceRecords.filter(r => r.discrepancy !== 0).map((r) => (
+                        <div key={r.itemType} className="flex items-center gap-1.5">
+                          <span className={`w-2.5 h-2.5 rounded-full ${ITEM_COLORS[r.itemType]?.bg}`} />
+                          <span className="text-content-muted">{ITEM_COLORS[r.itemType]?.label}:</span>
+                          <span className="text-content-secondary">отпр. {r.sentQuantity}</span>
+                          <span className="text-content-muted">/</span>
+                          <span className="text-content-secondary">получ. {r.receivedQuantity}</span>
+                          <span className={`font-bold ${r.discrepancy > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                            ({r.discrepancy > 0 ? `-${r.discrepancy}` : `+${Math.abs(r.discrepancy)}`})
                           </span>
                         </div>
                       ))}
+                    </div>
                   </div>
-                  {t.acceptanceRecords[0]?.acceptedBy && (
-                    <p className="text-xs text-content-muted mt-2">
-                      Принял: {t.acceptanceRecords[0].acceptedBy.displayName}
-                    </p>
-                  )}
-                </div>
-              )}
-            </Card>
-          ))}
+                )}
+              </div>
+            );
+          })}
 
           <Pagination page={page} totalPages={totalPages} onPageChange={fetchData} />
         </div>
       )}
 
-      {/* Detail modal */}
-      {selectedTransfer && (
-        <Modal
-          title="Детали проблемной отправки"
-          onClose={() => setSelectedTransfer(null)}
-        >
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-content-muted text-xs">Откуда</p>
-                <p className="font-medium">{entityLabel(selectedTransfer, 'sender')}</p>
+      {/* Resolution Modal */}
+      <Modal
+        open={!!selectedTransfer && !show2FA}
+        onClose={() => { setSelectedTransfer(null); setSelectedResolution(null); }}
+        title="Разрешение расхождения"
+        size="lg"
+      >
+        {selectedTransfer && (
+          <div className="space-y-6">
+            {/* Transfer summary */}
+            <div className="bg-surface-primary rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-blue-400">{entityLabel(selectedTransfer, 'sender')}</span>
+                <ArrowRight size={14} className="text-content-muted" />
+                <span className="font-medium text-emerald-400">{entityLabel(selectedTransfer, 'receiver')}</span>
               </div>
-              <div>
-                <p className="text-content-muted text-xs">Куда</p>
-                <p className="font-medium">{entityLabel(selectedTransfer, 'receiver')}</p>
+              
+              <div className="text-xs text-content-muted">
+                {formatDate(selectedTransfer.createdAt)} · #{selectedTransfer.id?.slice(-6)}
               </div>
-              <div>
-                <p className="text-content-muted text-xs">Отправитель</p>
-                <p className="font-medium">{selectedTransfer.createdByUser?.displayName || '—'}</p>
-              </div>
-              <div>
-                <p className="text-content-muted text-xs">Дата отправки</p>
-                <p className="font-medium">{formatDate(selectedTransfer.createdAt)}</p>
-              </div>
-            </div>
 
-            {selectedTransfer.notes && (
-              <div>
-                <p className="text-content-muted text-xs">Заметки</p>
-                <p className="text-sm">{selectedTransfer.notes}</p>
-              </div>
-            )}
-
-            <div>
-              <p className="text-content-muted text-xs mb-2">Расхождения</p>
+              {/* Discrepancy table */}
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-edge text-content-secondary text-xs">
-                    <th className="text-left py-1.5">Цвет</th>
-                    <th className="text-center py-1.5">Отправлено</th>
-                    <th className="text-center py-1.5">Получено</th>
-                    <th className="text-center py-1.5">Разница</th>
+                  <tr className="text-xs text-content-muted border-b border-edge">
+                    <th className="text-left py-2">Цвет</th>
+                    <th className="text-center py-2">Отправлено</th>
+                    <th className="text-center py-2">Получено</th>
+                    <th className="text-center py-2">Разница</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedTransfer.acceptanceRecords?.map((r) => (
-                    <tr key={r.id} className="border-b border-edge">
-                      <td className="py-1.5 flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-full ${ITEM_COLORS[r.itemType]?.bg || 'bg-gray-300'}`} />
-                        {ITEM_COLORS[r.itemType]?.label}
+                    <tr key={r.itemType} className="border-b border-edge/50">
+                      <td className="py-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${ITEM_COLORS[r.itemType]?.bg}`} />
+                          <span>{ITEM_COLORS[r.itemType]?.label}</span>
+                        </div>
                       </td>
-                      <td className="text-center">{r.sentQuantity}</td>
-                      <td className="text-center">{r.receivedQuantity}</td>
+                      <td className="text-center text-content-secondary">{r.sentQuantity}</td>
+                      <td className="text-center text-content-secondary">{r.receivedQuantity}</td>
                       <td className={`text-center font-bold ${
-                        r.discrepancy > 0 ? 'text-red-400' : r.discrepancy < 0 ? 'text-green-600' : 'text-content-muted'
+                        r.discrepancy > 0 ? 'text-red-400' : r.discrepancy < 0 ? 'text-emerald-400' : 'text-content-muted'
                       }`}>
                         {r.discrepancy === 0 ? '—' : r.discrepancy > 0 ? `-${r.discrepancy}` : `+${Math.abs(r.discrepancy)}`}
                       </td>
@@ -276,36 +449,129 @@ export default function ProblematicTransfers() {
               </table>
             </div>
 
-            {selectedTransfer.acceptanceRecords?.[0]?.acceptedBy && (
-              <p className="text-xs text-content-muted">
-                Принял: {selectedTransfer.acceptanceRecords[0].acceptedBy.displayName}
-                {' '} — {formatDate(selectedTransfer.acceptanceRecords[0].createdAt)}
-              </p>
+            {/* Resolution options */}
+            {canResolve && (
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-content-primary">Выберите способ разрешения:</h4>
+                
+                <div className="grid gap-3">
+                  {Object.values(RESOLUTION_TYPES).map((res) => {
+                    const Icon = res.icon;
+                    const isSelected = selectedResolution === res.key;
+                    const lossPreview = calculateLoss(selectedTransfer, res.key, compromiseValues);
+                    
+                    return (
+                      <button
+                        key={res.key}
+                        onClick={() => selectResolution(res.key)}
+                        className={`text-left p-4 rounded-xl border-2 transition-all ${
+                          isSelected 
+                            ? 'border-brand-500 bg-brand-500/10' 
+                            : 'border-edge hover:border-brand-500/50 bg-surface-card'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            isSelected ? 'bg-brand-500 text-white' : 'bg-surface-primary text-content-muted'
+                          }`}>
+                            <Icon size={20} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-content-primary">{res.label}</div>
+                            <div className="text-xs text-content-muted mt-0.5">{res.description}</div>
+                            {lossPreview.total > 0 && (
+                              <div className="flex items-center gap-1 mt-2 text-xs text-red-400">
+                                <TrendingDown size={12} />
+                                <span>Убыток: {lossPreview.total} шт</span>
+                              </div>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <CheckCircle size={20} className="text-brand-500" />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Compromise value inputs */}
+                {selectedResolution === 'ACCEPT_COMPROMISE' && (
+                  <div className="bg-surface-primary rounded-xl p-4 space-y-3">
+                    <h5 className="text-sm font-medium text-content-primary">Укажите количество для зачисления:</h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedTransfer.acceptanceRecords?.map((r) => (
+                        <div key={r.itemType} className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${ITEM_COLORS[r.itemType]?.bg}`} />
+                          <span className="text-sm flex-1">{ITEM_COLORS[r.itemType]?.label}</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            max={Math.max(r.sentQuantity, r.receivedQuantity)}
+                            value={compromiseValues[r.itemType] || ''}
+                            onChange={(e) => setCompromiseValues({
+                              ...compromiseValues,
+                              [r.itemType]: parseInt(e.target.value) || 0
+                            })}
+                            className="w-20 text-center"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-content-muted">
+                      Минимум: полученное ({selectedTransfer.acceptanceRecords?.reduce((s,r) => s + r.receivedQuantity, 0)}),
+                      Максимум: отправленное ({selectedTransfer.items?.reduce((s,i) => s + i.quantity, 0)})
+                    </p>
+                  </div>
+                )}
+
+                {/* Confirm button */}
+                {selectedResolution && (
+                  <div className="flex gap-3 pt-3 border-t border-edge">
+                    <Button
+                      onClick={initiate2FA}
+                      className={RESOLUTION_TYPES[selectedResolution].color + ' text-white flex-1'}
+                    >
+                      <Lock size={16} className="mr-1" />
+                      Подтвердить решение
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setSelectedResolution(null)}
+                    >
+                      Отмена
+                    </Button>
+                  </div>
+                )}
+
+                {resolveError && (
+                  <div className="bg-red-500/10 text-red-400 text-sm px-4 py-2 rounded-lg">
+                    {resolveError}
+                  </div>
+                )}
+              </div>
             )}
 
-            {canResolve && (
-              <div className="flex gap-2 pt-2 border-t border-edge">
-                <Button
-                  variant="success"
-                  onClick={() => handleResolve(selectedTransfer.id, 'accept_received')}
-                  disabled={resolving}
-                  className="flex-1"
-                >
-                  <CheckCircle size={16} /> Принять как есть
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={() => handleResolve(selectedTransfer.id, 'cancel')}
-                  disabled={resolving}
-                  className="flex-1"
-                >
-                  <XCircle size={16} /> Отменить отправку
-                </Button>
+            {!canResolve && (
+              <div className="bg-amber-500/10 text-amber-400 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+                <Lock size={16} />
+                Только ADMIN или OFFICE могут разрешать расхождения
               </div>
             )}
           </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
+
+      {/* 2FA Confirmation Modal */}
+      <TwoFactorModal
+        open={show2FA}
+        onClose={() => setShow2FA(false)}
+        onConfirm={handleResolveConfirm}
+        title="Подтверждение операции"
+        description="Для разрешения расхождения введите ваш пароль"
+        consequences={getConsequencesDescription()}
+        loading={resolving}
+      />
     </div>
   );
 }

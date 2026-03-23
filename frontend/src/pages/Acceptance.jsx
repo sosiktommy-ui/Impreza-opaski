@@ -113,6 +113,17 @@ export default function Acceptance() {
     return t.senderCountry?.name || t.senderType;
   };
 
+  const getReceiverLabel = (t) => {
+    if (t.receiverType === 'ADMIN') return 'Склад';
+    if (t.receiverType === 'OFFICE') return t.receiverOffice?.name || 'Офис';
+    if (t.receiverType === 'CITY') {
+      const city = t.receiverCity?.name || '—';
+      const country = t.receiverCity?.country?.name;
+      return country ? `${city} (${country})` : city;
+    }
+    return t.receiverCountry?.name || t.receiverType || 'Получатель';
+  };
+
   // ── ACCEPT: modal with quantities shown, confirm button ──
   const openAccept = (transfer) => {
     setAcceptTarget(transfer);
@@ -369,9 +380,10 @@ export default function Acceptance() {
                       </button>
                     </div>
 
-                    <div className="text-sm flex items-center gap-1.5">
-                      <span className="text-content-muted flex-shrink-0">от</span>
-                      <span className="font-medium text-content-primary truncate">{getSenderLabel(t)}</span>
+                    <div className="text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-blue-400 truncate max-w-[100px]" title={getSenderLabel(t)}>{getSenderLabel(t)}</span>
+                      <span className="text-content-muted flex-shrink-0">→</span>
+                      <span className="font-medium text-emerald-400 truncate max-w-[100px]" title={getReceiverLabel(t)}>{getReceiverLabel(t)}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">

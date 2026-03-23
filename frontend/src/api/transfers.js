@@ -21,7 +21,11 @@ export const transfersApi = {
 
   cancel: (id) => api.patch(`/transfers/${id}/cancel`),
 
-  resolveDiscrepancy: (id, action) =>
-    api.patch(`/transfers/${id}/resolve-discrepancy`, { action }),
-  // action: 'accept_received' | 'cancel'
+  // Phase 3: Enhanced resolution with 2FA and CompanyLoss tracking
+  resolveDiscrepancy: (id, payload) =>
+    api.patch(`/transfers/${id}/resolve-discrepancy`, payload),
+  // payload: { resolutionType: 'ACCEPT_SENDER'|'ACCEPT_RECEIVER'|'ACCEPT_COMPROMISE', password, compromiseValues?: {BLACK: n, WHITE: n, ...} }
+  
+  // Get statistics for dashboard
+  getStats: (params) => api.get('/transfers/stats', { params }),
 };

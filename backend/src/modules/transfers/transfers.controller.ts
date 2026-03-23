@@ -15,6 +15,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { Role, TransferStatus, EntityType, ItemType } from '@prisma/client';
+import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
 import {
   IsEnum,
   IsString,
@@ -149,10 +150,10 @@ export class TransfersController {
   @Roles(Role.ADMIN, Role.OFFICE)
   resolveDiscrepancy(
     @Param('id') id: string,
-    @Body() dto: { action: 'accept_received' | 'cancel' },
+    @Body() dto: ResolveDiscrepancyDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.transfersService.resolveDiscrepancy(id, dto.action, user.id);
+    return this.transfersService.resolveDiscrepancy(id, dto, user.id);
   }
 
   @Get()
@@ -217,6 +218,25 @@ export class TransfersController {
     return this.transfersService.findProblematic({
       page,
       limit,
+      userRole: user?.role,
+      userCountryId: user?.countryId ?? undefined,
+      userCityId: user?.cityId ?? undefined,
+      userOfficeId: (user as any)?.officeId ?? undefined,
+    });
+  }
+
+  @Get('stats')
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  getStats(
+    @Query('period') period: 'week' | 'month' | 'quarter' | 'year' = 'month',
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.transfersService.getStats({
+      period,
+      countryId,
+      cityId,
       userRole: user?.role,
       userCountryId: user?.countryId ?? undefined,
       userCityId: user?.cityId ?? undefined,

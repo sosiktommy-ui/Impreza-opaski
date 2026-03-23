@@ -13,6 +13,7 @@ import {
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { VerifyPasswordDto } from './dto/verify-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthenticatedUser } from './auth.service';
@@ -110,5 +111,19 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async me(@CurrentUser() user: AuthenticatedUser) {
     return { user };
+  }
+
+  @Post('verify-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async verifyPassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: VerifyPasswordDto,
+  ) {
+    const isValid = await this.authService.verifyPassword(user.id, dto.password);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid password');
+    }
+    return { verified: true };
   }
 }

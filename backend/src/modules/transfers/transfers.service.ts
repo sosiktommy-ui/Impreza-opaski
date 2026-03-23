@@ -15,6 +15,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { InventoryService } from '../inventory/inventory.service';
+import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
 
 export interface SendTransferInput {
   senderType: EntityType;
@@ -989,18 +990,221 @@ export class TransfersService {
   }
 
   // ──────────────────────────────────────────────
+  // STATISTICS
+  // ──────────────────────────────────────────────
+
+  async getStats(params: {
+    period: 'week' | 'month' | 'quarter' | 'year';
+    countryId?: string;
+    cityId?: string;
+    userRole?: string;
+    userCountryId?: string;
+    userCityId?: string;
+    userOfficeId?: string;
+  }) {
+    const { period, countryId, cityId, userRole, userCountryId, userCityId, userOfficeId } = params;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate: Date;
+    switch (period) {
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        break;
+      case 'quarter':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+    }
+
+    // Build base filter
+    const baseWhere: Prisma.TransferWhereInput = {
+      createdAt: { gte: startDate },
+    };
+
+    // Apply scope filters
+    if (cityId) {
+      baseWhere.OR = [
+        { senderCityId: cityId },
+        { receiverCityId: cityId },
+      ];
+    } else if (countryId) {
+      baseWhere.OR = [
+        { senderCountryId: countryId },
+        { receiverCountryId: countryId },
+        { senderCity: { countryId } },
+        { receiverCity: { countryId } },
+      ];
+    } else if (userRole === 'CITY' && userCityId) {
+      baseWhere.OR = [
+        { senderCityId: userCityId },
+        { receiverCityId: userCityId },
+      ];
+    } else if (userRole === 'COUNTRY' && userCountryId) {
+      baseWhere.OR = [
+        { senderCountryId: userCountryId },
+        { receiverCountryId: userCountryId },
+        { senderCity: { countryId: userCountryId } },
+        { receiverCity: { countryId: userCountryId } },
+      ];
+    } else if (userRole === 'OFFICE' && userOfficeId) {
+      // OFFICE: filter by office's countries
+      const officeCountries = await this.prisma.country.findMany({
+        where: { officeId: userOfficeId },
+        select: { id: true },
+      });
+      const countryIds = officeCountries.map((c) => c.id);
+      if (countryIds.length > 0) {
+        baseWhere.OR = [
+          { senderCountryId: { in: countryIds } },
+          { receiverCountryId: { in: countryIds } },
+          { senderCity: { countryId: { in: countryIds } } },
+          { receiverCity: { countryId: { in: countryIds } } },
+        ];
+      }
+    }
+
+    // Get transfer statistics
+    const [
+      totalTransfers,
+      acceptedTransfers,
+      discrepancyTransfers,
+      cancelledTransfers,
+      allTransfers,
+    ] = await Promise.all([
+      this.prisma.transfer.count({ where: baseWhere }),
+      this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.ACCEPTED } }),
+      this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.DISCREPANCY_FOUND } }),
+      this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.CANCELLED } }),
+      this.prisma.transfer.findMany({
+        where: baseWhere,
+        include: { items: true },
+      }),
+    ]);
+
+    // Calculate bracelet totals
+    let totalBlack = 0, totalWhite = 0, totalRed = 0, totalBlue = 0;
+    for (const transfer of allTransfers) {
+      for (const item of transfer.items) {
+        switch (item.itemType) {
+          case 'BLACK': totalBlack += item.quantity; break;
+          case 'WHITE': totalWhite += item.quantity; break;
+          case 'RED': totalRed += item.quantity; break;
+          case 'BLUE': totalBlue += item.quantity; break;
+        }
+      }
+    }
+
+    // Get transfer trend by date
+    const transfersByDate = new Map<string, number>();
+    for (const transfer of allTransfers) {
+      const dateKey = transfer.createdAt.toISOString().split('T')[0];
+      transfersByDate.set(dateKey, (transfersByDate.get(dateKey) || 0) + 1);
+    }
+    const trend = Array.from(transfersByDate.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Get user count in scope
+    const userWhere: Prisma.UserWhereInput = { isActive: true };
+    if (cityId) {
+      userWhere.cityId = cityId;
+    } else if (countryId) {
+      userWhere.OR = [
+        { countryId },
+        { city: { countryId } },
+      ];
+    } else if (userCityId) {
+      userWhere.cityId = userCityId;
+    } else if (userCountryId) {
+      userWhere.OR = [
+        { countryId: userCountryId },
+        { city: { countryId: userCountryId } },
+      ];
+    }
+    const totalUsers = await this.prisma.user.count({ where: userWhere });
+
+    // Get event count
+    const eventWhere: Prisma.ExpenseWhereInput = {
+      createdAt: { gte: startDate },
+    };
+    if (cityId) {
+      eventWhere.cityId = cityId;
+    } else if (countryId) {
+      eventWhere.city = { countryId };
+    } else if (userCityId) {
+      eventWhere.cityId = userCityId;
+    } else if (userCountryId) {
+      eventWhere.city = { countryId: userCountryId };
+    }
+    const totalEvents = await this.prisma.expense.count({ where: eventWhere });
+
+    // Get company losses
+    const companyLosses = await (this.prisma as any).companyLoss.findMany({
+      where: { resolvedAt: { gte: startDate } },
+    }) as Array<{ totalAmount: number }>;
+    const totalLoss = companyLosses.reduce((sum: number, l) => sum + l.totalAmount, 0);
+
+    return {
+      summary: {
+        totalTransfers,
+        totalBracelets: totalBlack + totalWhite + totalRed + totalBlue,
+        totalUsers,
+        totalEvents,
+        totalLoss,
+      },
+      statusBreakdown: {
+        accepted: acceptedTransfers,
+        discrepancy: discrepancyTransfers,
+        cancelled: cancelledTransfers,
+        pending: totalTransfers - acceptedTransfers - discrepancyTransfers - cancelledTransfers,
+      },
+      braceletBreakdown: {
+        black: totalBlack,
+        white: totalWhite,
+        red: totalRed,
+        blue: totalBlue,
+      },
+      trend,
+      period,
+      startDate: startDate.toISOString(),
+      endDate: now.toISOString(),
+    };
+  }
+
+  // ──────────────────────────────────────────────
   // RESOLVE DISCREPANCY (Admin/Office only)
+  // Supports: ACCEPT_SENDER, ACCEPT_RECEIVER, ACCEPT_COMPROMISE
+  // Creates CompanyLoss record when there's a loss
   // ──────────────────────────────────────────────
 
   async resolveDiscrepancy(
     transferId: string,
-    action: 'accept_received' | 'cancel',
+    dto: ResolveDiscrepancyDto,
     actorId: string,
   ) {
+    const { resolutionType, compromiseValues, notes } = dto;
+
     const result = await this.prisma.$transaction(async (tx) => {
       const transfer = await tx.transfer.findUnique({
         where: { id: transferId },
-        include: { items: true, acceptanceRecords: true },
+        include: { 
+          items: true, 
+          acceptanceRecords: true,
+          senderOffice: { select: { name: true } },
+          senderCountry: { select: { name: true } },
+          senderCity: { select: { name: true } },
+          receiverOffice: { select: { name: true } },
+          receiverCountry: { select: { name: true } },
+          receiverCity: { select: { name: true } },
+        },
       });
 
       if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
@@ -1011,63 +1215,141 @@ export class TransfersService {
         );
       }
 
-      if (action === 'accept_received') {
-        // Deduct sender with SENT quantities (for non-ADMIN)
-        if (transfer.senderType !== EntityType.ADMIN) {
-          const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-          for (const item of transfer.items) {
-            await this.deductInventory(
-              tx,
-              transfer.senderType,
-              senderEntityId,
-              item.itemType,
-              item.quantity,
-            );
-          }
-        }
+      // Calculate sent and received totals by color
+      const sentByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+      const receivedByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
 
-        // Credit receiver with what they actually counted (receivedQuantity)
-        const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-        for (const record of transfer.acceptanceRecords) {
-          if (record.receivedQuantity > 0) {
-            await this.creditInventory(
-              tx,
-              transfer.receiverType,
-              receiverEntityId,
-              record.itemType,
-              record.receivedQuantity,
-            );
-          }
-        }
-
-        // Update city statuses
-        if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
-          await this.inventoryService.updateCityStatus(tx, transfer.senderCityId);
-        }
-        if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
-          await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
-        }
-
-        await tx.transfer.update({
-          where: { id: transferId },
-          data: { status: TransferStatus.ACCEPTED, version: transfer.version + 1 },
-        });
-
-        this.logger.log(`Discrepancy resolved: ${transferId} → ACCEPTED (sender deducted sent, receiver credited received)`);
-      } else {
-        // Cancel — do NOT touch any balances.
-        // Since acceptTransfer did not deduct/credit on discrepancy, nothing to reverse.
-        await tx.transfer.update({
-          where: { id: transferId },
-          data: { status: TransferStatus.CANCELLED, version: transfer.version + 1 },
-        });
-
-        this.logger.log(`Discrepancy resolved: ${transferId} → CANCELLED (no balance changes)`);
+      for (const item of transfer.items) {
+        sentByColor[item.itemType] = item.quantity;
+      }
+      for (const record of transfer.acceptanceRecords) {
+        receivedByColor[record.itemType] = record.receivedQuantity;
       }
 
+      // Get sender/receiver names for CompanyLoss record
+      const senderName = transfer.senderType === EntityType.ADMIN 
+        ? 'ADMIN' 
+        : transfer.senderOffice?.name || transfer.senderCountry?.name || transfer.senderCity?.name || 'Unknown';
+      const senderCityName = transfer.senderCity?.name || null;
+      const receiverName = transfer.receiverOffice?.name || transfer.receiverCountry?.name || transfer.receiverCity?.name || 'Unknown';
+      const receiverCityName = transfer.receiverCity?.name || null;
+
+      // Calculate final values based on resolution type
+      let finalByColor: Record<string, number> = { ...receivedByColor }; // default to receiver
+      let lossBlack = 0, lossWhite = 0, lossRed = 0, lossBlue = 0;
+      const totalSent = Object.values(sentByColor).reduce((a, b) => a + b, 0);
+      const totalReceived = Object.values(receivedByColor).reduce((a, b) => a + b, 0);
+
+      // Use string values for comparison since resolutionType comes from DTO
+      const resType = resolutionType as string;
+
+      if (resType === 'ACCEPT_SENDER') {
+        // Trust sender: receiver gets what sender sent, loss is what receiver claims to have received less
+        finalByColor = { ...sentByColor };
+        lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
+        lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
+        lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
+        lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
+      } else if (resType === 'ACCEPT_RECEIVER') {
+        // Trust receiver: sender is deducted full amount, receiver gets what they reported
+        finalByColor = { ...receivedByColor };
+        lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
+        lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
+        lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
+        lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
+      } else if (resType === 'ACCEPT_COMPROMISE') {
+        if (!compromiseValues) {
+          throw new BadRequestException('Compromise values are required for ACCEPT_COMPROMISE resolution');
+        }
+        // Custom values
+        finalByColor = {
+          BLACK: compromiseValues.black,
+          WHITE: compromiseValues.white,
+          RED: compromiseValues.red,
+          BLUE: compromiseValues.blue,
+        };
+        lossBlack = Math.max(0, sentByColor.BLACK - compromiseValues.black);
+        lossWhite = Math.max(0, sentByColor.WHITE - compromiseValues.white);
+        lossRed = Math.max(0, sentByColor.RED - compromiseValues.red);
+        lossBlue = Math.max(0, sentByColor.BLUE - compromiseValues.blue);
+      }
+
+      const totalLoss = lossBlack + lossWhite + lossRed + lossBlue;
+
+      // Deduct sender with SENT quantities (for non-ADMIN)
+      if (transfer.senderType !== EntityType.ADMIN) {
+        const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+        for (const item of transfer.items) {
+          await this.deductInventory(
+            tx,
+            transfer.senderType,
+            senderEntityId,
+            item.itemType,
+            item.quantity,
+          );
+        }
+      }
+
+      // Credit receiver with final values (based on resolution)
+      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+      for (const [colorStr, quantity] of Object.entries(finalByColor)) {
+        if (quantity > 0) {
+          await this.creditInventory(
+            tx,
+            transfer.receiverType,
+            receiverEntityId,
+            colorStr as ItemType,
+            quantity,
+          );
+        }
+      }
+
+      // Update city statuses
+      if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
+        await this.inventoryService.updateCityStatus(tx, transfer.senderCityId);
+      }
+      if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
+        await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
+      }
+
+      // Create CompanyLoss record if there was a loss
+      if (totalLoss > 0) {
+        await (tx as any).companyLoss.create({
+          data: {
+            transferId: transfer.id,
+            black: lossBlack,
+            white: lossWhite,
+            red: lossRed,
+            blue: lossBlue,
+            totalAmount: totalLoss,
+            resolutionType,
+            resolvedBy: actorId,
+            senderName,
+            senderCity: senderCityName,
+            receiverName,
+            receiverCity: receiverCityName,
+            originalSent: totalSent,
+            originalReceived: totalReceived,
+            notes: notes || null,
+          },
+        });
+
+        this.logger.log(`CompanyLoss created for transfer ${transferId}: ${totalLoss} bracelets lost`);
+      }
+
+      // Update transfer status to ACCEPTED
+      await tx.transfer.update({
+        where: { id: transferId },
+        data: { status: TransferStatus.ACCEPTED, version: transfer.version + 1 },
+      });
+
+      this.logger.log(`Discrepancy resolved: ${transferId} → ACCEPTED via ${resolutionType}`);
+
       await this.storeDomainEvent(transferId, 'DiscrepancyResolved', {
-        action,
+        resolutionType,
         actorId,
+        totalLoss,
+        compromiseValues,
       });
 
       return tx.transfer.findUnique({

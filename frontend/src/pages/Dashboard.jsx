@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore, useBadgeStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
@@ -11,36 +12,48 @@ import BraceletCard from '../components/ui/BraceletCard';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import {
   Send, PackageCheck, Globe, MapPin,
-  ArrowRight, Activity,
+  ArrowRight, Activity, Clock,
   CalendarDays, Boxes, AlertTriangle,
+  TrendingUp, TrendingDown, ShieldAlert,
+  BarChart3, RefreshCw
 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
+  const { countryId, cityId, eventId } = useFilterStore();
+  const { pendingCount, problematicCount: badgeProblematic, incomingCount } = useBadgeStore();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(null);
   const [pending, setPending] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [problematicCount, setProblematicCount] = useState(0);
+  const [problematicTransfers, setProblematicTransfers] = useState([]);
   const [stats, setStats] = useState({ countries: 0, cities: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [countryId, cityId, eventId]);
 
   const loadData = async () => {
     try {
+      setLoading(true);
       const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
+      
+      // Build filter params
+      const filterParams = {};
+      if (countryId) filterParams.countryId = countryId;
+      if (cityId) filterParams.cityId = cityId;
+      if (eventId) filterParams.eventId = eventId;
+      
       const promises = [
-        transfersApi.getAll({ limit: 200 }),
+        transfersApi.getAll({ limit: 200, ...filterParams }),
         transfersApi.getPending(),
         usersApi.getCountries(),
-        transfersApi.getProblematic({ page: 1, limit: 1 }),
+        transfersApi.getProblematic({ page: 1, limit: 5 }),
       ];
 
       if (isAdminOrOffice) {
-        // Admin/Office — load all inventory to compute system totals
         promises.push(inventoryApi.getAll());
       } else {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
@@ -61,17 +74,19 @@ export default function Dashboard() {
       const pendPayload = pendData?.data || pendData;
       setPending(Array.isArray(pendPayload) ? pendPayload : []);
 
-      // Countries & cities count (now role-filtered from backend)
+      // Countries & cities count
       const countriesData = results[2].data;
       const countriesPayload = countriesData?.data || countriesData;
       const countriesList = Array.isArray(countriesPayload) ? countriesPayload : [];
       const totalCities = countriesList.reduce((sum, c) => sum + (c.cities?.length || 0), 0);
       setStats({ countries: countriesList.length, cities: totalCities });
 
-      // Problematic count
+      // Problematic transfers
       const probData = results[3].data;
       const probPayload = probData?.data || probData;
-      setProblematicCount(probData?.meta?.total || probPayload?.meta?.total || (Array.isArray(probPayload) ? probPayload.length : 0));
+      const probList = Array.isArray(probPayload) ? probPayload : [];
+      setProblematicTransfers(probList);
+      setProblematicCount(probData?.meta?.total || probPayload?.meta?.total || probList.length);
 
       // Balance
       if (results[4]) {
@@ -80,7 +95,6 @@ export default function Dashboard() {
         const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 
         if (isAdminOrOffice && Array.isArray(dPayload)) {
-          // Aggregate all inventory records into system totals
           const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
           dPayload.forEach((inv) => {
             if (totals[inv.itemType] !== undefined) {
@@ -125,11 +139,35 @@ export default function Dashboard() {
   const quickActions = [
     { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
     { label: 'Вернуть опаски', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['CITY'] },
-    { label: 'Получение', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'] },
-    { label: 'Расходы', icon: CalendarDays, path: '/expenses', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
-    { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Получение', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badge: incomingCount },
+    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'], badge: badgeProblematic },
+    { label: 'Зависшие', icon: Clock, path: '/pending', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badge: pendingCount },
+    { label: 'Статистика', icon: BarChart3, path: '/statistics', color: 'bg-purple-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
+    { label: 'Остатки', icon: Boxes, path: '/inventory', color: 'bg-amber-600', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   ].filter((a) => a.roles.includes(user.role));
+
+  // Helper for sender/receiver labels
+  const getSenderLabel = (t) => {
+    if (t.senderType === 'ADMIN') return 'Склад';
+    if (t.senderType === 'OFFICE') return t.senderOffice?.name || 'Офис';
+    if (t.senderType === 'CITY') {
+      const city = t.senderCity?.name || '—';
+      const country = t.senderCity?.country?.name;
+      return country ? `${city} (${country})` : city;
+    }
+    return t.senderCountry?.name || t.senderType || 'Отправитель';
+  };
+
+  const getReceiverLabel = (t) => {
+    if (t.receiverType === 'ADMIN') return 'Склад';
+    if (t.receiverType === 'OFFICE') return t.receiverOffice?.name || 'Офис';
+    if (t.receiverType === 'CITY') {
+      const city = t.receiverCity?.name || '—';
+      const country = t.receiverCity?.country?.name;
+      return country ? `${city} (${country})` : city;
+    }
+    return t.receiverCountry?.name || t.receiverType || 'Получатель';
+  };
 
   return (
     <div className="space-y-4">
@@ -266,12 +304,12 @@ export default function Dashboard() {
         <h3 className="text-2xs font-semibold text-content-muted uppercase tracking-widest mb-3">
           Быстрые действия
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {quickActions.map((action) => (
             <button
               key={action.label}
               onClick={() => navigate(action.path)}
-              className="group bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 text-left hover:border-edge/80 transition-all"
+              className="group relative bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 text-left hover:border-edge/80 transition-all"
             >
               <div
                 className={`w-10 h-10 ${action.color} rounded-[var(--radius-sm)] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
@@ -281,10 +319,72 @@ export default function Dashboard() {
               <div className="text-sm font-medium text-content-primary">
                 {action.label}
               </div>
+              {action.badge > 0 && (
+                <span className="absolute top-2 right-2 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-2xs font-bold px-1.5 animate-pulse">
+                  {action.badge > 99 ? '99+' : action.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
+
+      {/* ── Problematic Alerts (ADMIN/OFFICE) ──────────── */}
+      {(user.role === 'ADMIN' || user.role === 'OFFICE') && problematicTransfers.length > 0 && (
+        <div className="bg-red-500/5 rounded-[var(--radius-md)] border border-red-500/20 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-red-500/10">
+            <h3 className="font-semibold text-red-400 flex items-center gap-2">
+              <ShieldAlert size={16} />
+              Требуют решения ({problematicCount})
+            </h3>
+            <button
+              onClick={() => navigate('/problematic')}
+              className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 font-medium"
+            >
+              Все <ArrowRight size={12} />
+            </button>
+          </div>
+          <div className="p-4 space-y-2">
+            {problematicTransfers.slice(0, 3).map((t) => {
+              const totalDiff = (t.acceptanceRecords || []).reduce((s, r) => s + (r.discrepancy || 0), 0);
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between p-3 bg-surface-card rounded-[var(--radius-sm)] border border-edge"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm flex items-center gap-1.5">
+                      <span className="font-medium text-blue-400 truncate max-w-[100px]">{getSenderLabel(t)}</span>
+                      <span className="text-content-muted">→</span>
+                      <span className="font-medium text-emerald-400 truncate max-w-[100px]">{getReceiverLabel(t)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {t.items?.map((item) => (
+                        <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity} size="sm" />
+                      ))}
+                      {totalDiff !== 0 && (
+                        <span className="text-xs text-red-400 font-medium flex items-center gap-0.5">
+                          <TrendingDown size={12} />
+                          {Math.abs(totalDiff)} шт
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Badge variant="warning">Расхождение</Badge>
+                </div>
+              );
+            })}
+            {problematicCount > 3 && (
+              <button
+                onClick={() => navigate('/problematic')}
+                className="w-full text-center text-xs text-red-400 hover:text-red-300 py-2"
+              >
+                Ещё {problematicCount - 3} расхождений →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Status Breakdown + Recent ────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -361,16 +461,6 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-1">
               {recentTransfers.map((t) => {
-                const from =
-                  t.senderType === 'ADMIN'
-                    ? 'Склад'
-                    : t.senderType === 'CITY'
-                      ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
-                      : (t.senderCountry?.name || '—');
-                const to =
-                  t.receiverType === 'CITY'
-                    ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
-                    : (t.receiverCountry?.name || '—');
                 const totalQty = (t.items || []).reduce(
                   (s, i) => s + (i.quantity || 0),
                   0,
@@ -381,8 +471,10 @@ export default function Dashboard() {
                     className="flex items-center gap-3 p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-content-primary truncate">
-                        {from} → {to}
+                      <div className="text-sm flex items-center gap-1.5">
+                        <span className="font-medium text-blue-400 truncate max-w-[80px]" title={getSenderLabel(t)}>{getSenderLabel(t)}</span>
+                        <span className="text-content-muted">→</span>
+                        <span className="font-medium text-emerald-400 truncate max-w-[80px]" title={getReceiverLabel(t)}>{getReceiverLabel(t)}</span>
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
                         {(t.items || []).map((item) => (

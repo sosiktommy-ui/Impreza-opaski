@@ -64,15 +64,25 @@ enum AuditAction {
   TRANSFER_SENT
   ACCEPTANCE_SUBMITTED
   DISCREPANCY_DETECTED
+  DISCREPANCY_RESOLVED
   TRANSFER_ACCEPTED
   TRANSFER_REJECTED
   TRANSFER_CANCELLED
   INVENTORY_ADJUSTED
+  BALANCE_TOPUP
+  BALANCE_EDITED
   USER_CREATED
   USER_UPDATED
   USER_DELETED
   EXPENSE_CREATED
   EXPENSE_DELETED
+  COMPANY_LOSS_RECORDED
+}
+
+enum ResolutionType {
+  ACCEPT_SENDER
+  ACCEPT_RECEIVER
+  ACCEPT_COMPROMISE
 }
 
 // ──────────────────────────────────────────────
@@ -108,6 +118,7 @@ model User {
   acceptanceRecords AcceptanceRecord[]
   chatMessagesSent     ChatMessage[] @relation("ChatSender")
   chatMessagesReceived ChatMessage[] @relation("ChatReceiver")
+  companyLossesResolved CompanyLoss[]
 
   @@map("users")
 }
@@ -258,6 +269,7 @@ model Transfer {
   items           TransferItem[]
   rejection       TransferRejection?
   acceptanceRecords AcceptanceRecord[]
+  companyLosses   CompanyLoss[]
 
   @@index([status])
   @@index([senderType, senderOfficeId])
@@ -441,4 +453,41 @@ model ChatMessage {
   @@index([receiverId, read])
   @@index([createdAt])
   @@map("chat_messages")
+}
+
+// ──────────────────────────────────────────────
+// COMPANY LOSSES (Discrepancy resolution losses)
+// ──────────────────────────────────────────────
+
+model CompanyLoss {
+  id              String         @id @default(uuid())
+  transferId      String         @map("transfer_id")
+  transfer        Transfer       @relation(fields: [transferId], references: [id])
+  
+  // Lost quantities by color
+  black           Int            @default(0)
+  white           Int            @default(0)
+  red             Int            @default(0)
+  blue            Int            @default(0)
+  totalAmount     Int            @map("total_amount")
+  
+  // Resolution details
+  resolutionType  ResolutionType @map("resolution_type")
+  resolvedBy      String         @map("resolved_by")
+  resolver        User           @relation(fields: [resolvedBy], references: [id])
+  resolvedAt      DateTime       @default(now()) @map("resolved_at")
+  
+  // Transfer context (denormalized for quick display)
+  senderName      String         @map("sender_name")
+  senderCity      String?        @map("sender_city")
+  receiverName    String         @map("receiver_name")
+  receiverCity    String?        @map("receiver_city")
+  originalSent    Int            @map("original_sent")
+  originalReceived Int           @map("original_received")
+  notes           String?
+
+  @@index([transferId])
+  @@index([resolvedBy])
+  @@index([resolvedAt])
+  @@map("company_losses")
 }
