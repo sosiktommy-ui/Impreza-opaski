@@ -83,6 +83,7 @@ enum ResolutionType {
   ACCEPT_SENDER
   ACCEPT_RECEIVER
   ACCEPT_COMPROMISE
+  CANCEL_TRANSFER
 }
 
 // ──────────────────────────────────────────────
@@ -153,6 +154,7 @@ model Office {
   inventory Inventory[]
   transfersSent     Transfer[] @relation("SenderOffice")
   transfersReceived Transfer[] @relation("ReceiverOffice")
+  warehouseCreations WarehouseCreation[]
 
   @@map("offices")
 }
@@ -490,4 +492,32 @@ model CompanyLoss {
   @@index([resolvedBy])
   @@index([resolvedAt])
   @@map("company_losses")
+}
+
+// ──────────────────────────────────────────────
+// WAREHOUSE CREATION LOG (ADMIN/OFFICE bracelet creation)
+// ──────────────────────────────────────────────
+
+model WarehouseCreation {
+  id          String     @id @default(uuid())
+  entityType  EntityType @map("entity_type")  // ADMIN or OFFICE
+  officeId    String?    @map("office_id")
+  office      Office?    @relation(fields: [officeId], references: [id])
+  
+  // Created quantities by color
+  black       Int        @default(0)
+  white       Int        @default(0)
+  red         Int        @default(0)
+  blue        Int        @default(0)
+  totalAmount Int        @map("total_amount")
+  
+  // Audit
+  createdBy   String     @map("created_by")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  notes       String?
+
+  @@index([entityType, officeId])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@map("warehouse_creations")
 }

@@ -1272,6 +1272,13 @@ export class TransfersService {
         lossWhite = Math.max(0, sentByColor.WHITE - compromiseValues.white);
         lossRed = Math.max(0, sentByColor.RED - compromiseValues.red);
         lossBlue = Math.max(0, sentByColor.BLUE - compromiseValues.blue);
+      } else if (resType === 'CANCEL_TRANSFER') {
+        // Cancel transfer: nothing credited to receiver, entire sent amount is company loss
+        finalByColor = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+        lossBlack = sentByColor.BLACK;
+        lossWhite = sentByColor.WHITE;
+        lossRed = sentByColor.RED;
+        lossBlue = sentByColor.BLUE;
       }
 
       const totalLoss = lossBlack + lossWhite + lossRed + lossBlue;

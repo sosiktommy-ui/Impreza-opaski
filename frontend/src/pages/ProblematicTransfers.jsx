@@ -51,11 +51,26 @@ const RESOLUTION_TYPES = {
     color: 'bg-amber-500 hover:bg-amber-600',
     textColor: 'text-amber-400',
   },
+  CANCEL_TRANSFER: {
+    key: 'CANCEL_TRANSFER',
+    label: 'Отменить трансфер',
+    shortLabel: 'Отменить',
+    icon: XCircle,
+    description: 'Полная отмена — никому ничего не зачисляется, вся отправка идёт в минус компании',
+    color: 'bg-red-500 hover:bg-red-600',
+    textColor: 'text-red-400',
+  },
 };
 
 function entityLabel(transfer, prefix) {
   const type = transfer[`${prefix}Type`];
-  if (type === 'ADMIN') return 'Склад';
+  // For ADMIN sender, show the created by user's name if available
+  if (type === 'ADMIN') {
+    if (prefix === 'sender' && transfer.createdByUser) {
+      return transfer.createdByUser.displayName || transfer.createdByUser.username || 'Админ';
+    }
+    return 'Админ';
+  }
   if (type === 'OFFICE') {
     const o = transfer[`${prefix}Office`];
     return o?.name || 'Офис';
@@ -102,6 +117,9 @@ function calculateLoss(transfer, resolutionType, compromiseValues = {}) {
       // Compromise: loss is sent - compromiseValue
       const compromiseVal = compromiseValues[r.itemType] || 0;
       diff = Math.max(0, sent - compromiseVal);
+    } else if (resolutionType === 'CANCEL_TRANSFER') {
+      // Cancel: entire sent amount is company loss
+      diff = sent;
     }
     
     if (loss[itemKey] !== undefined) {

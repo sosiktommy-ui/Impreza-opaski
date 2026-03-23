@@ -103,7 +103,13 @@ export default function Acceptance() {
   }, [transfers, search]);
 
   const getSenderLabel = (t) => {
-    if (t.senderType === 'ADMIN') return 'Склад';
+    if (t.senderType === 'ADMIN') {
+      // Show creator name for ADMIN sender if available
+      if (t.createdByUser) {
+        return t.createdByUser.displayName || t.createdByUser.username || 'Админ';
+      }
+      return 'Админ';
+    }
     if (t.senderType === 'OFFICE') return t.senderOffice?.name || 'Офис';
     if (t.senderType === 'CITY') {
       const city = t.senderCity?.name || '—';
@@ -114,7 +120,7 @@ export default function Acceptance() {
   };
 
   const getReceiverLabel = (t) => {
-    if (t.receiverType === 'ADMIN') return 'Склад';
+    if (t.receiverType === 'ADMIN') return 'Админ';
     if (t.receiverType === 'OFFICE') return t.receiverOffice?.name || 'Офис';
     if (t.receiverType === 'CITY') {
       const city = t.receiverCity?.name || '—';

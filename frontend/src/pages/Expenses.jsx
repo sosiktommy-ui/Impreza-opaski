@@ -273,7 +273,7 @@ export default function Expenses() {
           <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><CalendarDays size={22} className="text-brand-500" /> Расходы</h2>
           <p className="text-xs text-content-muted mt-0.5">Учёт расхода браслетов по событиям IMPREZA</p>
         </div>
-        {user.role === 'CITY' && (
+        {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].includes(user.role) && (
           <Button onClick={openCreate} size="sm">
             <Plus size={18} /> Новое
           </Button>

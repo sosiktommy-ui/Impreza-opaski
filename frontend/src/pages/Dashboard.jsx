@@ -148,7 +148,13 @@ export default function Dashboard() {
 
   // Helper for sender/receiver labels
   const getSenderLabel = (t) => {
-    if (t.senderType === 'ADMIN') return 'Склад';
+    if (t.senderType === 'ADMIN') {
+      // Show creator name for ADMIN sender if available
+      if (t.createdByUser) {
+        return t.createdByUser.displayName || t.createdByUser.username || 'Админ';
+      }
+      return 'Админ';
+    }
     if (t.senderType === 'OFFICE') return t.senderOffice?.name || 'Офис';
     if (t.senderType === 'CITY') {
       const city = t.senderCity?.name || '—';
@@ -159,7 +165,7 @@ export default function Dashboard() {
   };
 
   const getReceiverLabel = (t) => {
-    if (t.receiverType === 'ADMIN') return 'Склад';
+    if (t.receiverType === 'ADMIN') return 'Админ';
     if (t.receiverType === 'OFFICE') return t.receiverOffice?.name || 'Офис';
     if (t.receiverType === 'CITY') {
       const city = t.receiverCity?.name || '—';
@@ -269,13 +275,9 @@ export default function Dashboard() {
               >
                 <div>
                   <div className="text-sm font-medium text-content-primary">
-                    От: {t.senderType === 'ADMIN'
-                      ? 'Склад'
-                      : t.senderType === 'CITY'
-                        ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
-                        : (t.senderCountry?.name || 'Отправитель')}
+                    От: {getSenderLabel(t)}
                   </div>
-                  {t.createdByUser?.displayName && (
+                  {t.createdByUser?.displayName && t.senderType !== 'ADMIN' && (
                     <div className="text-[10px] text-content-muted">
                       {t.createdByUser.displayName}
                     </div>

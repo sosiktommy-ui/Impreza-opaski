@@ -50,18 +50,24 @@ export const useBadgeStore = create((set) => ({
   pendingCount: 0,
   problematicCount: 0,
   incomingCount: 0,
+  companyLossCount: 0,
   
   setPendingCount: (pendingCount) => set({ pendingCount }),
   setProblematicCount: (problematicCount) => set({ problematicCount }),
   setIncomingCount: (incomingCount) => set({ incomingCount }),
+  setCompanyLossCount: (companyLossCount) => set({ companyLossCount }),
   
   // Fetch all counts
-  refreshCounts: async (transfersApi) => {
+  refreshCounts: async (transfersApi, inventoryApi) => {
     try {
+      const pendingPromise = transfersApi.getAll({ status: 'SENT', direction: 'sent', limit: 1 });
+      const problematicPromise = transfersApi.getProblematic({ limit: 1 });
+      const incomingPromise = transfersApi.getPending();
+      
       const [pendingRes, problematicRes, incomingRes] = await Promise.all([
-        transfersApi.getAll({ status: 'SENT', direction: 'sent', limit: 1 }),
-        transfersApi.getProblematic({ limit: 1 }),
-        transfersApi.getPending(),
+        pendingPromise,
+        problematicPromise,
+        incomingPromise,
       ]);
       
       const pendingCount = pendingRes.data?.meta?.total || 0;
@@ -69,7 +75,18 @@ export const useBadgeStore = create((set) => ({
       const incomingPayload = incomingRes.data?.data || incomingRes.data;
       const incomingCount = Array.isArray(incomingPayload) ? incomingPayload.length : 0;
       
-      set({ pendingCount, problematicCount, incomingCount });
+      // Fetch company loss count if inventoryApi is passed
+      let companyLossCount = 0;
+      if (inventoryApi) {
+        try {
+          const lossRes = await inventoryApi.getCompanyLossesSummary();
+          companyLossCount = lossRes.data?.count || 0;
+        } catch (e) {
+          // Ignore if not available
+        }
+      }
+      
+      set({ pendingCount, problematicCount, incomingCount, companyLossCount });
     } catch (err) {
       console.error('Failed to refresh badge counts:', err);
     }

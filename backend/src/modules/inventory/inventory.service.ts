@@ -592,4 +592,249 @@ export class InventoryService {
     }
     return where;
   }
+
+  // ──────────────────────────────────────────────
+  // WAREHOUSE: Create bracelets (ADMIN/OFFICE)
+  // ──────────────────────────────────────────────
+
+  async createBracelets(params: {
+    entityType: EntityType;
+    officeId?: string;
+    black: number;
+    white: number;
+    red: number;
+    blue: number;
+    notes?: string;
+    actorId: string;
+  }) {
+    const { entityType, officeId, black, white, red, blue, notes, actorId } = params;
+
+    // Validate entityType is ADMIN or OFFICE
+    if (entityType !== EntityType.ADMIN && entityType !== EntityType.OFFICE) {
+      throw new BadRequestException('Warehouse creation only available for ADMIN/OFFICE');
+    }
+
+    // Validate at least one color has quantity
+    if (black <= 0 && white <= 0 && red <= 0 && blue <= 0) {
+      throw new BadRequestException('At least one bracelet color must have quantity > 0');
+    }
+
+    const totalAmount = black + white + red + blue;
+
+    return this.prisma.$transaction(async (tx) => {
+      const colors = [
+        { type: ItemType.BLACK, qty: black },
+        { type: ItemType.WHITE, qty: white },
+        { type: ItemType.RED, qty: red },
+        { type: ItemType.BLUE, qty: blue },
+      ];
+
+      // Add to inventory for each color
+      for (const { type, qty } of colors) {
+        if (qty > 0) {
+          const where = entityType === EntityType.ADMIN
+            ? { entityType, officeId: null, countryId: null, cityId: null, itemType: type }
+            : { entityType, officeId, itemType: type };
+
+          let inventory = await tx.inventory.findFirst({
+            where: {
+              entityType,
+              ...(entityType === EntityType.OFFICE ? { officeId } : { officeId: null, countryId: null, cityId: null }),
+              itemType: type,
+            },
+          });
+
+          if (inventory) {
+            await tx.inventory.update({
+              where: { id: inventory.id },
+              data: { quantity: inventory.quantity + qty },
+            });
+          } else {
+            await tx.inventory.create({
+              data: {
+                entityType,
+                ...(entityType === EntityType.OFFICE ? { officeId } : {}),
+                itemType: type,
+                quantity: qty,
+              },
+            });
+          }
+        }
+      }
+
+      // Create warehouse creation log
+      const creation = await (tx as any).warehouseCreation.create({
+        data: {
+          entityType,
+          officeId: entityType === EntityType.OFFICE ? officeId : null,
+          black,
+          white,
+          red,
+          blue,
+          totalAmount,
+          createdBy: actorId,
+          notes: notes || null,
+        },
+      });
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          action: 'BALANCE_TOPUP',
+          entityType: entityType === EntityType.ADMIN ? 'Admin' : 'Office',
+          entityId: officeId || 'admin',
+          actorId,
+          metadata: { black, white, red, blue, totalAmount, notes },
+        },
+      });
+
+      // Invalidate cache
+      if (entityType === EntityType.OFFICE && officeId) {
+        await this.redis.invalidateInventory(EntityType.OFFICE, officeId);
+      }
+      await this.redis.del('inventory:all');
+
+      this.logger.log(
+        `Warehouse bracelets created: ${entityType}${officeId ? ':' + officeId : ''} — B:${black} W:${white} R:${red} BL:${blue} by ${actorId}`,
+      );
+
+      return creation;
+    });
+  }
+
+  // Get warehouse creation history
+  async getWarehouseCreationHistory(params: {
+    entityType?: EntityType;
+    officeId?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { entityType, officeId, page = 1, limit = 20 } = params;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (entityType) where.entityType = entityType;
+    if (officeId) where.officeId = officeId;
+
+    const [creations, total] = await Promise.all([
+      (this.prisma as any).warehouseCreation.findMany({
+        where,
+        include: {
+          office: { select: { id: true, name: true, code: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      (this.prisma as any).warehouseCreation.count({ where }),
+    ]);
+
+    return {
+      data: creations,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  // Get warehouse balance for ADMIN or specific OFFICE
+  async getWarehouseBalance(entityType: EntityType, officeId?: string) {
+    if (entityType !== EntityType.ADMIN && entityType !== EntityType.OFFICE) {
+      throw new BadRequestException('Only ADMIN or OFFICE entityType supported');
+    }
+
+    const where: Prisma.InventoryWhereInput = { entityType };
+    if (entityType === EntityType.OFFICE) {
+      where.officeId = officeId;
+    } else {
+      // ADMIN: no office/country/city
+      where.officeId = null;
+      where.countryId = null;
+      where.cityId = null;
+    }
+
+    const inventory = await this.prisma.inventory.findMany({ where });
+
+    const balance: Record<string, number> = {};
+    for (const itemType of Object.values(ItemType)) {
+      const entry = inventory.find((i) => i.itemType === itemType);
+      balance[itemType] = entry?.quantity ?? 0;
+    }
+
+    return balance;
+  }
+
+  // ──────────────────────────────────────────────
+  // COMPANY LOSSES: Summary and list
+  // ──────────────────────────────────────────────
+
+  async getCompanyLossesSummary() {
+    const losses = await (this.prisma as any).companyLoss.findMany();
+
+    const summary = {
+      total: 0,
+      black: 0,
+      white: 0,
+      red: 0,
+      blue: 0,
+      count: losses.length,
+    };
+
+    for (const loss of losses) {
+      summary.total += loss.totalAmount || 0;
+      summary.black += loss.black || 0;
+      summary.white += loss.white || 0;
+      summary.red += loss.red || 0;
+      summary.blue += loss.blue || 0;
+    }
+
+    return summary;
+  }
+
+  async getCompanyLosses(params: {
+    page?: number;
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+    countryId?: string;
+  }) {
+    const { page = 1, limit = 20, startDate, endDate } = params;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (startDate) {
+      where.resolvedAt = { ...where.resolvedAt, gte: new Date(startDate) };
+    }
+    if (endDate) {
+      where.resolvedAt = { ...where.resolvedAt, lte: new Date(endDate) };
+    }
+
+    const [losses, total] = await Promise.all([
+      (this.prisma as any).companyLoss.findMany({
+        where,
+        include: {
+          transfer: {
+            select: {
+              id: true,
+              status: true,
+              senderType: true,
+              receiverType: true,
+              senderCity: { select: { id: true, name: true } },
+              senderCountry: { select: { id: true, name: true } },
+              receiverCity: { select: { id: true, name: true } },
+              receiverCountry: { select: { id: true, name: true } },
+            },
+          },
+          resolver: { select: { id: true, displayName: true, username: true } },
+        },
+        orderBy: { resolvedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      (this.prisma as any).companyLoss.count({ where }),
+    ]);
+
+    return {
+      data: losses,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
 }

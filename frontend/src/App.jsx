@@ -16,6 +16,8 @@ import ProblematicTransfers from './pages/ProblematicTransfers';
 import Profile from './pages/Profile';
 import Chat from './pages/Chat';
 import Map from './pages/Map';
+import Warehouse from './pages/Warehouse';
+import CompanyLosses from './pages/CompanyLosses';
 import { transfersApi } from './api/transfers';
 import { eventsApi } from './api/events';
 import { usersApi } from './api/users';
@@ -737,6 +739,22 @@ export default function App() {
           element={
             <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
               <Expenses />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="warehouse"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
+              <Warehouse />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="company-losses"
+          element={
+            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
+              <CompanyLosses />
             </PrivateRoute>
           }
         />

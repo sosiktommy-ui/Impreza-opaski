@@ -21,4 +21,23 @@ export const inventoryApi = {
   getExpenses: (params) => api.get('/inventory/expenses', { params }),
 
   deleteExpense: (id) => api.delete(`/inventory/expense/${id}`),
+
+  // ─────────────────────────────────────────────────────────────────
+  // Warehouse (ADMIN/OFFICE) - создание браслетов на складе
+  // ─────────────────────────────────────────────────────────────────
+  createBracelets: (data) => api.post('/inventory/warehouse/create-bracelets', data),
+  // data: { officeId, black, white, red, blue, notes }
+
+  getWarehouseCreationHistory: (params) => api.get('/inventory/warehouse/creation-history', { params }),
+  // params: { officeId, skip, take }
+
+  getWarehouseBalance: (officeId) => api.get('/inventory/warehouse/balance', { params: { officeId } }),
+
+  // ─────────────────────────────────────────────────────────────────
+  // Company Losses - минус компании
+  // ─────────────────────────────────────────────────────────────────
+  getCompanyLossesSummary: () => api.get('/inventory/company-losses/summary'),
+
+  getCompanyLosses: (params) => api.get('/inventory/company-losses', { params }),
+  // params: { skip, take, search }
 };

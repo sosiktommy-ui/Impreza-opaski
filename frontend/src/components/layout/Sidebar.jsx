@@ -16,12 +16,15 @@ import {
   MapPinned,
   Clock,
   BarChart3,
+  Package,
+  TrendingDown,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore, useBadgeStore } from '../../store/useAppStore';
 import { useChatStore } from '../../store/useChatStore';
 import { useEffect } from 'react';
 import { transfersApi } from '../../api/transfers';
+import { inventoryApi } from '../../api/inventory';
 
 const allLinks = [
   { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
@@ -30,6 +33,8 @@ const allLinks = [
   { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'], badgeKey: 'problematic' },
   { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
   { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/warehouse', icon: Package, label: 'Склад', roles: ['ADMIN', 'OFFICE'], badgeKey: null },
+  { to: '/company-losses', icon: TrendingDown, label: 'Минус компании', roles: ['ADMIN', 'OFFICE'], badgeKey: 'companyLoss' },
   { to: '/inventory', icon: Warehouse, label: 'Остатки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
   { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
@@ -43,13 +48,13 @@ export default function Sidebar() {
   const { user } = useAuthStore();
   const { sidebarOpen, closeSidebar, sidebarCollapsed, toggleCollapsed } = useAppStore();
   const { unreadCount: chatUnread, startPolling, stopPolling } = useChatStore();
-  const { pendingCount, problematicCount, incomingCount, refreshCounts } = useBadgeStore();
+  const { pendingCount, problematicCount, incomingCount, companyLossCount, refreshCounts } = useBadgeStore();
 
   useEffect(() => {
     startPolling();
     // Initial fetch and polling for badge counts
-    refreshCounts(transfersApi);
-    const badgeInterval = setInterval(() => refreshCounts(transfersApi), 30000);
+    refreshCounts(transfersApi, inventoryApi);
+    const badgeInterval = setInterval(() => refreshCounts(transfersApi, inventoryApi), 30000);
     return () => {
       stopPolling();
       clearInterval(badgeInterval);
@@ -65,6 +70,7 @@ export default function Sidebar() {
       case 'incoming': return incomingCount > 0 ? incomingCount : null;
       case 'problematic': return problematicCount > 0 ? problematicCount : null;
       case 'pending': return pendingCount > 0 ? pendingCount : null;
+      case 'companyLoss': return companyLossCount > 0 ? companyLossCount : null;
       default: return null;
     }
   };
@@ -75,6 +81,7 @@ export default function Sidebar() {
       case 'problematic': return 'bg-amber-500';
       case 'pending': return 'bg-orange-500';
       case 'incoming': return 'bg-emerald-500';
+      case 'companyLoss': return 'bg-red-500';
       default: return 'bg-brand-600';
     }
   };
