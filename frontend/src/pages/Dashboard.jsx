@@ -68,8 +68,10 @@ export default function Dashboard() {
 
       // All transfers
       const allData = results[0].data;
+      console.log('Dashboard transfers API response:', allData);
       const allPayload = allData?.data || allData;
       const allTransfers = Array.isArray(allPayload) ? allPayload : (allPayload?.items || []);
+      console.log('Dashboard parsed transfers:', allTransfers.length, 'items');
       setTransfers(allTransfers);
 
       // Pending incoming
