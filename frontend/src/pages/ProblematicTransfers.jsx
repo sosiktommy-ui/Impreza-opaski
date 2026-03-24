@@ -6,7 +6,7 @@ import {
   ArrowRight, TrendingDown, Lock, Search, MinusCircle
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { useFilterStore } from '../store/useAppStore';
+import { useFilterStore, useBadgeStore } from '../store/useAppStore';
 import { transfersApi } from '../api/transfers';
 import { inventoryApi } from '../api/inventory';
 import Card from '../components/ui/Card';
@@ -166,13 +166,9 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('RAW API Response:', transfersRes);
-      console.log('transfersRes.data:', transfersRes.data);
-      
       // Backend returns { data: [...], meta: {...} }
       const responseData = transfersRes.data;
       const list = responseData?.data || [];
-      console.log('Parsed list:', list, 'length:', list.length);
       
       setTransfers(Array.isArray(list) ? list : []);
       setTotalPages(responseData?.meta?.totalPages || 1);
@@ -242,6 +238,8 @@ export default function ProblematicTransfers() {
       setSelectedTransfer(null);
       setSelectedResolution(null);
       await fetchData(page);
+      // Update sidebar badges immediately
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
     } catch (err) {
       const message = err.response?.data?.message || 'Ошибка разрешения';
       setResolveError(message);

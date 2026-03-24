@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { transfersApi } from '../api/transfers';
+import { inventoryApi } from '../api/inventory';
 import { useAuthStore } from '../store/useAuthStore';
+import { useBadgeStore } from '../store/useAppStore';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -124,6 +126,8 @@ export default function Acceptance() {
       await transfersApi.accept(acceptTarget.id, items);
       setAcceptTarget(null);
       await loadTransfers();
+      // Update sidebar badges immediately
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка получения');
     } finally {
@@ -182,6 +186,8 @@ export default function Acceptance() {
       setDisagreeTarget(null);
       setDisagreeReason('');
       await loadTransfers();
+      // Update sidebar badges immediately
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка');
     } finally {

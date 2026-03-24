@@ -86,9 +86,7 @@ export default function Dashboard() {
 
       // Problematic transfers
       const probData = results[3].data;
-      console.log('Dashboard probData:', probData);
       const probList = probData?.data || [];
-      console.log('Dashboard probList:', probList, 'meta:', probData?.meta);
       setProblematicTransfers(Array.isArray(probList) ? probList : []);
       setProblematicCount(probData?.meta?.total || probList.length);
 
@@ -279,7 +277,7 @@ export default function Dashboard() {
               {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
                 const colorLabels = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
                 const colorClasses = { BLACK: 'bg-gray-700', WHITE: 'bg-gray-100', RED: 'bg-red-500', BLUE: 'bg-blue-500' };
-                const qty = lossSummary.byColor?.[type] || 0;
+                const qty = lossSummary?.[type.toLowerCase()] || 0;
                 return (
                   <div key={type} className="flex items-center gap-2 p-2 bg-surface-card rounded-lg border border-edge">
                     <span className={`w-4 h-4 rounded-full ${colorClasses[type]} flex-shrink-0`} />
@@ -293,7 +291,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 p-2 bg-red-500/10 rounded-lg border border-red-500/30">
                 <TrendingDown size={16} className="text-red-400" />
                 <div>
-                  <div className="text-sm font-bold text-red-400">-{lossSummary.totalQuantity}</div>
+                  <div className="text-sm font-bold text-red-400">-{lossSummary?.total || 0}</div>
                   <div className="text-[10px] text-content-muted">Всего</div>
                 </div>
               </div>

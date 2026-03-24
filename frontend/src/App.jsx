@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
 import { useThemeStore } from './store/useThemeStore';
-import { useFilterStore } from './store/useAppStore';
+import { useFilterStore, useBadgeStore } from './store/useAppStore';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -20,6 +20,7 @@ import CompanyLosses from './pages/CompanyLosses';
 import { transfersApi } from './api/transfers';
 import { eventsApi } from './api/events';
 import { usersApi } from './api/users';
+import { inventoryApi } from './api/inventory';
 import {
   Clock, AlertTriangle, Package, TrendingDown, TrendingUp,
   ArrowRight, Calendar, Filter, RefreshCw, Download,
@@ -61,24 +62,15 @@ function PendingTransfers() {
   const loadPendingTransfers = async () => {
     setLoading(true);
     try {
-      // Use getPending() which returns SENT transfers (pending acceptance)
-      const { data } = await transfersApi.getPending();
+      // Use getAll with status SENT to match badge calculation
+      const params = { status: 'SENT', limit: 500 };
+      if (countryId) params.countryId = countryId;
+      if (cityId) params.cityId = cityId;
+      
+      const { data } = await transfersApi.getAll(params);
+      // Handle paginated response: { data: [...], meta: {...} }
       const transfers = data?.data || data || [];
-      // Optionally filter by country/city if filters are set
-      let filtered = transfers;
-      if (countryId) {
-        filtered = filtered.filter(t => 
-          t.senderCountryId === countryId || t.receiverCountryId === countryId ||
-          t.sender?.countryId === countryId || t.receiver?.countryId === countryId
-        );
-      }
-      if (cityId) {
-        filtered = filtered.filter(t => 
-          t.senderCityId === cityId || t.receiverCityId === cityId ||
-          t.sender?.cityId === cityId || t.receiver?.cityId === cityId
-        );
-      }
-      setTransfers(filtered);
+      setTransfers(Array.isArray(transfers) ? transfers : []);
     } catch (err) {
       setError('Не удалось загрузить зависшие переводы');
       console.error(err);
@@ -141,6 +133,8 @@ function PendingTransfers() {
       setAcceptModalOpen(false);
       setSelectedTransfer(null);
       loadPendingTransfers();
+      // Update sidebar badges immediately
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
     } catch (err) {
       setActionError(err.response?.data?.message || 'Ошибка при принятии перевода');
     } finally {
@@ -159,6 +153,8 @@ function PendingTransfers() {
       setSelectedTransfer(null);
       setRejectReason('');
       loadPendingTransfers();
+      // Update sidebar badges immediately
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
     } catch (err) {
       setActionError(err.response?.data?.message || 'Ошибка при отклонении перевода');
     } finally {
@@ -176,6 +172,8 @@ function PendingTransfers() {
       setCancelModalOpen(false);
       setSelectedTransfer(null);
       loadPendingTransfers();
+      // Update sidebar badges immediately
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
     } catch (err) {
       setActionError(err.response?.data?.message || 'Ошибка при отмене перевода');
     } finally {
