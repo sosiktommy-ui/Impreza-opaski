@@ -80,7 +80,20 @@ export default function Expenses() {
       if (targetCityName) params.city = targetCityName;
       const { data } = await eventsApi.getEvents(params);
       const list = data?.data || data;
-      setimprezaEvents(Array.isArray(list) ? list : []);
+      const allEvents = Array.isArray(list) ? list : [];
+      
+      // Filter out old events (only show last 60 days)
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      
+      const recentEvents = allEvents.filter(ev => {
+        // Keep events without date or with recent date
+        if (!ev.date) return true;
+        const eventDate = new Date(ev.date);
+        return !isNaN(eventDate.getTime()) && eventDate >= sixtyDaysAgo;
+      });
+      
+      setimprezaEvents(recentEvents);
     } catch (err) {
       console.error('Failed to load IMPREZA events', err);
     }
@@ -156,6 +169,12 @@ export default function Expenses() {
       } else {
         await loadimprezaEvents();
       }
+    } else if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+      // For ADMIN/OFFICE, load ALL events (no city filter)
+      await loadimprezaEvents();
+    } else if (user.role === 'COUNTRY') {
+      // For COUNTRY, load events for their country (will be filtered when city selected)
+      await loadimprezaEvents();
     }
   };
 
@@ -449,10 +468,17 @@ export default function Expenses() {
                   />
 
                   <div className="flex items-center justify-between text-xs text-content-muted">
-                    <span className="flex items-center gap-1">
-                      <MapPin size={11} />
-                      {ex.city?.name || 'Город'}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1">
+                        <MapPin size={11} />
+                        {ex.city?.name || 'Город'}
+                      </span>
+                      {ex.createdBy && (
+                        <span className="text-content-muted">
+                          Добавил: {ex.createdBy.displayName || ex.createdBy.username || 'Неизвестно'}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {ex.notes && (
                         <span className="truncate max-w-[200px] italic">{ex.notes}</span>

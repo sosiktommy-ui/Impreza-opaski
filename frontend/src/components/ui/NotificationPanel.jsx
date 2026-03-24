@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Check, CheckCheck, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCheck, X } from 'lucide-react';
 import { useNotificationStore } from '../../store/useNotificationStore';
 
 const TYPE_STYLES = {
@@ -9,6 +10,15 @@ const TYPE_STYLES = {
   DISCREPANCY_ALERT: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800',
   LOW_STOCK: 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800',
   ZERO_STOCK: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800',
+};
+
+const TYPE_ICONS = {
+  INCOMING_TRANSFER: '📥',
+  TRANSFER_ACCEPTED: '✅',
+  TRANSFER_REJECTED: '❌',
+  DISCREPANCY_ALERT: '⚠️',
+  LOW_STOCK: '📦',
+  ZERO_STOCK: '🚨',
 };
 
 function timeAgo(dateStr) {
@@ -26,6 +36,7 @@ export default function NotificationPanel({ onClose }) {
   const { notifications, loading, fetchNotifications, markAsRead, markAllAsRead, unreadCount } =
     useNotificationStore();
   const panelRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchNotifications();
@@ -41,6 +52,16 @@ export default function NotificationPanel({ onClose }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
+
+  const handleNotificationClick = (n) => {
+    if (!n.read) {
+      markAsRead(n.id);
+    }
+    if (n.link) {
+      navigate(n.link);
+      onClose();
+    }
+  };
 
   return (
     <div
@@ -83,8 +104,11 @@ export default function NotificationPanel({ onClose }) {
             className={`px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer hover:bg-surface-card-hover ${
               !n.read ? 'bg-brand-500/5' : ''
             }`}
-            onClick={() => !n.read && markAsRead(n.id)}
+            onClick={() => handleNotificationClick(n)}
           >
+            <div className="text-lg flex-shrink-0 mt-0.5">
+              {TYPE_ICONS[n.type] || '🔔'}
+            </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-content-primary' : 'text-content-secondary'}`}>

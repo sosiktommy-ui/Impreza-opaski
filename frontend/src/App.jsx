@@ -591,16 +591,18 @@ function Statistics() {
       if (cityId) params.cityId = cityId;
       if (eventId) params.eventId = eventId;
 
-      // Use dedicated stats endpoint instead of fetching all transfers
-      const [statsRes, usersRes, eventsRes] = await Promise.all([
-        transfersApi.getStats(params).catch(() => ({ data: null })),
+      // Fetch all statistics in parallel
+      const [statsRes, usersRes, eventsRes, allTransfersRes] = await Promise.all([
+        transfersApi.getStats(params).catch((e) => { console.log('Stats API error:', e); return { data: null }; }),
         usersApi.getUsers().catch(() => ({ data: [] })),
         eventsApi.getAll().catch(() => ({ data: [] })),
+        // Fallback: also fetch all transfers for manual calculation if stats endpoint fails
+        transfersApi.getAll({ limit: 500 }).catch(() => ({ data: [] })),
       ]);
 
       // Process transfer statistics from stats endpoint
       const stats = statsRes.data;
-      if (stats) {
+      if (stats && stats.summary) {
         // Build daily trend from stats.trend
         const dailyTrend = (stats.trend || []).slice(-14).map(item => ({
           date: new Date(item.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
@@ -628,13 +630,61 @@ function Statistics() {
           totalLoss: stats.summary?.totalLoss || 0,
         });
       } else {
-        // Fallback if stats endpoint fails
+        // Fallback: calculate stats from raw transfers if stats endpoint failed
+        const transfers = allTransfersRes.data?.data || allTransfersRes.data || [];
+        const allTransfers = Array.isArray(transfers) ? transfers : [];
+        
+        // Calculate date range for filtering
+        const now = new Date();
+        let periodDays = 30;
+        if (dateRange === 'week') periodDays = 7;
+        else if (dateRange === 'quarter') periodDays = 90;
+        else if (dateRange === 'year') periodDays = 365;
+        const startDate = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
+        
+        const filteredTransfers = allTransfers.filter(t => new Date(t.createdAt) >= startDate);
+        
+        // Calculate status breakdown
+        const byStatus = { SENT: 0, ACCEPTED: 0, DISCREPANCY_FOUND: 0, CANCELLED: 0 };
+        filteredTransfers.forEach(t => {
+          if (byStatus[t.status] !== undefined) byStatus[t.status]++;
+        });
+        
+        // Calculate bracelet breakdown
+        const byType = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+        let totalBracelets = 0;
+        filteredTransfers.forEach(t => {
+          (t.items || []).forEach(item => {
+            const qty = item.quantity || item.sentQuantity || 0;
+            if (byType[item.itemType] !== undefined) {
+              byType[item.itemType] += qty;
+              totalBracelets += qty;
+            }
+          });
+        });
+        
+        // Build daily trend
+        const trendMap = new Map();
+        filteredTransfers.forEach(t => {
+          const dateKey = new Date(t.createdAt).toISOString().split('T')[0];
+          trendMap.set(dateKey, (trendMap.get(dateKey) || 0) + 1);
+        });
+        const dailyTrend = Array.from(trendMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .slice(-14)
+          .map(([date, count]) => ({
+            date: new Date(date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+            sent: count,
+            received: 0,
+            problematic: 0,
+          }));
+        
         setTransferStats({
-          total: 0,
-          byStatus: {},
-          byType: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
-          dailyTrend: [],
-          totalBracelets: 0,
+          total: filteredTransfers.length,
+          byStatus,
+          byType,
+          dailyTrend,
+          totalBracelets,
           totalLoss: 0,
         });
       }
