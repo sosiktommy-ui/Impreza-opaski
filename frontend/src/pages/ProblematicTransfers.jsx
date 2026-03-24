@@ -166,12 +166,9 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('ProblematicTransfers API response:', transfersRes);
-      
       const data = transfersRes.data;
       const payload = data?.data || data;
       const list = Array.isArray(payload) ? payload : (payload?.items || []);
-      console.log('ProblematicTransfers parsed list:', list);
       setTransfers(list);
       const meta = data?.meta || payload?.meta;
       setTotalPages(meta?.totalPages || 1);

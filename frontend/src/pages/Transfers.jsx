@@ -339,9 +339,12 @@ export default function Transfers() {
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Send size={22} className="text-brand-500" /> Мои отправки</h2>
+          <h2 className="text-xl font-bold text-content-primary flex items-center gap-2">
+            <Send size={22} className="text-brand-500" /> 
+            {user.role === 'CITY' ? 'Возврат опасок' : 'Мои отправки'}
+          </h2>
           <p className="text-xs text-content-muted mt-0.5">
-            Отправки от вашего аккаунта
+            {user.role === 'CITY' ? 'Возврат браслетов в страну' : 'Отправки от вашего аккаунта'}
           </p>
         </div>
         {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].includes(user.role) && (
@@ -486,7 +489,7 @@ export default function Transfers() {
       <Modal
         open={showCreate}
         onClose={() => { setShowCreate(false); resetForm(); }}
-        title="Новая отправка"
+        title={user.role === 'CITY' ? 'Возврат опасок' : 'Новая отправка'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* ADMIN: toggle between location and office */}
@@ -577,7 +580,7 @@ export default function Transfers() {
             <div className="flex items-center gap-2 bg-surface-card text-content-secondary rounded-[var(--radius-sm)] px-3 py-2.5">
               <Send size={14} />
               <span className="text-sm">
-                Отправка назад: <strong>{user.country?.name || 'Страна'}</strong>
+                Возврат в: <strong>{user.country?.name || 'Страна'}</strong>
               </span>
             </div>
           )}
@@ -681,7 +684,7 @@ export default function Transfers() {
           )}
 
           <Button type="submit" loading={sending} disabled={exceedsBalance || balanceLoading} className="w-full">
-            <Send size={18} /> Отправить
+            <Send size={18} /> {user.role === 'CITY' ? 'Вернуть' : 'Отправить'}
           </Button>
         </form>
       </Modal>

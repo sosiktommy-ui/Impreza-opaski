@@ -27,7 +27,7 @@ import { inventoryApi } from '../../api/inventory';
 
 const allLinks = [
   { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/transfers', icon: Truck, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
+  { to: '/transfers', icon: Truck, label: 'Отправки', labelCity: 'Возврат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'incoming' },
   { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE'], badgeKey: 'problematic' },
   { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
@@ -86,15 +86,16 @@ export default function Sidebar() {
 
   const navContent = (collapsed) => (
     <nav className="flex flex-col gap-1 p-2">
-      {links.map(({ to, icon: Icon, label, badgeKey }) => {
+      {links.map(({ to, icon: Icon, label, labelCity, badgeKey }) => {
         const badge = getBadge(badgeKey);
         const badgeColor = getBadgeColor(badgeKey);
+        const displayLabel = (user?.role === 'CITY' && labelCity) ? labelCity : label;
         return (
           <NavLink
-            key={label}
+            key={to}
             to={to}
             onClick={closeSidebar}
-            title={collapsed ? label : undefined}
+            title={collapsed ? displayLabel : undefined}
             className={({ isActive }) =>
               `group relative flex items-center ${collapsed ? 'justify-center' : ''} gap-3 ${collapsed ? 'px-2' : 'px-3'} py-2.5 rounded-lg text-sm font-medium transition-all duration-200
               ${isActive
@@ -110,7 +111,7 @@ export default function Sidebar() {
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-brand-500 rounded-r-full" />
                 )}
                 <Icon size={20} strokeWidth={isActive ? 2 : 1.6} className="flex-shrink-0 transition-all" />
-                {!collapsed && <span className="flex-1 truncate">{label}</span>}
+                {!collapsed && <span className="flex-1 truncate">{displayLabel}</span>}
                 {!collapsed && badge && (
                   <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full ${badgeColor} text-white text-2xs font-bold px-1.5 animate-pulse`}>
                     {badge > 99 ? '99+' : badge}

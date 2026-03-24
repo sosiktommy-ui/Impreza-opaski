@@ -93,7 +93,7 @@ export const useBadgeStore = create((set) => ({
         try {
           const lossRes = await inventoryApi.getCompanyLossesSummary();
           const lossData = lossRes.data?.data || lossRes.data;
-          companyLossCount = lossData?.totalQuantity || lossData?.count || 0;
+          companyLossCount = lossData?.total || lossData?.count || 0;
         } catch (e) {
           // Ignore if not available
         }

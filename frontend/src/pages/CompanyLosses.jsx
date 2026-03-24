@@ -101,7 +101,7 @@ export default function CompanyLosses() {
   const stats = useMemo(() => {
     if (!summary) return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
     return {
-      total: summary.totalAmount || 0,
+      total: summary.total || 0,
       black: summary.black || 0,
       white: summary.white || 0,
       red: summary.red || 0,

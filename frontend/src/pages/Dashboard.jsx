@@ -68,10 +68,8 @@ export default function Dashboard() {
 
       // All transfers
       const allData = results[0].data;
-      console.log('Dashboard transfers API response:', allData);
       const allPayload = allData?.data || allData;
       const allTransfers = Array.isArray(allPayload) ? allPayload : (allPayload?.items || []);
-      console.log('Dashboard parsed transfers:', allTransfers.length, 'items');
       setTransfers(allTransfers);
 
       // Pending incoming
@@ -195,7 +193,7 @@ export default function Dashboard() {
           { value: pendingCount || pending.length, label: 'Зависшие', icon: Clock, iconColor: 'text-amber-400', bg: 'bg-amber-500/10', path: '/pending' },
           // Company losses counter (ADMIN/OFFICE only)
           ...(lossSummary && (user.role === 'ADMIN' || user.role === 'OFFICE') ? [{
-            value: lossSummary.totalQuantity || 0,
+            value: lossSummary.total || 0,
             label: 'Минус компании',
             icon: MinusCircle,
             iconColor: 'text-red-400',
