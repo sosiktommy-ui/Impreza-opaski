@@ -86,10 +86,11 @@ export default function Dashboard() {
 
       // Problematic transfers
       const probData = results[3].data;
-      const probPayload = probData?.data || probData;
-      const probList = Array.isArray(probPayload) ? probPayload : [];
-      setProblematicTransfers(probList);
-      setProblematicCount(probData?.meta?.total || probPayload?.meta?.total || probList.length);
+      console.log('Dashboard probData:', probData);
+      const probList = probData?.data || [];
+      console.log('Dashboard probList:', probList, 'meta:', probData?.meta);
+      setProblematicTransfers(Array.isArray(probList) ? probList : []);
+      setProblematicCount(probData?.meta?.total || probList.length);
 
       // Balance
       if (results[4]) {

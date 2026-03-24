@@ -166,13 +166,17 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      const data = transfersRes.data;
-      const payload = data?.data || data;
-      const list = Array.isArray(payload) ? payload : (payload?.items || []);
-      setTransfers(list);
-      const meta = data?.meta || payload?.meta;
-      setTotalPages(meta?.totalPages || 1);
-      setPage(meta?.page || p);
+      console.log('RAW API Response:', transfersRes);
+      console.log('transfersRes.data:', transfersRes.data);
+      
+      // Backend returns { data: [...], meta: {...} }
+      const responseData = transfersRes.data;
+      const list = responseData?.data || [];
+      console.log('Parsed list:', list, 'length:', list.length);
+      
+      setTransfers(Array.isArray(list) ? list : []);
+      setTotalPages(responseData?.meta?.totalPages || 1);
+      setPage(responseData?.meta?.page || p);
       
       if (lossRes) {
         const lossData = lossRes.data;
