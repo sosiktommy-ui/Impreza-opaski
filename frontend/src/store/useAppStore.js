@@ -60,8 +60,11 @@ export const useBadgeStore = create((set) => ({
   // Fetch all counts
   refreshCounts: async (transfersApi, inventoryApi) => {
     try {
-      const pendingPromise = transfersApi.getAll({ status: 'SENT', direction: 'sent', limit: 1 });
-      const problematicPromise = transfersApi.getProblematic({ limit: 1 });
+      // Зависшие = все SENT трансферы
+      const pendingPromise = transfersApi.getAll({ status: 'SENT', limit: 500 });
+      // Проблемные
+      const problematicPromise = transfersApi.getProblematic({ limit: 500 });
+      // Входящие (для текущего пользователя)
       const incomingPromise = transfersApi.getPending();
       
       const [pendingRes, problematicRes, incomingRes] = await Promise.all([
@@ -70,17 +73,27 @@ export const useBadgeStore = create((set) => ({
         incomingPromise,
       ]);
       
-      const pendingCount = pendingRes.data?.meta?.total || 0;
-      const problematicCount = problematicRes.data?.meta?.total || 0;
+      // Зависшие: считаем из массива или meta
+      const pendingPayload = pendingRes.data?.data || pendingRes.data;
+      const pendingList = Array.isArray(pendingPayload) ? pendingPayload : [];
+      const pendingCount = pendingRes.data?.meta?.total || pendingList.length;
+      
+      // Проблемные: считаем из массива или meta
+      const problematicPayload = problematicRes.data?.data || problematicRes.data;
+      const problematicList = Array.isArray(problematicPayload) ? problematicPayload : [];
+      const problematicCount = problematicRes.data?.meta?.total || problematicList.length;
+      
+      // Входящие: только для текущего пользователя
       const incomingPayload = incomingRes.data?.data || incomingRes.data;
       const incomingCount = Array.isArray(incomingPayload) ? incomingPayload.length : 0;
       
-      // Fetch company loss count if inventoryApi is passed
+      // Минус компании
       let companyLossCount = 0;
       if (inventoryApi) {
         try {
           const lossRes = await inventoryApi.getCompanyLossesSummary();
-          companyLossCount = lossRes.data?.count || 0;
+          const lossData = lossRes.data?.data || lossRes.data;
+          companyLossCount = lossData?.totalQuantity || lossData?.count || 0;
         } catch (e) {
           // Ignore if not available
         }

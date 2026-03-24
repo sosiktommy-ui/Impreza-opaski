@@ -9,7 +9,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
-import { Boxes, Plus, Minus, Package, History, RefreshCw } from 'lucide-react';
+import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft } from 'lucide-react';
 
 const COLORS = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const COLOR_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -56,6 +56,9 @@ export default function Inventory() {
   // 2FA state for bracelet creation
   const [show2FA, setShow2FA] = useState(false);
   const [pendingCreateData, setPendingCreateData] = useState(null);
+  
+  // Accordion state for countries
+  const [expandedCountries, setExpandedCountries] = useState({});
 
   useEffect(() => {
     init();
@@ -624,52 +627,96 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* ── Country Breakdown Table (Admin/Office) ────── */}
+      {/* ── Country Breakdown with Accordion (Admin/Office) ────── */}
       {isAdminOrOffice && countryBreakdown.length > 0 && !selectedCountry && (
         <Card title="Остатки по странам">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-edge text-xs text-content-muted">
-                  <th className="text-left py-2 px-2">Страна</th>
-                  {COLORS.map((c) => (
-                    <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
-                  ))}
-                  <th className="text-center py-2 px-2">Итого</th>
-                </tr>
-              </thead>
-              <tbody>
-                {countryBreakdown.map((country) => {
-                  const countryTotal = Object.values(country.totals).reduce((s, v) => s + v, 0);
-                  const citiesList = Object.values(country.cities);
-                  const citiesTotal = {};
-                  COLORS.forEach((c) => {
-                    citiesTotal[c] = citiesList.reduce((s, city) => s + (city.totals[c] || 0), 0);
-                  });
-                  const allTotal = countryTotal + Object.values(citiesTotal).reduce((s, v) => s + v, 0);
-                  return (
-                    <tr
-                      key={country.id}
-                      className="border-b border-edge hover:bg-surface-card-hover cursor-pointer transition-colors"
-                      onClick={() => {
-                        setSelectedCountry(country.id);
-                        handleCountrySelect({ target: { value: country.id } });
-                      }}
-                    >
-                      <td className="py-2.5 px-2 font-medium text-content-primary">{country.name}</td>
-                      {COLORS.map((c) => (
-                        <td key={c} className="text-center py-2.5 px-2 text-content-secondary">
-                          {(country.totals[c] || 0) + (citiesTotal[c] || 0)}
-                        </td>
-                      ))}
-                      <td className="text-center py-2.5 px-2 font-semibold text-content-primary">{allTotal}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-1">
+            {countryBreakdown.map((country) => {
+              const citiesList = Object.values(country.cities);
+              const citiesTotal = {};
+              COLORS.forEach((c) => {
+                citiesTotal[c] = citiesList.reduce((s, city) => s + (city.totals[c] || 0), 0);
+              });
+              const allTotal = COLORS.reduce((s, c) => s + (country.totals[c] || 0) + (citiesTotal[c] || 0), 0);
+              const isExpanded = expandedCountries[country.id];
+              
+              return (
+                <div key={country.id}>
+                  {/* Country row */}
+                  <div
+                    onClick={() => setExpandedCountries(prev => ({ ...prev, [country.id]: !prev[country.id] }))}
+                    className="flex items-center justify-between p-3 rounded-lg bg-surface-card border border-edge cursor-pointer hover:bg-surface-card-hover transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ChevronRight size={16} className={`text-content-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      <span className="font-medium text-content-primary">{country.name}</span>
+                      {citiesList.length > 0 && (
+                        <span className="text-xs text-content-muted">({citiesList.length} гор.)</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-sm">
+                      {COLORS.map((c) => {
+                        const colorLabels = { BLACK: 'Ч', WHITE: 'Б', RED: 'К', BLUE: 'С' };
+                        const val = (country.totals[c] || 0) + (citiesTotal[c] || 0);
+                        return (
+                          <span key={c} className="text-content-secondary">
+                            {colorLabels[c]}:{val}
+                          </span>
+                        );
+                      })}
+                      <span className="font-bold text-content-primary ml-2">= {allTotal}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Cities accordion */}
+                  {isExpanded && citiesList.length > 0 && (
+                    <div className="ml-6 mt-1 mb-2 space-y-1">
+                      {citiesList.sort((a, b) => a.name.localeCompare(b.name)).map((city) => {
+                        const cityTotal = Object.values(city.totals).reduce((s, v) => s + v, 0);
+                        return (
+                          <div
+                            key={city.id}
+                            className="flex items-center justify-between p-2.5 rounded-md bg-surface-secondary border border-edge/50"
+                          >
+                            <span className="text-sm text-content-primary">{city.name}</span>
+                            <div className="flex items-center gap-2.5 text-sm">
+                              {COLORS.map((c) => {
+                                const colorLabels = { BLACK: 'Ч', WHITE: 'Б', RED: 'К', BLUE: 'С' };
+                                return (
+                                  <span key={c} className="text-content-muted">
+                                    {colorLabels[c]}:{city.totals[c] || 0}
+                                  </span>
+                                );
+                              })}
+                              <span className="font-medium text-content-primary ml-1">= {cityTotal}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {isExpanded && citiesList.length === 0 && (
+                    <div className="ml-6 mt-1 mb-2 p-3 text-sm text-content-muted italic">
+                      Нет городов в этой стране
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Card>
+      )}
+
+      {/* ── Back button when country/city selected ────── */}
+      {isAdminOrOffice && (selectedCountry || selectedCity) && (
+        <Button
+          onClick={() => { setSelectedCountry(''); setSelectedCity(''); setViewEntity({ type: '', id: '' }); setBalances([]); setCities([]); }}
+          variant="outline"
+          size="sm"
+          className="mb-2"
+        >
+          <ArrowLeft size={16} /> Вернуться к списку
+        </Button>
       )}
 
       {/* ── Admin/Office filters ──────────────────────── */}

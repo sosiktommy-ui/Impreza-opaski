@@ -13,6 +13,7 @@ const TAB_FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'transfers', label: 'Отправки' },
   { key: 'expenses', label: 'Расходы' },
+  { key: 'problematic', label: 'Проблемные' },
 ];
 
 const STATUS_MAP = {
@@ -129,6 +130,11 @@ export default function History() {
     }
     if (tab === 'all' || tab === 'expenses') {
       items.push(...expenses.map((e) => ({ ...e, _type: 'expense', _date: new Date(e.createdAt) })));
+    }
+    if (tab === 'problematic') {
+      items.push(...transfers
+        .filter((t) => t.status === 'DISCREPANCY_FOUND')
+        .map((t) => ({ ...t, _type: 'transfer', _date: new Date(t.createdAt) })));
     }
     
     // Apply search filter
