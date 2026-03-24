@@ -1319,7 +1319,110 @@ export class TransfersService {
         await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
       }
 
-      // Create CompanyLoss record if there was a loss
+      // Create Shortage records based on resolution type
+      // - ACCEPT_SENDER: Shortage assigned to RECEIVER (receiver claimed less)
+      // - ACCEPT_RECEIVER: Shortage assigned to SENDER (sender claimed more)
+      // - ACCEPT_COMPROMISE: Shortage split between BOTH
+      // - CANCEL_TRANSFER: CompanyLoss only, no individual shortages
+      if (totalLoss > 0 && resType !== 'CANCEL_TRANSFER') {
+        if (resType === 'ACCEPT_SENDER') {
+          // Receiver is blamed - they claim to have received less than sender sent
+          await (tx as any).shortage.create({
+            data: {
+              entityType: transfer.receiverType,
+              officeId: transfer.receiverOfficeId,
+              countryId: transfer.receiverCountryId,
+              cityId: transfer.receiverCityId,
+              transferId: transfer.id,
+              black: lossBlack,
+              white: lossWhite,
+              red: lossRed,
+              blue: lossBlue,
+              totalAmount: totalLoss,
+              reason: 'RECEIVER_BLAMED',
+              resolutionType,
+              resolvedBy: actorId,
+              notes: notes || null,
+            },
+          });
+          this.logger.log(`Shortage created for RECEIVER (${receiverName}) on transfer ${transferId}: ${totalLoss} bracelets`);
+        } else if (resType === 'ACCEPT_RECEIVER') {
+          // Sender is blamed - they claim to have sent more than receiver got
+          await (tx as any).shortage.create({
+            data: {
+              entityType: transfer.senderType,
+              officeId: transfer.senderOfficeId,
+              countryId: transfer.senderCountryId,
+              cityId: transfer.senderCityId,
+              transferId: transfer.id,
+              black: lossBlack,
+              white: lossWhite,
+              red: lossRed,
+              blue: lossBlue,
+              totalAmount: totalLoss,
+              reason: 'SENDER_BLAMED',
+              resolutionType,
+              resolvedBy: actorId,
+              notes: notes || null,
+            },
+          });
+          this.logger.log(`Shortage created for SENDER (${senderName}) on transfer ${transferId}: ${totalLoss} bracelets`);
+        } else if (resType === 'ACCEPT_COMPROMISE' && compromiseValues) {
+          // Split loss between both parties (50/50 by default in compromise)
+          const halfLoss = Math.ceil(totalLoss / 2);
+          const otherHalfLoss = totalLoss - halfLoss;
+          
+          // Calculate half losses per color
+          const halfBlack = Math.ceil(lossBlack / 2);
+          const halfWhite = Math.ceil(lossWhite / 2);
+          const halfRed = Math.ceil(lossRed / 2);
+          const halfBlue = Math.ceil(lossBlue / 2);
+
+          // Shortage for sender
+          await (tx as any).shortage.create({
+            data: {
+              entityType: transfer.senderType,
+              officeId: transfer.senderOfficeId,
+              countryId: transfer.senderCountryId,
+              cityId: transfer.senderCityId,
+              transferId: transfer.id,
+              black: halfBlack,
+              white: halfWhite,
+              red: halfRed,
+              blue: halfBlue,
+              totalAmount: halfLoss,
+              reason: 'SPLIT_LOSS',
+              resolutionType,
+              resolvedBy: actorId,
+              notes: `Compromise split (sender portion). ${notes || ''}`.trim(),
+            },
+          });
+
+          // Shortage for receiver
+          await (tx as any).shortage.create({
+            data: {
+              entityType: transfer.receiverType,
+              officeId: transfer.receiverOfficeId,
+              countryId: transfer.receiverCountryId,
+              cityId: transfer.receiverCityId,
+              transferId: transfer.id,
+              black: lossBlack - halfBlack,
+              white: lossWhite - halfWhite,
+              red: lossRed - halfRed,
+              blue: lossBlue - halfBlue,
+              totalAmount: otherHalfLoss,
+              reason: 'SPLIT_LOSS',
+              resolutionType,
+              resolvedBy: actorId,
+              notes: `Compromise split (receiver portion). ${notes || ''}`.trim(),
+            },
+          });
+
+          this.logger.log(`Shortage split between SENDER (${senderName}: ${halfLoss}) and RECEIVER (${receiverName}: ${otherHalfLoss}) on transfer ${transferId}`);
+        }
+      }
+
+      // Create CompanyLoss record if there was a loss (for all resolution types including CANCEL)
       if (totalLoss > 0) {
         await (tx as any).companyLoss.create({
           data: {

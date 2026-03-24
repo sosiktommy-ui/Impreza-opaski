@@ -86,6 +86,12 @@ enum ResolutionType {
   CANCEL_TRANSFER
 }
 
+enum ShortageReason {
+  SENDER_BLAMED      // Receiver was correct, sender loses
+  RECEIVER_BLAMED    // Sender was correct, receiver loses
+  SPLIT_LOSS         // Both share responsibility
+}
+
 // ──────────────────────────────────────────────
 // AUTH & USERS
 // ──────────────────────────────────────────────
@@ -155,6 +161,7 @@ model Office {
   transfersSent     Transfer[] @relation("SenderOffice")
   transfersReceived Transfer[] @relation("ReceiverOffice")
   warehouseCreations WarehouseCreation[]
+  shortages Shortage[]
 
   @@map("offices")
 }
@@ -179,6 +186,7 @@ model Country {
   inventory Inventory[]
   transfersSent     Transfer[] @relation("SenderCountry")
   transfersReceived Transfer[] @relation("ReceiverCountry")
+  shortages Shortage[]
 
   @@map("countries")
 }
@@ -200,6 +208,7 @@ model City {
   expenses  Expense[]
   transfersSent     Transfer[] @relation("SenderCity")
   transfersReceived Transfer[] @relation("ReceiverCity")
+  shortages Shortage[]
 
   @@unique([countryId, slug])
   @@map("cities")
@@ -272,6 +281,7 @@ model Transfer {
   rejection       TransferRejection?
   acceptanceRecords AcceptanceRecord[]
   companyLosses   CompanyLoss[]
+  shortages       Shortage[]
 
   @@index([status])
   @@index([senderType, senderOfficeId])
@@ -492,6 +502,51 @@ model CompanyLoss {
   @@index([resolvedBy])
   @@index([resolvedAt])
   @@map("company_losses")
+}
+
+// ──────────────────────────────────────────────
+// SHORTAGES (Entity-specific shortage tracking from discrepancy resolution)
+// ──────────────────────────────────────────────
+
+model Shortage {
+  id              String         @id @default(uuid())
+  
+  // Which entity has this shortage assigned
+  entityType      EntityType     @map("entity_type")
+  officeId        String?        @map("office_id")
+  countryId       String?        @map("country_id")
+  cityId          String?        @map("city_id")
+  
+  // Link to transfer
+  transferId      String         @map("transfer_id")
+  transfer        Transfer       @relation(fields: [transferId], references: [id])
+  
+  // Shortage amounts by color
+  black           Int            @default(0)
+  white           Int            @default(0)
+  red             Int            @default(0)
+  blue            Int            @default(0)
+  totalAmount     Int            @map("total_amount")
+  
+  // Resolution details
+  reason          ShortageReason
+  resolutionType  ResolutionType @map("resolution_type")
+  resolvedBy      String         @map("resolved_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  notes           String?
+  
+  // Relations for filtering
+  office          Office?        @relation(fields: [officeId], references: [id])
+  country         Country?       @relation(fields: [countryId], references: [id])
+  city            City?          @relation(fields: [cityId], references: [id])
+
+  @@index([entityType, officeId])
+  @@index([entityType, countryId])
+  @@index([entityType, cityId])
+  @@index([transferId])
+  @@index([resolvedBy])
+  @@index([createdAt])
+  @@map("shortages")
 }
 
 // ──────────────────────────────────────────────
