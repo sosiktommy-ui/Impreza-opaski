@@ -11,7 +11,8 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import { Plus, Send, X, Search, ArrowUpDown, AlertTriangle } from 'lucide-react';
+import { Plus, Send, X, Search, ArrowUpDown, AlertTriangle, ArrowRight } from 'lucide-react';
+import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -82,12 +83,14 @@ export default function Transfers() {
   const filteredTransfers = useMemo(() => {
     let list = [...transfers];
 
-    // Search
+    // Search by sender, receiver, id
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((t) => {
-        const to = t.receiverCity?.name || t.receiverCountry?.name || '';
-        return to.toLowerCase().includes(q) ||
+        const sender = getSenderName(t).toLowerCase();
+        const receiver = getReceiverName(t).toLowerCase();
+        const id = (t.id || '').toLowerCase();
+        return sender.includes(q) || receiver.includes(q) || id.includes(q) ||
           (t.notes || '').toLowerCase().includes(q);
       });
     }
@@ -96,8 +99,8 @@ export default function Transfers() {
     list.sort((a, b) => {
       if (sortOrder === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
       if (sortOrder === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
-      const aTot = (a.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
-      const bTot = (b.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+      const aTot = getTotalQuantity(a);
+      const bTot = getTotalQuantity(b);
       return sortOrder === 'most' ? bTot - aTot : aTot - bTot;
     });
 
@@ -374,7 +377,7 @@ export default function Transfers() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
           <input
             type="text"
-            placeholder="Поиск по получателю..."
+            placeholder="Поиск по отправителю или получателю..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 rounded-[var(--radius-sm)] border border-edge bg-surface-card text-content-primary text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
@@ -402,40 +405,26 @@ export default function Transfers() {
       ) : (
         <div className="space-y-3">
           {filteredTransfers.map((t) => {
-            // Sender info
-            const from = 
-              t.senderType === 'ADMIN'
-                ? 'Админ'
-                : t.senderType === 'OFFICE'
-                  ? (t.senderOffice?.name || 'Офис')
-                  : t.senderType === 'CITY'
-                    ? `${t.senderCity?.name || '—'}${t.senderCity?.country?.name ? ` (${t.senderCity.country.name})` : ''}`
-                    : t.senderCountry?.name || t.senderType || 'Отправитель';
-            
-            // Receiver info
-            const to =
-              t.receiverType === 'ADMIN'
-                ? 'Админ'
-                : t.receiverType === 'OFFICE'
-                  ? (t.receiverOffice?.name || 'Офис')
-                  : t.receiverType === 'CITY'
-                    ? `${t.receiverCity?.name || '—'}${t.receiverCity?.country?.name ? ` (${t.receiverCity.country.name})` : ''}`
-                    : t.receiverCountry?.name || t.receiverType;
-            const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+            // Sender/Receiver info using helpers
+            const from = getSenderName(t);
+            const to = getReceiverName(t);
+            const totalQty = getTotalQuantity(t);
+            const isAdmin = isAdminTransfer(t);
 
             return (
               <div
                 key={t.id}
-                className="bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden"
+                className={`bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden ${getTransferCardClass(t)}`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge status={t.status} />
+                      {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
                       <span className="text-xs text-content-muted">
                         {new Date(t.createdAt).toLocaleDateString('ru-RU', {
                           day: '2-digit',
-                          month: 'long',
+                          month: '2-digit',
                           year: 'numeric',
                         })}
                       </span>
@@ -446,7 +435,7 @@ export default function Transfers() {
 
                     <div className="text-sm flex items-center gap-1.5 flex-wrap">
                       <span className="font-medium text-blue-400 truncate max-w-[120px]" title={from}>{from}</span>
-                      <span className="text-content-muted flex-shrink-0">→</span>
+                      <ArrowRight size={14} className="text-content-muted flex-shrink-0" />
                       <span className="font-medium text-emerald-400 truncate max-w-[120px]" title={to}>{to}</span>
                     </div>
 

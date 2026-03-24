@@ -140,3 +140,133 @@ export function formatTransferStatus(status) {
   };
   return statuses[status] || { label: status, color: 'text-gray-500', bgColor: 'bg-gray-500/10' };
 }
+
+/**
+ * Get quantity for a specific color from transfer
+ * @param {Object} transfer - The transfer object
+ * @param {string} color - The color (black, white, red, blue)
+ * @returns {number}
+ */
+export function getQuantity(transfer, color) {
+  if (!transfer) return 0;
+  const upperColor = color.toUpperCase();
+  const lowerColor = color.toLowerCase();
+  
+  if (transfer.items && Array.isArray(transfer.items)) {
+    const item = transfer.items.find(i => 
+      i.itemType === upperColor || 
+      i.itemType === lowerColor || 
+      i.type === upperColor || 
+      i.type === lowerColor ||
+      i.color === upperColor ||
+      i.color === lowerColor
+    );
+    return item?.quantity ?? item?.sentQuantity ?? 0;
+  }
+  if (transfer[upperColor] !== undefined) return transfer[upperColor];
+  if (transfer[lowerColor] !== undefined) return transfer[lowerColor];
+  return 0;
+}
+
+/**
+ * Get total quantity of all bracelets in transfer
+ * @param {Object} transfer - The transfer object
+ * @returns {number}
+ */
+export function getTotalQuantity(transfer) {
+  if (!transfer) return 0;
+  return ['BLACK', 'WHITE', 'RED', 'BLUE'].reduce((sum, c) => sum + getQuantity(transfer, c), 0);
+}
+
+/**
+ * Get sender name for display (with role fallback)
+ * @param {Object} transfer - The transfer object
+ * @returns {string}
+ */
+export function getSenderName(transfer) {
+  if (!transfer) return 'Неизвестно';
+  
+  // First try createdByUser for ADMIN/OFFICE
+  if (transfer.senderType === 'ADMIN' || transfer.senderType === 'OFFICE') {
+    if (transfer.createdByUser?.displayName) return transfer.createdByUser.displayName;
+    if (transfer.createdByUser?.username) return transfer.createdByUser.username;
+    return transfer.senderType === 'ADMIN' ? 'Админ' : 'Офис';
+  }
+  
+  // City sender
+  if (transfer.senderType === 'CITY' && transfer.senderCity) {
+    const country = transfer.senderCity.country?.name;
+    return country ? `${transfer.senderCity.name} (${country})` : transfer.senderCity.name;
+  }
+  
+  // Country sender  
+  if (transfer.senderType === 'COUNTRY' && transfer.senderCountry) {
+    return transfer.senderCountry.name;
+  }
+  
+  // Fallbacks
+  return transfer.senderName || 
+         transfer.sender?.displayName || 
+         transfer.sender?.name ||
+         transfer.sender?.username || 
+         'Неизвестно';
+}
+
+/**
+ * Get receiver name for display
+ * @param {Object} transfer - The transfer object  
+ * @returns {string}
+ */
+export function getReceiverName(transfer) {
+  if (!transfer) return 'Неизвестно';
+  
+  if (transfer.receiverType === 'ADMIN') return 'Админ';
+  if (transfer.receiverType === 'OFFICE' && transfer.receiverOffice) {
+    return transfer.receiverOffice.name;
+  }
+  
+  // City receiver
+  if (transfer.receiverType === 'CITY' && transfer.receiverCity) {
+    const country = transfer.receiverCity.country?.name;
+    return country ? `${transfer.receiverCity.name} (${country})` : transfer.receiverCity.name;
+  }
+  
+  // Country receiver
+  if (transfer.receiverType === 'COUNTRY' && transfer.receiverCountry) {
+    return transfer.receiverCountry.name;
+  }
+  
+  return transfer.receiverName || 
+         transfer.receiver?.name || 
+         transfer.receiverCountry?.name || 
+         'Неизвестно';
+}
+
+/**
+ * Get sender role label in Russian
+ * @param {Object} transfer - The transfer object
+ * @returns {string}
+ */
+export function getSenderRoleLabel(transfer) {
+  if (!transfer) return '';
+  const role = transfer.senderType || transfer.createdByUser?.role || '';
+  const labels = {
+    ADMIN: 'ADMIN',
+    OFFICE: 'OFFICE',
+    COUNTRY: 'COUNTRY',
+    CITY: 'CITY',
+  };
+  return labels[role] || role;
+}
+
+/**
+ * Get card CSS classes for admin transfer
+ * @param {Object} transfer - The transfer object
+ * @returns {string}
+ */
+export function getTransferCardClass(transfer) {
+  if (isAdminTransfer(transfer)) {
+    return 'border-l-[3px] border-l-violet-500 bg-violet-500/5';
+  }
+  return '';
+}

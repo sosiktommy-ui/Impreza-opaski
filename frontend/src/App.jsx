@@ -22,8 +22,8 @@ import { eventsApi } from './api/events';
 import { usersApi } from './api/users';
 import {
   Clock, AlertTriangle, Package, TrendingDown, TrendingUp,
-  ArrowRightLeft, Calendar, Filter, RefreshCw, Download,
-  BarChart3, PieChart, Activity, Users as UsersIcon, MapPin
+  ArrowRight, Calendar, Filter, RefreshCw, Download,
+  BarChart3, PieChart, Activity, Users as UsersIcon, MapPin, Search
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -32,12 +32,14 @@ import {
 } from 'recharts';
 import Skeleton from './components/ui/Skeleton';
 import BraceletBadge from './components/ui/BraceletBadge';
+import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from './utils/transferHelpers';
 
 // ============ PENDING TRANSFERS PAGE ============
 function PendingTransfers() {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
   const { countryId, cityId } = useFilterStore();
 
   useEffect(() => {
@@ -92,6 +94,18 @@ function PendingTransfers() {
     return 'border-edge bg-surface-card';
   };
 
+  // Filter by search
+  const filteredTransfers = useMemo(() => {
+    if (!search.trim()) return transfers;
+    const q = search.toLowerCase();
+    return transfers.filter(t => {
+      const sender = getSenderName(t).toLowerCase();
+      const receiver = getReceiverName(t).toLowerCase();
+      const id = (t.id || '').toLowerCase();
+      return sender.includes(q) || receiver.includes(q) || id.includes(q);
+    });
+  }, [transfers, search]);
+
   if (loading) {
     return (
       <div className="p-4 md:p-6 space-y-4">
@@ -123,7 +137,7 @@ function PendingTransfers() {
           <div>
             <h1 className="text-xl font-bold text-content-primary">Зависшие переводы</h1>
             <p className="text-sm text-content-muted">
-              {transfers.length} переводов в ожидании
+              {filteredTransfers.length} переводов в ожидании
             </p>
           </div>
         </div>
@@ -135,13 +149,25 @@ function PendingTransfers() {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
+        <input
+          type="text"
+          placeholder="Поиск по отправителю или получателю..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border border-edge bg-surface-card text-content-primary rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
+        />
+      </div>
+
       {error && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
           {error}
         </div>
       )}
 
-      {transfers.length === 0 ? (
+      {filteredTransfers.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-4">
             <Clock className="w-8 h-8 text-emerald-500" />
@@ -151,47 +177,43 @@ function PendingTransfers() {
         </div>
       ) : (
         <div className="grid gap-3">
-          {transfers.map((transfer) => {
-            const isAdmin = transfer.senderType === 'ADMIN' || transfer.senderType === 'OFFICE';
-            const senderName = transfer.createdByUser?.displayName || 
-              transfer.senderCity?.name || 
-              transfer.senderCountry?.name || 
-              (isAdmin ? 'Админ' : 'Отправитель');
+          {filteredTransfers.map((transfer) => {
+            const isAdmin = isAdminTransfer(transfer);
+            const sender = getSenderName(transfer);
+            const receiver = getReceiverName(transfer);
+            const totalQty = getTotalQuantity(transfer);
             return (
             <div
               key={transfer.id}
-              className={`p-4 rounded-xl border transition-all ${getSeverityColor(transfer.createdAt)} ${isAdmin ? 'transfer-admin' : ''}`}
+              className={`p-4 rounded-xl border transition-all ${getSeverityColor(transfer.createdAt)} ${getTransferCardClass(transfer)}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-xs font-mono bg-surface-primary px-2 py-0.5 rounded text-content-muted">
-                      #{transfer.id?.slice(-8)}
+                      #{transfer.id?.slice(-6)}
                     </span>
                     <span className="text-xs px-2 py-0.5 rounded bg-orange-500/20 text-orange-400">
                       Ожидает {getPendingDuration(transfer.createdAt)}
                     </span>
-                    {isAdmin && <span className="badge-admin">👑 ADMIN</span>}
+                    {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
                   </div>
 
                   <div className="flex items-center gap-2 text-sm mb-3">
-                    <span className="font-medium text-content-primary">
-                      {senderName}
+                    <span className="font-medium text-blue-400">
+                      {sender}
                     </span>
-                    <ArrowRightLeft size={14} className="text-content-muted" />
-                    <span className="font-medium text-content-primary">
-                      {transfer.receiverCity?.name || transfer.receiverCountry?.name || 'Получатель'}
+                    <ArrowRight size={14} className="text-content-muted" />
+                    <span className="font-medium text-emerald-400">
+                      {receiver}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3 flex-wrap">
                     {transfer.items?.map((item) => (
                       <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity || item.sentQuantity || 0} />
-                    )) || ['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
-                      const count = transfer[type.toLowerCase()] || transfer[`${type.toLowerCase()}Count`] || 0;
-                      if (count <= 0) return null;
-                      return <BraceletBadge key={type} type={type} count={count} />;
-                    })}
+                    ))}
+                    <span className="text-xs text-content-muted">Итого: {totalQty} шт</span>
                   </div>
 
                   {transfer.event?.name && (
@@ -205,9 +227,6 @@ function PendingTransfers() {
                 <div className="text-right">
                   <div className="text-xs text-content-muted">
                     {new Date(transfer.createdAt).toLocaleDateString('ru-RU')}
-                  </div>
-                  <div className="text-xs text-content-muted">
-                    {new Date(transfer.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               </div>

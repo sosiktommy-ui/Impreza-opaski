@@ -8,7 +8,8 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import { CheckCircle, XCircle, AlertTriangle, Package, Search, HelpCircle, PackageCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Package, Search, HelpCircle, PackageCheck, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
+import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -91,44 +92,19 @@ export default function Acceptance() {
     let list = [...transfers];
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((t) =>
-        (t.senderCity?.name || '').toLowerCase().includes(q) ||
-        (t.senderCountry?.name || '').toLowerCase().includes(q) ||
-        (t.createdByUser?.displayName || '').toLowerCase().includes(q) ||
-        (t.notes || '').toLowerCase().includes(q)
-      );
+      list = list.filter((t) => {
+        const sender = getSenderName(t).toLowerCase();
+        const receiver = getReceiverName(t).toLowerCase();
+        const id = (t.id || '').toLowerCase();
+        return sender.includes(q) ||
+          receiver.includes(q) ||
+          id.includes(q) ||
+          (t.notes || '').toLowerCase().includes(q);
+      });
     }
     list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return list;
   }, [transfers, search]);
-
-  const getSenderLabel = (t) => {
-    if (t.senderType === 'ADMIN') {
-      // Show creator name for ADMIN sender if available
-      if (t.createdByUser) {
-        return t.createdByUser.displayName || t.createdByUser.username || 'Админ';
-      }
-      return 'Админ';
-    }
-    if (t.senderType === 'OFFICE') return t.senderOffice?.name || 'Офис';
-    if (t.senderType === 'CITY') {
-      const city = t.senderCity?.name || '—';
-      const country = t.senderCity?.country?.name;
-      return country ? `${city} (${country})` : city;
-    }
-    return t.senderCountry?.name || t.senderType;
-  };
-
-  const getReceiverLabel = (t) => {
-    if (t.receiverType === 'ADMIN') return 'Админ';
-    if (t.receiverType === 'OFFICE') return t.receiverOffice?.name || 'Офис';
-    if (t.receiverType === 'CITY') {
-      const city = t.receiverCity?.name || '—';
-      const country = t.receiverCity?.country?.name;
-      return country ? `${city} (${country})` : city;
-    }
-    return t.receiverCountry?.name || t.receiverType || 'Получатель';
-  };
 
   // ── ACCEPT: modal with quantities shown, confirm button ──
   const openAccept = (transfer) => {
@@ -265,19 +241,17 @@ export default function Acceptance() {
         ))}
       </div>
 
-      {/* ── Search (non-pending tabs) ── */}
-      {activeTab !== 'pending' && (
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
-          <input
-            type="text"
-            placeholder="Поиск по отправителю..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-edge bg-surface-card text-content-primary rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
-          />
-        </div>
-      )}
+      {/* ── Search (all tabs now) ── */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
+        <input
+          type="text"
+          placeholder="Поиск по отправителю или получателю..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border border-edge bg-surface-card text-content-primary rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
+        />
+      </div>
 
       {error && !acceptTarget && !disagreeTarget && (
         <div className="bg-red-500/10 text-red-400 text-sm px-4 py-2.5 rounded-[var(--radius-sm)]">{error}</div>
@@ -292,35 +266,40 @@ export default function Acceptance() {
         ) : (
           <div className="space-y-3">
             {displayList.map((t) => {
-              const senderLabel = getSenderLabel(t);
-              const senderName = t.createdByUser?.displayName;
+              const sender = getSenderName(t);
+              const receiver = getReceiverName(t);
+              const isAdmin = isAdminTransfer(t);
+              const totalQty = getTotalQuantity(t);
 
               return (
-                <Card key={t.id}>
+                <Card key={t.id} className={getTransferCardClass(t)}>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-medium">От: {senderLabel}</div>
-                        {senderName && (
-                          <div className="text-xs text-gray-500">
-                            Отправитель: <span className="font-medium text-gray-700">{senderName}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-content-muted font-mono">#{t.id?.slice(-6) || '—'}</span>
+                          <Badge status={t.status} />
+                          {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
+                        </div>
                         <div className="text-xs text-content-muted mt-0.5">
                           {new Date(t.createdAt).toLocaleDateString('ru-RU', {
-                            day: '2-digit', month: 'long', year: 'numeric',
-                            hour: '2-digit', minute: '2-digit',
+                            day: '2-digit', month: '2-digit', year: 'numeric',
                           })}
                         </div>
                       </div>
-                      <Badge status={t.status} />
+                    </div>
+
+                    <div className="text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-blue-400">{sender}</span>
+                      <ArrowRight size={14} className="text-content-muted flex-shrink-0" />
+                      <span className="font-medium text-emerald-400">{receiver}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       {(t.items || []).map((item) => (
-                        <BraceletBadge key={item.itemType || item.id} type={item.itemType} count="?" />
+                        <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} />
                       ))}
-                      <span className="text-xs text-content-muted ml-2">{t.items?.length || 0} цветов</span>
+                      <span className="text-xs text-content-muted ml-2">Итого: {totalQty} шт</span>
                     </div>
 
                     {t.notes && <p className="text-xs text-content-muted">{t.notes}</p>}
@@ -357,18 +336,20 @@ export default function Acceptance() {
         ) : (
           <div className="space-y-3">
             {displayList.map((t) => {
-              const totalQty = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
+              const totalQty = getTotalQuantity(t);
               const isExpanded = expandedId === t.id;
+              const isAdmin = isAdminTransfer(t);
 
               return (
                 <div
                   key={t.id}
-                  className="bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden"
+                  className={`bg-surface-card rounded-[var(--radius-md)] border border-edge hover:shadow-md transition-shadow overflow-hidden ${getTransferCardClass(t)}`}
                 >
                   <div className="p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge status={t.status} />
+                        {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
                         <span className="text-xs text-content-muted">
                           {new Date(t.createdAt).toLocaleString('ru-RU', {
                             day: '2-digit', month: '2-digit', year: '2-digit',
@@ -387,16 +368,16 @@ export default function Acceptance() {
                     </div>
 
                     <div className="text-sm flex items-center gap-1.5 flex-wrap">
-                      <span className="font-medium text-blue-400 truncate max-w-[100px]" title={getSenderLabel(t)}>{getSenderLabel(t)}</span>
-                      <span className="text-content-muted flex-shrink-0">→</span>
-                      <span className="font-medium text-emerald-400 truncate max-w-[100px]" title={getReceiverLabel(t)}>{getReceiverLabel(t)}</span>
+                      <span className="font-medium text-blue-400 truncate max-w-[120px]" title={getSenderName(t)}>{getSenderName(t)}</span>
+                      <ArrowRight size={14} className="text-content-muted flex-shrink-0" />
+                      <span className="font-medium text-emerald-400 truncate max-w-[120px]" title={getReceiverName(t)}>{getReceiverName(t)}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       {(t.items || []).map((item) => (
                         <BraceletBadge key={item.itemType || item.id} type={item.itemType} count={item.quantity} size="sm" />
                       ))}
-                      <span className="text-xs text-content-muted ml-1">{totalQty} шт</span>
+                      <span className="text-xs text-content-muted ml-1">Итого: {totalQty} шт</span>
                     </div>
 
                     {t.notes && <p className="text-xs text-content-muted italic">{t.notes}</p>}

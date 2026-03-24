@@ -10,6 +10,7 @@ import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import BraceletCard from '../components/ui/BraceletCard';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
+import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
 import {
   Send, PackageCheck, Globe, MapPin,
   ArrowRight, Activity, Clock,
@@ -150,35 +151,6 @@ export default function Dashboard() {
     { label: 'Баланс', icon: Boxes, path: '/balance', color: 'bg-amber-600', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'] },
   ].filter((a) => a.roles.includes(user.role));
 
-  // Helper for sender/receiver labels
-  const getSenderLabel = (t) => {
-    if (t.senderType === 'ADMIN') {
-      // Show creator name for ADMIN sender if available
-      if (t.createdByUser) {
-        return t.createdByUser.displayName || t.createdByUser.username || 'Админ';
-      }
-      return 'Админ';
-    }
-    if (t.senderType === 'OFFICE') return t.senderOffice?.name || 'Офис';
-    if (t.senderType === 'CITY') {
-      const city = t.senderCity?.name || '—';
-      const country = t.senderCity?.country?.name;
-      return country ? `${city} (${country})` : city;
-    }
-    return t.senderCountry?.name || t.senderType || 'Отправитель';
-  };
-
-  const getReceiverLabel = (t) => {
-    if (t.receiverType === 'ADMIN') return 'Админ';
-    if (t.receiverType === 'OFFICE') return t.receiverOffice?.name || 'Офис';
-    if (t.receiverType === 'CITY') {
-      const city = t.receiverCity?.name || '—';
-      const country = t.receiverCity?.country?.name;
-      return country ? `${city} (${country})` : city;
-    }
-    return t.receiverCountry?.name || t.receiverType || 'Получатель';
-  };
-
   return (
     <div className="space-y-4">
       {/* ── Gradient Header ──────────────────────────── */}
@@ -278,27 +250,26 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="p-4 space-y-2">
-            {pending.slice(0, 3).map((t) => (
+            {pending.slice(0, 3).map((t) => {
+              const isAdmin = isAdminTransfer(t);
+              return (
               <div
                 key={t.id}
-                className="flex items-center justify-between p-3 bg-surface-card rounded-[var(--radius-sm)] border border-edge"
+                className={`flex items-center justify-between p-3 bg-surface-card rounded-[var(--radius-sm)] border border-edge ${isAdmin ? 'border-l-[3px] border-l-violet-500 bg-violet-500/5' : ''}`}
               >
                 <div>
-                  <div className="text-sm font-medium text-content-primary">
-                    От: {getSenderLabel(t)}
+                  <div className="text-sm font-medium text-content-primary flex items-center gap-1.5">
+                    От: {getSenderName(t)}
+                    {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑</span>}
                   </div>
-                  {t.createdByUser?.displayName && t.senderType !== 'ADMIN' && (
-                    <div className="text-[10px] text-content-muted">
-                      {t.createdByUser.displayName}
-                    </div>
-                  )}
                   <div className="text-xs text-content-muted mt-0.5">
                     Пересчитайте и примите
                   </div>
                 </div>
                 <Badge status={t.status} />
               </div>
-            ))}
+            );
+            })}
             {pending.length > 3 && (
               <button
                 onClick={() => navigate('/acceptance')}
@@ -359,16 +330,18 @@ export default function Dashboard() {
           <div className="p-4 space-y-2">
             {problematicTransfers.slice(0, 3).map((t) => {
               const totalDiff = (t.acceptanceRecords || []).reduce((s, r) => s + (r.discrepancy || 0), 0);
+              const isAdmin = isAdminTransfer(t);
               return (
                 <div
                   key={t.id}
-                  className="flex items-center justify-between p-3 bg-surface-card rounded-[var(--radius-sm)] border border-edge"
+                  className={`flex items-center justify-between p-3 bg-surface-card rounded-[var(--radius-sm)] border border-edge ${isAdmin ? 'border-l-[3px] border-l-violet-500 bg-violet-500/5' : ''}`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm flex items-center gap-1.5">
-                      <span className="font-medium text-blue-400 truncate max-w-[100px]">{getSenderLabel(t)}</span>
+                    <div className="text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-blue-400 truncate max-w-[100px]">{getSenderName(t)}</span>
                       <span className="text-content-muted">→</span>
-                      <span className="font-medium text-emerald-400 truncate max-w-[100px]">{getReceiverLabel(t)}</span>
+                      <span className="font-medium text-emerald-400 truncate max-w-[100px]">{getReceiverName(t)}</span>
+                      {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑</span>}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       {t.items?.map((item) => (
@@ -473,20 +446,19 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-1">
               {recentTransfers.map((t) => {
-                const totalQty = (t.items || []).reduce(
-                  (s, i) => s + (i.quantity || 0),
-                  0,
-                );
+                const totalQty = getTotalQuantity(t);
+                const isAdmin = isAdminTransfer(t);
                 return (
                   <div
                     key={t.id}
-                    className="flex items-center gap-3 p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors"
+                    className={`flex items-center gap-3 p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors ${isAdmin ? 'border-l-[3px] border-l-violet-500 bg-violet-500/5' : ''}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm flex items-center gap-1.5">
-                        <span className="font-medium text-blue-400 truncate max-w-[80px]" title={getSenderLabel(t)}>{getSenderLabel(t)}</span>
+                      <div className="text-sm flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-blue-400 truncate max-w-[80px]" title={getSenderName(t)}>{getSenderName(t)}</span>
                         <span className="text-content-muted">→</span>
-                        <span className="font-medium text-emerald-400 truncate max-w-[80px]" title={getReceiverLabel(t)}>{getReceiverLabel(t)}</span>
+                        <span className="font-medium text-emerald-400 truncate max-w-[80px]" title={getReceiverName(t)}>{getReceiverName(t)}</span>
+                        {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑</span>}
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
                         {(t.items || []).map((item) => (

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
   AlertTriangle, HelpCircle, CheckCircle, XCircle, 
   UserCheck, Users, Scale, ShieldAlert, RefreshCw,
-  ArrowRight, TrendingDown, Lock
+  ArrowRight, TrendingDown, Lock, Search
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore } from '../store/useAppStore';
@@ -14,6 +14,7 @@ import Pagination from '../components/ui/Pagination';
 import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
 
 const ITEM_COLORS = {
   BLACK: { label: 'Чёрный', bg: 'bg-gray-800', text: 'text-white' },
@@ -150,6 +151,9 @@ export default function ProblematicTransfers() {
   const [show2FA, setShow2FA] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState('');
+  
+  // Search
+  const [search, setSearch] = useState('');
 
   const fetchData = async (p = 1) => {
     setLoading(true);
@@ -264,6 +268,18 @@ export default function ProblematicTransfers() {
     return items;
   };
 
+  // Filter transfers by search
+  const filteredTransfers = useMemo(() => {
+    if (!search.trim()) return transfers;
+    const q = search.toLowerCase();
+    return transfers.filter(t => {
+      const sender = getSenderName(t).toLowerCase();
+      const receiver = getReceiverName(t).toLowerCase();
+      const id = (t.id || '').toLowerCase();
+      return sender.includes(q) || receiver.includes(q) || id.includes(q);
+    });
+  }, [transfers, search]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -274,7 +290,7 @@ export default function ProblematicTransfers() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-content-primary">Проблемные отправки</h2>
-            <p className="text-sm text-content-muted">{transfers.length} расхождений требуют решения</p>
+            <p className="text-sm text-content-muted">{filteredTransfers.length} расхождений требуют решения</p>
           </div>
         </div>
         <button
@@ -284,6 +300,18 @@ export default function ProblematicTransfers() {
           <RefreshCw size={18} className="text-content-muted" />
         </button>
       </div>
+      
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
+        <input
+          type="text"
+          placeholder="Поиск по отправителю или получателю..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border border-edge bg-surface-card text-content-primary rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
+        />
+      </div>
 
       {loading && (
         <div className="flex justify-center py-12">
@@ -291,7 +319,7 @@ export default function ProblematicTransfers() {
         </div>
       )}
 
-      {!loading && transfers.length === 0 && (
+      {!loading && filteredTransfers.length === 0 && (
         <Card className="text-center py-12 text-gray-400">
           <div className="flex flex-col items-center gap-3">
             <CheckCircle size={48} className="text-emerald-500/50" />
@@ -301,17 +329,18 @@ export default function ProblematicTransfers() {
         </Card>
       )}
 
-      {!loading && transfers.length > 0 && (
+      {!loading && filteredTransfers.length > 0 && (
         <div className="grid gap-3">
-          {transfers.map((t) => {
-            const totalSent = t.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
+          {filteredTransfers.map((t) => {
+            const totalSent = getTotalQuantity(t);
             const totalReceived = t.acceptanceRecords?.reduce((s, r) => s + (r.receivedQuantity || 0), 0) || 0;
             const totalDiff = totalSent - totalReceived;
+            const isAdmin = isAdminTransfer(t);
             
             return (
               <div
                 key={t.id}
-                className="bg-surface-card rounded-xl border border-amber-500/30 hover:border-amber-500/50 transition-all overflow-hidden"
+                className={`bg-surface-card rounded-xl border border-amber-500/30 hover:border-amber-500/50 transition-all overflow-hidden ${getTransferCardClass(t)}`}
               >
                 <div className="p-4">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -319,21 +348,24 @@ export default function ProblematicTransfers() {
                     <div className="space-y-2 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <AlertTriangle size={16} className="text-amber-500" />
-                        <span className="font-medium text-blue-400">
-                          {entityLabel(t, 'sender')}
-                        </span>
-                        <ArrowRight size={14} className="text-content-muted" />
-                        <span className="font-medium text-emerald-400">
-                          {entityLabel(t, 'receiver')}
-                        </span>
                         <span className="text-xs text-content-muted font-mono">
                           #{t.id?.slice(-6)}
                         </span>
+                        {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
+                      </div>
+                      
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-blue-400">
+                          {getSenderName(t)}
+                        </span>
+                        <ArrowRight size={14} className="text-content-muted" />
+                        <span className="font-medium text-emerald-400">
+                          {getReceiverName(t)}
+                        </span>
                       </div>
 
-                      <div className="flex items-center gap-4 text-xs text-content-muted">
-                        <span>Отправитель: {t.createdByUser?.displayName || '—'}</span>
-                        <span>{formatDate(t.createdAt)}</span>
+                      <div className="text-xs text-content-muted">
+                        {formatDate(t.createdAt)}
                       </div>
 
                       {/* Bracelet breakdown with discrepancy */}
