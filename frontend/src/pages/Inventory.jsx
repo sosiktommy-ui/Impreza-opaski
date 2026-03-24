@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
+import { authApi } from '../api/auth';
 import Card from '../components/ui/Card';
 import Select from '../components/ui/Select';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
-import Modal from '../components/ui/Modal';
+import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
 import { Boxes, Plus, Minus, Package, History, RefreshCw } from 'lucide-react';
 
@@ -51,6 +52,10 @@ export default function Inventory() {
   const [createForm, setCreateForm] = useState({ black: '', white: '', red: '', blue: '', notes: '' });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  
+  // 2FA state for bracelet creation
+  const [show2FA, setShow2FA] = useState(false);
+  const [pendingCreateData, setPendingCreateData] = useState(null);
 
   useEffect(() => {
     init();
@@ -337,21 +342,31 @@ export default function Inventory() {
       setCreateError('Укажите количество браслетов');
       return;
     }
+    // Store data and show 2FA confirmation
+    setPendingCreateData({ officeId, black, white, red, blue, notes: createForm.notes.trim() || undefined });
+    setShowCreate(false);
+    setShow2FA(true);
+  };
+
+  // Confirm creation after 2FA
+  const handleCreate2FAConfirm = async (password) => {
+    if (!pendingCreateData) return;
+    
+    // Verify password first
+    const verifyRes = await authApi.verifyPassword(password);
+    if (!verifyRes.data?.valid) {
+      throw new Error('Неверный пароль');
+    }
+    
     setCreating(true);
     try {
-      await inventoryApi.createBracelets({
-        officeId,
-        black,
-        white,
-        red,
-        blue,
-        notes: createForm.notes.trim() || undefined,
-      });
-      setShowCreate(false);
+      await inventoryApi.createBracelets(pendingCreateData);
+      setShow2FA(false);
+      setPendingCreateData(null);
       setCreateForm({ black: '', white: '', red: '', blue: '', notes: '' });
       await loadWarehouseData();
     } catch (err) {
-      setCreateError(err.response?.data?.message || 'Ошибка создания браслетов');
+      throw new Error(err.response?.data?.message || 'Ошибка создания браслетов');
     } finally {
       setCreating(false);
     }
@@ -862,6 +877,18 @@ export default function Inventory() {
           </div>
         </div>
       </Modal>
+
+      {/* 2FA Modal for bracelet creation */}
+      <TwoFactorModal
+        isOpen={show2FA}
+        onClose={() => { setShow2FA(false); setPendingCreateData(null); }}
+        onConfirm={handleCreate2FAConfirm}
+        title="Подтвердите создание браслетов"
+        description={pendingCreateData ? `Создание: Ч:${pendingCreateData.black || 0} Б:${pendingCreateData.white || 0} К:${pendingCreateData.red || 0} С:${pendingCreateData.blue || 0}` : ''}
+        confirmButtonText="Создать"
+        confirmButtonVariant="primary"
+        isLoading={creating}
+      />
     </div>
   );
 }

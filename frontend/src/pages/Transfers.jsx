@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
+import { inventoryApi } from '../api/inventory';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -10,7 +11,7 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import { Plus, Send, X, Search, ArrowUpDown } from 'lucide-react';
+import { Plus, Send, X, Search, ArrowUpDown, AlertTriangle } from 'lucide-react';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -44,6 +45,10 @@ export default function Transfers() {
   const [offices, setOffices] = useState([]);
   const [officesLoading, setOfficesLoading] = useState(false);
   const [toOfficeId, setToOfficeId] = useState('');
+
+  // Sender balance (to validate before sending)
+  const [senderBalance, setSenderBalance] = useState({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   useEffect(() => {
     loadTransfers();
@@ -103,6 +108,26 @@ export default function Transfers() {
     setShowCreate(true);
     setError('');
     resetForm();
+
+    // Load sender balance
+    setBalanceLoading(true);
+    try {
+      const { data } = await inventoryApi.getMy();
+      const payload = data?.data || data;
+      if (payload && typeof payload === 'object') {
+        setSenderBalance({
+          BLACK: payload.BLACK || payload.black || 0,
+          WHITE: payload.WHITE || payload.white || 0,
+          RED: payload.RED || payload.red || 0,
+          BLUE: payload.BLUE || payload.blue || 0,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load balance:', err);
+      setSenderBalance({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
+    } finally {
+      setBalanceLoading(false);
+    }
 
     if (user.role === 'ADMIN' || user.role === 'OFFICE') {
       try {
@@ -274,6 +299,29 @@ export default function Transfers() {
     }
     return null;
   }, [user.role, receiverMode, toCountryId, toCityId, toOfficeId, countries, cities, offices]);
+
+  // Check if any quantity exceeds available balance
+  const exceedsBalance = useMemo(() => {
+    for (const type of ITEM_TYPES) {
+      const qty = parseInt(quantities[type]) || 0;
+      if (qty > 0 && qty > senderBalance[type]) {
+        return true;
+      }
+    }
+    return false;
+  }, [quantities, senderBalance]);
+
+  // Get which colors exceed balance for warning display
+  const exceedingColors = useMemo(() => {
+    const colors = [];
+    for (const type of ITEM_TYPES) {
+      const qty = parseInt(quantities[type]) || 0;
+      if (qty > 0 && qty > senderBalance[type]) {
+        colors.push(ITEM_LABELS[type]);
+      }
+    }
+    return colors;
+  }, [quantities, senderBalance]);
 
   if (loading && transfers.length === 0) {
     return (
@@ -555,23 +603,65 @@ export default function Transfers() {
             </div>
           )}
 
+          {/* Sender Balance Display */}
+          <div className="bg-surface-secondary rounded-[var(--radius-md)] p-3">
+            <p className="text-xs font-medium text-content-muted mb-2">Ваш текущий баланс:</p>
+            {balanceLoading ? (
+              <div className="flex items-center gap-2 text-content-muted text-sm">
+                <div className="animate-spin h-4 w-4 border-2 border-brand-200 border-t-brand-600 rounded-full" />
+                Загрузка...
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {ITEM_TYPES.map((type) => {
+                  const qty = parseInt(quantities[type]) || 0;
+                  const exceeds = qty > 0 && qty > senderBalance[type];
+                  return (
+                    <div
+                      key={type}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                        exceeds
+                          ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500'
+                          : type === 'BLACK'
+                          ? 'bg-gray-800 text-gray-200'
+                          : type === 'WHITE'
+                          ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200'
+                          : type === 'RED'
+                          ? 'bg-red-600/20 text-red-400'
+                          : 'bg-blue-600/20 text-blue-400'
+                      }`}
+                    >
+                      {ITEM_LABELS[type]}: {senderBalance[type]}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Bracelet quantities */}
           <div>
             <p className="text-sm font-medium text-content-primary mb-2">Количество браслетов</p>
             <div className="grid grid-cols-2 gap-3">
-              {ITEM_TYPES.map((type) => (
-                <Input
-                  key={type}
-                  label={ITEM_LABELS[type]}
-                  type="number"
-                  min="0"
-                  value={quantities[type]}
-                  onChange={(e) =>
-                    setQuantities((p) => ({ ...p, [type]: e.target.value }))
-                  }
-                  placeholder="0"
-                />
-              ))}
+              {ITEM_TYPES.map((type) => {
+                const qty = parseInt(quantities[type]) || 0;
+                const exceeds = qty > 0 && qty > senderBalance[type];
+                return (
+                  <Input
+                    key={type}
+                    label={ITEM_LABELS[type]}
+                    type="number"
+                    min="0"
+                    max={senderBalance[type]}
+                    value={quantities[type]}
+                    onChange={(e) =>
+                      setQuantities((p) => ({ ...p, [type]: e.target.value }))
+                    }
+                    placeholder="0"
+                    className={exceeds ? 'ring-2 ring-red-500' : ''}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -582,13 +672,26 @@ export default function Transfers() {
             placeholder="Комментарий (необязательно)"
           />
 
+          {/* Warning if exceeds balance */}
+          {exceedsBalance && (
+            <div className="flex items-start gap-2 bg-amber-500/10 text-amber-400 text-sm px-3 py-2.5 rounded-[var(--radius-sm)]">
+              <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Недостаточно браслетов!</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  Превышен баланс: {exceedingColors.join(', ')}
+                </p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">
               {error}
             </div>
           )}
 
-          <Button type="submit" loading={sending} className="w-full">
+          <Button type="submit" loading={sending} disabled={exceedsBalance || balanceLoading} className="w-full">
             <Send size={18} /> Отправить
           </Button>
         </form>

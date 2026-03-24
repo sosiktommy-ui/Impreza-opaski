@@ -91,29 +91,37 @@ export class TransfersService {
     const isAdminSender = input.senderType === EntityType.ADMIN;
 
     return this.prisma.$transaction(async (tx) => {
-      // For non-admin senders: just CHECK that inventory exists (don't deduct yet)
-      // Actual deduction happens when receiver confirms (acceptTransfer)
-      if (!isAdminSender) {
-        for (const item of input.items) {
-          const entityId = input.senderType === EntityType.OFFICE
-            ? (input.senderOfficeId || null)
-            : input.senderType === EntityType.COUNTRY
-            ? (input.senderCountryId || null)
-            : (input.senderCityId || null);
-          const balance = await this.getEntityBalance(
-            tx,
-            input.senderType,
-            entityId,
-            item.itemType,
-          );
-          if (balance < item.quantity) {
-            throw new BadRequestException(
-              `Insufficient ${item.itemType} balance: have ${balance}, need ${item.quantity}`,
-            );
-          }
-        }
-        // NOTE: No deduction here! Deduction happens on accept.
+      // Check balance for ALL senders (including ADMIN)
+      // This prevents sending more bracelets than available in inventory
+      const entityId = input.senderType === EntityType.ADMIN
+        ? null // ADMIN uses entityType: ADMIN with null IDs
+        : input.senderType === EntityType.OFFICE
+        ? (input.senderOfficeId || null)
+        : input.senderType === EntityType.COUNTRY
+        ? (input.senderCountryId || null)
+        : (input.senderCityId || null);
+
+      // Collect full balance for error message
+      const fullBalance: Record<string, number> = {};
+      for (const itemType of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+        fullBalance[itemType] = await this.getEntityBalance(
+          tx,
+          input.senderType,
+          entityId,
+          itemType as any,
+        );
       }
+
+      for (const item of input.items) {
+        const balance = fullBalance[item.itemType];
+        if (balance < item.quantity) {
+          // Russian error message with full balance
+          throw new BadRequestException(
+            `Недостаточно браслетов. Баланс: Ч:${fullBalance.BLACK} Б:${fullBalance.WHITE} К:${fullBalance.RED} С:${fullBalance.BLUE}`,
+          );
+        }
+      }
+      // NOTE: No deduction here! Deduction happens on accept.
 
       const transfer = await tx.transfer.create({
         data: {

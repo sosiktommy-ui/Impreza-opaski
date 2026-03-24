@@ -9,4 +9,6 @@ export const authApi = {
   logout: () => api.post('/auth/logout'),
 
   me: () => api.get('/auth/me'),
+
+  verifyPassword: (password) => api.post('/auth/verify-password', { password }),
 };

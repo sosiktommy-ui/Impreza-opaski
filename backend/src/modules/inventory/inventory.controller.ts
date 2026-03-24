@@ -230,7 +230,7 @@ export class InventoryController {
     }
   }
 
-  @Get('warehouse/history')
+  @Get('warehouse/creation-history')
   @Roles(Role.ADMIN, Role.OFFICE)
   getWarehouseHistory(
     @CurrentUser() user: AuthenticatedUser,
@@ -251,7 +251,7 @@ export class InventoryController {
     }
   }
 
-  @Post('warehouse/create')
+  @Post('warehouse/create-bracelets')
   @Roles(Role.ADMIN, Role.OFFICE)
   async createBracelets(
     @Body() dto: CreateBraceletsDto,
