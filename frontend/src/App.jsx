@@ -23,7 +23,8 @@ import { usersApi } from './api/users';
 import {
   Clock, AlertTriangle, Package, TrendingDown, TrendingUp,
   ArrowRight, Calendar, Filter, RefreshCw, Download,
-  BarChart3, PieChart, Activity, Users as UsersIcon, MapPin, Search
+  BarChart3, PieChart, Activity, Users as UsersIcon, MapPin, Search,
+  Check, X, Ban, Loader2
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -41,6 +42,17 @@ function PendingTransfers() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const { countryId, cityId } = useFilterStore();
+  const { user: currentUser } = useAuthStore();
+
+  // Modal states
+  const [selectedTransfer, setSelectedTransfer] = useState(null);
+  const [acceptModalOpen, setAcceptModalOpen] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [acceptItems, setAcceptItems] = useState({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
+  const [rejectReason, setRejectReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   useEffect(() => {
     loadPendingTransfers();
@@ -72,6 +84,102 @@ function PendingTransfers() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Check if current user is receiver/sender/admin
+  const isReceiver = (transfer) => {
+    return transfer.receiverId === currentUser?.id || 
+           transfer.receiverCityId === currentUser?.cityId;
+  };
+  const isSender = (transfer) => {
+    return transfer.senderId === currentUser?.id || 
+           transfer.senderCityId === currentUser?.cityId;
+  };
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'OWNER';
+
+  // Open accept modal
+  const openAcceptModal = (transfer) => {
+    setSelectedTransfer(transfer);
+    // Pre-fill with sent quantities
+    const items = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+    transfer.items?.forEach(item => {
+      if (items.hasOwnProperty(item.itemType)) {
+        items[item.itemType] = item.quantity || item.sentQuantity || 0;
+      }
+    });
+    setAcceptItems(items);
+    setActionError(null);
+    setAcceptModalOpen(true);
+  };
+
+  // Open reject modal
+  const openRejectModal = (transfer) => {
+    setSelectedTransfer(transfer);
+    setRejectReason('');
+    setActionError(null);
+    setRejectModalOpen(true);
+  };
+
+  // Open cancel modal
+  const openCancelModal = (transfer) => {
+    setSelectedTransfer(transfer);
+    setActionError(null);
+    setCancelModalOpen(true);
+  };
+
+  // Handle accept
+  const handleAccept = async () => {
+    if (!selectedTransfer) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const items = Object.entries(acceptItems)
+        .filter(([_, qty]) => qty > 0)
+        .map(([itemType, receivedQuantity]) => ({ itemType, receivedQuantity }));
+      await transfersApi.accept(selectedTransfer.id, items);
+      setAcceptModalOpen(false);
+      setSelectedTransfer(null);
+      loadPendingTransfers();
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Ошибка при принятии перевода');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle reject
+  const handleReject = async () => {
+    if (!selectedTransfer || !rejectReason.trim()) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await transfersApi.reject(selectedTransfer.id, rejectReason);
+      setRejectModalOpen(false);
+      setSelectedTransfer(null);
+      setRejectReason('');
+      loadPendingTransfers();
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Ошибка при отклонении перевода');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle cancel
+  const handleCancel = async () => {
+    if (!selectedTransfer) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await transfersApi.cancel(selectedTransfer.id);
+      setCancelModalOpen(false);
+      setSelectedTransfer(null);
+      loadPendingTransfers();
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Ошибка при отмене перевода');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -178,10 +286,13 @@ function PendingTransfers() {
       ) : (
         <div className="grid gap-3">
           {filteredTransfers.map((transfer) => {
-            const isAdmin = isAdminTransfer(transfer);
+            const isAdminTx = isAdminTransfer(transfer);
             const sender = getSenderName(transfer);
             const receiver = getReceiverName(transfer);
             const totalQty = getTotalQuantity(transfer);
+            const canAccept = isAdmin || isReceiver(transfer);
+            const canReject = isAdmin || isReceiver(transfer);
+            const canCancel = isAdmin || isSender(transfer);
             return (
             <div
               key={transfer.id}
@@ -196,7 +307,7 @@ function PendingTransfers() {
                     <span className="text-xs px-2 py-0.5 rounded bg-orange-500/20 text-orange-400">
                       Ожидает {getPendingDuration(transfer.createdAt)}
                     </span>
-                    {isAdmin && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
+                    {isAdminTx && <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded font-medium">👑 ADMIN</span>}
                   </div>
 
                   <div className="flex items-center gap-2 text-sm mb-3">
@@ -230,9 +341,222 @@ function PendingTransfers() {
                   </div>
                 </div>
               </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-edge">
+                {canAccept && (
+                  <button
+                    onClick={() => openAcceptModal(transfer)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors"
+                  >
+                    <Check size={14} />
+                    Принять
+                  </button>
+                )}
+                {canReject && (
+                  <button
+                    onClick={() => openRejectModal(transfer)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-colors"
+                  >
+                    <X size={14} />
+                    Отклонить
+                  </button>
+                )}
+                {canCancel && (
+                  <button
+                    onClick={() => openCancelModal(transfer)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
+                  >
+                    <Ban size={14} />
+                    Отменить
+                  </button>
+                )}
+              </div>
             </div>
           );
           })}
+        </div>
+      )}
+
+      {/* Accept Modal */}
+      {acceptModalOpen && selectedTransfer && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface-card border border-edge rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-edge">
+              <h3 className="text-lg font-semibold text-content-primary">Принять перевод</h3>
+              <button
+                onClick={() => setAcceptModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-card-hover transition-colors"
+              >
+                <X size={20} className="text-content-muted" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-content-muted">
+                Укажите фактическое количество полученных браслетов:
+              </p>
+              
+              {/* Sent quantities reference */}
+              <div className="p-3 rounded-lg bg-surface-primary border border-edge">
+                <p className="text-xs text-content-muted mb-2">Отправлено:</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {selectedTransfer.items?.map((item) => (
+                    <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity || item.sentQuantity || 0} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Input fields for received quantities */}
+              <div className="grid grid-cols-2 gap-3">
+                {['BLACK', 'WHITE', 'RED', 'BLUE'].map((color) => {
+                  const colorLabels = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
+                  const colorClasses = { BLACK: 'border-gray-600', WHITE: 'border-gray-300', RED: 'border-red-500', BLUE: 'border-blue-500' };
+                  return (
+                    <div key={color} className="space-y-1">
+                      <label className="text-xs text-content-muted">{colorLabels[color]}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={acceptItems[color]}
+                        onChange={(e) => setAcceptItems(prev => ({ ...prev, [color]: parseInt(e.target.value) || 0 }))}
+                        className={`w-full px-3 py-2 border-2 ${colorClasses[color]} bg-surface-primary text-content-primary rounded-lg text-sm focus:ring-2 focus:ring-brand-500/20 focus:outline-none`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {actionError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  {actionError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 p-4 border-t border-edge">
+              <button
+                onClick={() => setAcceptModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-content-muted bg-surface-primary border border-edge rounded-lg hover:bg-surface-card-hover transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleAccept}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                Принять
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Modal */}
+      {rejectModalOpen && selectedTransfer && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface-card border border-edge rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-edge">
+              <h3 className="text-lg font-semibold text-content-primary">Отклонить перевод</h3>
+              <button
+                onClick={() => setRejectModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-card-hover transition-colors"
+              >
+                <X size={20} className="text-content-muted" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-content-muted">
+                Укажите причину отклонения перевода:
+              </p>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Причина отклонения..."
+                rows={3}
+                className="w-full px-3 py-2 border border-edge bg-surface-primary text-content-primary rounded-lg text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none resize-none"
+              />
+              {actionError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  {actionError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 p-4 border-t border-edge">
+              <button
+                onClick={() => setRejectModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-content-muted bg-surface-primary border border-edge rounded-lg hover:bg-surface-card-hover transition-colors"
+              >
+                Назад
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={actionLoading || !rejectReason.trim()}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
+                Отклонить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Modal */}
+      {cancelModalOpen && selectedTransfer && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface-card border border-edge rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-edge">
+              <h3 className="text-lg font-semibold text-content-primary">Отменить перевод</h3>
+              <button
+                onClick={() => setCancelModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-surface-card-hover transition-colors"
+              >
+                <X size={20} className="text-content-muted" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-content-muted">
+                Вы уверены, что хотите отменить этот перевод?
+              </p>
+              <div className="p-3 rounded-lg bg-surface-primary border border-edge">
+                <div className="flex items-center gap-2 text-sm mb-2">
+                  <span className="font-medium text-blue-400">{getSenderName(selectedTransfer)}</span>
+                  <ArrowRight size={14} className="text-content-muted" />
+                  <span className="font-medium text-emerald-400">{getReceiverName(selectedTransfer)}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedTransfer.items?.map((item) => (
+                    <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity || item.sentQuantity || 0} />
+                  ))}
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+                ⚠️ Браслеты вернутся отправителю
+              </div>
+              {actionError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  {actionError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 p-4 border-t border-edge">
+              <button
+                onClick={() => setCancelModalOpen(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-content-muted bg-surface-primary border border-edge rounded-lg hover:bg-surface-card-hover transition-colors"
+              >
+                Назад
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Ban size={16} />}
+                Отменить перевод
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

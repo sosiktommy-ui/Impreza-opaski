@@ -7,8 +7,10 @@ import {
   Body,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { TransfersService } from './transfers.service';
+import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -103,7 +105,10 @@ class AcceptTransferDto {
 @Controller('transfers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TransfersController {
-  constructor(private readonly transfersService: TransfersService) {}
+  constructor(
+    private readonly transfersService: TransfersService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post()
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
@@ -148,11 +153,16 @@ export class TransfersController {
 
   @Patch(':id/resolve-discrepancy')
   @Roles(Role.ADMIN, Role.OFFICE)
-  resolveDiscrepancy(
+  async resolveDiscrepancy(
     @Param('id') id: string,
     @Body() dto: ResolveDiscrepancyDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    // Verify password for 2FA
+    const isValid = await this.authService.verifyPassword(user.id, dto.password);
+    if (!isValid) {
+      throw new BadRequestException('Неверный пароль');
+    }
     return this.transfersService.resolveDiscrepancy(id, dto, user.id);
   }
 

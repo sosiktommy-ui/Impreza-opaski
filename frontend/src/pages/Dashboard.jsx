@@ -16,7 +16,7 @@ import {
   ArrowRight, Activity, Clock,
   CalendarDays, Boxes, AlertTriangle,
   TrendingUp, TrendingDown, ShieldAlert,
-  BarChart3, RefreshCw
+  BarChart3, RefreshCw, MinusCircle
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [problematicCount, setProblematicCount] = useState(0);
   const [problematicTransfers, setProblematicTransfers] = useState([]);
   const [stats, setStats] = useState({ countries: 0, cities: 0 });
+  const [lossSummary, setLossSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function Dashboard() {
 
       if (isAdminOrOffice) {
         promises.push(inventoryApi.getAll());
+        promises.push(inventoryApi.getCompanyLossesSummary());
       } else {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
@@ -116,6 +118,13 @@ export default function Dashboard() {
         } else {
           setBalance(Array.isArray(dPayload) ? dPayload : []);
         }
+      }
+
+      // Company losses summary (for ADMIN/OFFICE)
+      if (isAdminOrOffice && results[5]) {
+        const lossData = results[5].data;
+        const lossPayload = lossData?.data || lossData;
+        setLossSummary(lossPayload);
       }
     } catch (err) {
       console.error('Dashboard load error:', err);
@@ -181,7 +190,21 @@ export default function Dashboard() {
           { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-400', bg: 'bg-blue-500/10', path: '/history' },
           { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-400', bg: 'bg-orange-500/10', tooltip: (user.role === 'CITY' || user.role === 'COUNTRY') ? 'Если есть проблемные отправки — обратитесь к администратору или офису для решения' : null, path: user.role === 'ADMIN' || user.role === 'OFFICE' ? '/problematic' : null },
           { value: pendingCount || pending.length, label: 'Зависшие', icon: Clock, iconColor: 'text-amber-400', bg: 'bg-amber-500/10', path: '/pending' },
-          { value: stats.cities, label: 'Городов', icon: MapPin, iconColor: 'text-violet-400', bg: 'bg-violet-500/10' },
+          // Company losses counter (ADMIN/OFFICE only)
+          ...(lossSummary && (user.role === 'ADMIN' || user.role === 'OFFICE') ? [{
+            value: lossSummary.totalQuantity || 0,
+            label: 'Минус компании',
+            icon: MinusCircle,
+            iconColor: 'text-red-400',
+            bg: 'bg-red-500/10',
+            path: '/company-losses'
+          }] : [{
+            value: stats.cities,
+            label: 'Городов',
+            icon: MapPin,
+            iconColor: 'text-violet-400',
+            bg: 'bg-violet-500/10'
+          }]),
         ].map(({ value, label, icon: Icon, iconColor, bg, tooltip, path }) => (
           <div
             key={label}
@@ -232,6 +255,49 @@ export default function Dashboard() {
             );
           })()}
         </Card>
+      )}
+
+      {/* ── Company Losses Summary (ADMIN/OFFICE) ──────── */}
+      {(user.role === 'ADMIN' || user.role === 'OFFICE') && lossSummary && lossSummary.totalQuantity > 0 && (
+        <div className="bg-red-500/5 rounded-[var(--radius-md)] border border-red-500/20 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-red-500/10">
+            <h3 className="font-semibold text-red-400 flex items-center gap-2">
+              <MinusCircle size={16} />
+              Минус компании
+            </h3>
+            <button
+              onClick={() => navigate('/company-losses')}
+              className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 font-medium"
+            >
+              Подробнее <ArrowRight size={12} />
+            </button>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
+                const colorLabels = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
+                const colorClasses = { BLACK: 'bg-gray-700', WHITE: 'bg-gray-100', RED: 'bg-red-500', BLUE: 'bg-blue-500' };
+                const qty = lossSummary.byColor?.[type] || 0;
+                return (
+                  <div key={type} className="flex items-center gap-2 p-2 bg-surface-card rounded-lg border border-edge">
+                    <span className={`w-4 h-4 rounded-full ${colorClasses[type]} flex-shrink-0`} />
+                    <div>
+                      <div className="text-sm font-bold text-red-400">-{qty}</div>
+                      <div className="text-[10px] text-content-muted">{colorLabels[type]}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex items-center gap-2 p-2 bg-red-500/10 rounded-lg border border-red-500/30">
+                <TrendingDown size={16} className="text-red-400" />
+                <div>
+                  <div className="text-sm font-bold text-red-400">-{lossSummary.totalQuantity}</div>
+                  <div className="text-[10px] text-content-muted">Всего</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Pending Incoming ─────────────────────────── */}

@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   AlertTriangle, HelpCircle, CheckCircle, XCircle, 
   UserCheck, Users, Scale, ShieldAlert, RefreshCw,
-  ArrowRight, TrendingDown, Lock, Search
+  ArrowRight, TrendingDown, Lock, Search, MinusCircle
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore } from '../store/useAppStore';
 import { transfersApi } from '../api/transfers';
+import { inventoryApi } from '../api/inventory';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
@@ -27,39 +29,43 @@ const ITEM_COLORS = {
 const RESOLUTION_TYPES = {
   ACCEPT_SENDER: {
     key: 'ACCEPT_SENDER',
-    label: 'Принять от отправителя',
+    label: 'Принять сторону отправителя',
     shortLabel: 'От отправителя',
     icon: UserCheck,
-    description: 'Верим отправителю — зачисляем отправленное количество, разница идёт в убыток компании',
+    description: 'Верим отправителю — он отправил правильное количество. Получателю зачисляется полная сумма отправителя. Недостача записывается на аккаунт получателя.',
     color: 'bg-blue-500 hover:bg-blue-600',
     textColor: 'text-blue-400',
+    hasCompanyLoss: false,
   },
   ACCEPT_RECEIVER: {
     key: 'ACCEPT_RECEIVER', 
-    label: 'Принять от получателя',
+    label: 'Принять сторону получателя',
     shortLabel: 'От получателя',
     icon: UserCheck,
-    description: 'Верим получателю — зачисляем полученное количество, разница идёт в убыток компании',
-    color: 'bg-emerald-500 hover:bg-emerald-600',
-    textColor: 'text-emerald-400',
+    description: 'Верим получателю — он получил именно столько, сколько насчитал. Недостача записывается на аккаунт отправителя.',
+    color: 'bg-orange-500 hover:bg-orange-600',
+    textColor: 'text-orange-400',
+    hasCompanyLoss: false,
   },
   ACCEPT_COMPROMISE: {
     key: 'ACCEPT_COMPROMISE',
     label: 'Компромисс',
     shortLabel: 'Компромисс',
     icon: Scale,
-    description: 'Распределить разницу между сторонами — вы указываете сколько зачислить',
+    description: 'Обе стороны несут ответственность. Получатель получит сколько насчитал. Расхождение записывается на оба аккаунта.',
     color: 'bg-amber-500 hover:bg-amber-600',
     textColor: 'text-amber-400',
+    hasCompanyLoss: false,
   },
-  CANCEL_TRANSFER: {
-    key: 'CANCEL_TRANSFER',
-    label: 'Отменить трансфер',
-    shortLabel: 'Отменить',
-    icon: XCircle,
-    description: 'Полная отмена — никому ничего не зачисляется, вся отправка идёт в минус компании',
+  ACCEPT_AS_IS: {
+    key: 'ACCEPT_AS_IS',
+    label: 'Принять как есть',
+    shortLabel: 'Как есть',
+    icon: ShieldAlert,
+    description: 'Никто не виноват. Получатель получит сколько насчитал. Разница списывается на компанию.',
     color: 'bg-red-500 hover:bg-red-600',
     textColor: 'text-red-400',
+    hasCompanyLoss: true,
   },
 };
 
@@ -97,31 +103,22 @@ function formatDate(str) {
 }
 
 // Calculate company loss for a resolution type
+// Only ACCEPT_AS_IS creates company loss
 function calculateLoss(transfer, resolutionType, compromiseValues = {}) {
   const loss = { black: 0, white: 0, red: 0, blue: 0, total: 0 };
   
   if (!transfer?.acceptanceRecords) return loss;
   
+  // Only ACCEPT_AS_IS creates company loss
+  if (resolutionType !== 'ACCEPT_AS_IS') {
+    return loss;
+  }
+  
   transfer.acceptanceRecords.forEach((r) => {
     const sent = r.sentQuantity || 0;
     const received = r.receivedQuantity || 0;
     const itemKey = r.itemType.toLowerCase();
-    
-    let diff = 0;
-    if (resolutionType === 'ACCEPT_SENDER') {
-      // Trust sender: difference is sent - received (negative = receiver got more = no loss)
-      diff = Math.max(0, sent - received);
-    } else if (resolutionType === 'ACCEPT_RECEIVER') {
-      // Trust receiver: difference is sent - received (positive = loss for company)
-      diff = Math.max(0, sent - received);
-    } else if (resolutionType === 'ACCEPT_COMPROMISE') {
-      // Compromise: loss is sent - compromiseValue
-      const compromiseVal = compromiseValues[r.itemType] || 0;
-      diff = Math.max(0, sent - compromiseVal);
-    } else if (resolutionType === 'CANCEL_TRANSFER') {
-      // Cancel: entire sent amount is company loss
-      diff = sent;
-    }
+    const diff = Math.max(0, sent - received);
     
     if (loss[itemKey] !== undefined) {
       loss[itemKey] = diff;
@@ -135,12 +132,14 @@ function calculateLoss(transfer, resolutionType, compromiseValues = {}) {
 export default function ProblematicTransfers() {
   const { user } = useAuthStore();
   const { countryId, cityId } = useFilterStore();
+  const navigate = useNavigate();
   const canResolve = user?.role === 'ADMIN' || user?.role === 'OFFICE';
   
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [lossSummary, setLossSummary] = useState(null);
   
   // Detail/Resolution modal
   const [selectedTransfer, setSelectedTransfer] = useState(null);
@@ -162,13 +161,23 @@ export default function ProblematicTransfers() {
       if (countryId) params.countryId = countryId;
       if (cityId) params.cityId = cityId;
       
-      const { data } = await transfersApi.getProblematic(params);
+      const [transfersRes, lossRes] = await Promise.all([
+        transfersApi.getProblematic(params),
+        canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
+      ]);
+      
+      const data = transfersRes.data;
       const payload = data?.data || data;
       const list = Array.isArray(payload) ? payload : [];
       setTransfers(list);
       const meta = data?.meta || payload?.meta;
       setTotalPages(meta?.totalPages || 1);
       setPage(meta?.page || p);
+      
+      if (lossRes) {
+        const lossData = lossRes.data;
+        setLossSummary(lossData?.data || lossData);
+      }
     } catch (err) {
       console.error('Failed to fetch problematic transfers', err);
     } finally {
@@ -246,23 +255,36 @@ export default function ProblematicTransfers() {
 
   // Build consequences description based on resolution type
   const getConsequencesDescription = () => {
-    if (!selectedTransfer || !selectedResolution || !consequences) return [];
+    if (!selectedTransfer || !selectedResolution) return [];
     
     const items = [];
     const res = RESOLUTION_TYPES[selectedResolution];
+    const senderName = getSenderName(selectedTransfer);
+    const receiverName = getReceiverName(selectedTransfer);
     
-    items.push(`Решение: ${res.label}`);
+    const totalSent = selectedTransfer.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
+    const totalReceived = selectedTransfer.acceptanceRecords?.reduce((s, r) => s + (r.receivedQuantity || 0), 0) || 0;
+    const totalDiff = totalSent - totalReceived;
     
-    if (consequences.total > 0) {
-      items.push(`Убыток компании: ${consequences.total} браслетов`);
-      const breakdown = [];
-      if (consequences.black > 0) breakdown.push(`Чёрных: ${consequences.black}`);
-      if (consequences.white > 0) breakdown.push(`Белых: ${consequences.white}`);
-      if (consequences.red > 0) breakdown.push(`Красных: ${consequences.red}`);
-      if (consequences.blue > 0) breakdown.push(`Синих: ${consequences.blue}`);
-      if (breakdown.length > 0) items.push(breakdown.join(', '));
-    } else {
-      items.push('Убыток компании: 0');
+    if (selectedResolution === 'ACCEPT_SENDER') {
+      items.push(`• ${senderName}: списано ${totalSent} шт ✓`);
+      items.push(`• ${receiverName}: зачислено ${totalSent} шт (полная сумма)`);
+      if (totalDiff > 0) {
+        items.push(`• Недостача ${receiverName}: ${totalDiff} шт ⚠️`);
+      }
+      items.push(`• Минус компании: 0 шт`);
+    } else if (selectedResolution === 'ACCEPT_RECEIVER') {
+      items.push(`• ${senderName}: списано ${totalSent} шт, недостача ${totalDiff} шт ⚠️`);
+      items.push(`• ${receiverName}: зачислено ${totalReceived} шт ✓`);
+      items.push(`• Минус компании: 0 шт`);
+    } else if (selectedResolution === 'ACCEPT_COMPROMISE') {
+      items.push(`• ${senderName}: списано ${totalSent} шт, участник расхождения ⚠️`);
+      items.push(`• ${receiverName}: зачислено ${totalReceived} шт, участник расхождения ⚠️`);
+      items.push(`• Минус компании: 0 шт`);
+    } else if (selectedResolution === 'ACCEPT_AS_IS') {
+      items.push(`• ${senderName}: списано ${totalSent} шт ✓`);
+      items.push(`• ${receiverName}: зачислено ${totalReceived} шт ✓`);
+      items.push(`• Минус компании: ${totalDiff} шт 📉`);
     }
     
     return items;
@@ -312,6 +334,25 @@ export default function ProblematicTransfers() {
           className="w-full pl-9 pr-3 py-2 border border-edge bg-surface-card text-content-primary rounded-[var(--radius-sm)] text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none"
         />
       </div>
+
+      {/* Company Losses Banner (ADMIN/OFFICE only) */}
+      {canResolve && lossSummary && lossSummary.totalQuantity > 0 && (
+        <div
+          onClick={() => navigate('/company-losses')}
+          className="flex items-center justify-between p-4 bg-red-500/10 rounded-xl border border-red-500/30 cursor-pointer hover:bg-red-500/15 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+              <MinusCircle size={20} className="text-red-400" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-red-400">Минус компании</h4>
+              <p className="text-xs text-content-muted">Всего потеряно: {lossSummary.totalQuantity} браслетов</p>
+            </div>
+          </div>
+          <ArrowRight size={18} className="text-red-400" />
+        </div>
+      )}
 
       {loading && (
         <div className="flex justify-center py-12">

@@ -1252,14 +1252,16 @@ export class TransfersService {
       const resType = resolutionType as string;
 
       if (resType === 'ACCEPT_SENDER') {
-        // Trust sender: receiver gets what sender sent, loss is what receiver claims to have received less
+        // Trust sender: receiver gets what sender sent
+        // Shortage goes to RECEIVER (they claim to have received less)
         finalByColor = { ...sentByColor };
         lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
         lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
         lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
         lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
       } else if (resType === 'ACCEPT_RECEIVER') {
-        // Trust receiver: sender is deducted full amount, receiver gets what they reported
+        // Trust receiver: receiver gets what they reported
+        // Shortage goes to SENDER (they claim to have sent more)
         finalByColor = { ...receivedByColor };
         lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
         lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
@@ -1269,7 +1271,7 @@ export class TransfersService {
         if (!compromiseValues) {
           throw new BadRequestException('Compromise values are required for ACCEPT_COMPROMISE resolution');
         }
-        // Custom values
+        // Custom values - shortage split between both
         finalByColor = {
           BLACK: compromiseValues.black,
           WHITE: compromiseValues.white,
@@ -1280,6 +1282,14 @@ export class TransfersService {
         lossWhite = Math.max(0, sentByColor.WHITE - compromiseValues.white);
         lossRed = Math.max(0, sentByColor.RED - compromiseValues.red);
         lossBlue = Math.max(0, sentByColor.BLUE - compromiseValues.blue);
+      } else if (resType === 'ACCEPT_AS_IS') {
+        // Nobody blamed: receiver gets what they reported
+        // Difference goes to COMPANY LOSS (no individual shortage)
+        finalByColor = { ...receivedByColor };
+        lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
+        lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
+        lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
+        lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
       } else if (resType === 'CANCEL_TRANSFER') {
         // Cancel transfer: nothing credited to receiver, entire sent amount is company loss
         finalByColor = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
@@ -1331,8 +1341,9 @@ export class TransfersService {
       // - ACCEPT_SENDER: Shortage assigned to RECEIVER (receiver claimed less)
       // - ACCEPT_RECEIVER: Shortage assigned to SENDER (sender claimed more)
       // - ACCEPT_COMPROMISE: Shortage split between BOTH
-      // - CANCEL_TRANSFER: CompanyLoss only, no individual shortages
-      if (totalLoss > 0 && resType !== 'CANCEL_TRANSFER') {
+      // - ACCEPT_AS_IS: NO shortage (company loss only)
+      // - CANCEL_TRANSFER: NO shortage (company loss only)
+      if (totalLoss > 0 && resType !== 'CANCEL_TRANSFER' && resType !== 'ACCEPT_AS_IS') {
         if (resType === 'ACCEPT_SENDER') {
           // Receiver is blamed - they claim to have received less than sender sent
           await (tx as any).shortage.create({
@@ -1430,8 +1441,9 @@ export class TransfersService {
         }
       }
 
-      // Create CompanyLoss record if there was a loss (for all resolution types including CANCEL)
-      if (totalLoss > 0) {
+      // Create CompanyLoss record ONLY for ACCEPT_AS_IS and CANCEL_TRANSFER
+      // Other resolution types create shortages on individuals, not company loss
+      if (totalLoss > 0 && (resType === 'ACCEPT_AS_IS' || resType === 'CANCEL_TRANSFER')) {
         await (tx as any).companyLoss.create({
           data: {
             transferId: transfer.id,

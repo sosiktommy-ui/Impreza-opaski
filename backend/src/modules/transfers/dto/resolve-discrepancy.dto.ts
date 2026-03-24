@@ -24,6 +24,9 @@ export class ResolveDiscrepancyDto {
   @IsEnum(ResolutionType)
   resolutionType!: ResolutionType;
 
+  @IsString()
+  password!: string; // 2FA verification
+
   @IsOptional()
   @ValidateNested()
   @Type(() => CompromiseValuesDto)

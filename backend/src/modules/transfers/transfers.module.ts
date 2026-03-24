@@ -3,6 +3,7 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { TransfersService } from './transfers.service';
 import { TransfersController } from './transfers.controller';
 import { InventoryModule } from '../inventory/inventory.module';
+import { AuthModule } from '../auth/auth.module';
 
 // CQRS Command Handlers
 import { CreateTransferHandler } from './commands/create-transfer.handler';
@@ -20,7 +21,7 @@ const CommandHandlers = [
 ];
 
 @Module({
-  imports: [CqrsModule, InventoryModule],
+  imports: [CqrsModule, InventoryModule, AuthModule],
   controllers: [TransfersController],
   providers: [TransfersService, ...CommandHandlers],
   exports: [TransfersService],

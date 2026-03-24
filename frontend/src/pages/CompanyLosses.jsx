@@ -14,6 +14,7 @@ const RESOLUTION_LABELS = {
   ACCEPT_SENDER: 'Доверяем отправителю',
   ACCEPT_RECEIVER: 'Доверяем получателю',
   ACCEPT_COMPROMISE: 'Компромисс',
+  ACCEPT_AS_IS: 'Принято как есть',
   CANCEL_TRANSFER: 'Трансфер отменён',
 };
 
