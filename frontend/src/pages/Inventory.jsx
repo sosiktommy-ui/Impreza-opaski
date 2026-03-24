@@ -333,7 +333,8 @@ export default function Inventory() {
     e.preventDefault();
     setCreateError('');
     const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
-    if (!officeId) {
+    // ADMIN doesn't need officeId, OFFICE does
+    if (user.role === 'OFFICE' && !officeId) {
       setCreateError('Выберите офис');
       return;
     }
@@ -346,7 +347,7 @@ export default function Inventory() {
       return;
     }
     // Store data and show 2FA confirmation
-    setPendingCreateData({ officeId, black, white, red, blue, notes: createForm.notes.trim() || undefined });
+    setPendingCreateData({ officeId: officeId || undefined, black, white, red, blue, notes: createForm.notes.trim() || undefined });
     setShowCreate(false);
     setShow2FA(true);
   };
