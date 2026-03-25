@@ -552,12 +552,11 @@ export default function Inventory() {
               )}
               {user.role === 'ADMIN' && (
                 <Select
-                  label="Офис *"
+                  label="Офис (опционально)"
                   value={selectedOfficeId}
                   onChange={(e) => setSelectedOfficeId(e.target.value)}
-                  required
                 >
-                  <option value="">Выберите офис</option>
+                  <option value="">Главный склад (без офиса)</option>
                   {offices.map((o) => (
                     <option key={o.id} value={o.id}>{o.name} ({o.code})</option>
                   ))}
