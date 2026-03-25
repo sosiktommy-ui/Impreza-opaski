@@ -165,15 +165,39 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('Problematic transfers response:', transfersRes);
+      console.log('=== PROBLEMATIC DEBUG ===' );
+      console.log('Raw response:', transfersRes);
+      console.log('transfersRes.data:', transfersRes.data);
       
-      // Backend returns { data: [...], meta: {...} } or unwrapped array
-      const responseData = transfersRes.data;
-      const list = responseData?.data || responseData || [];
+      // Handle multiple possible response formats:
+      // 1. Direct array (already unwrapped)
+      // 2. { data: [...], meta: {...} } (backend format)
+      // 3. Axios unwrapped { data: [...], meta: {...} }
+      let list = [];
+      let meta = { totalPages: 1, page: p };
       
-      setTransfers(Array.isArray(list) ? list : []);
-      setTotalPages(responseData?.meta?.totalPages || 1);
-      setPage(responseData?.meta?.page || p);
+      const rawData = transfersRes.data;
+      if (Array.isArray(rawData)) {
+        // Direct array
+        list = rawData;
+        console.log('Format: Direct array');
+      } else if (rawData && Array.isArray(rawData.data)) {
+        // { data: [...], meta: {...} }
+        list = rawData.data;
+        meta = rawData.meta || meta;
+        console.log('Format: Object with data array');
+      } else if (rawData && typeof rawData === 'object') {
+        // Try to find array in response
+        list = Object.values(rawData).find(v => Array.isArray(v)) || [];
+        console.log('Format: Unknown object, extracted:', list);
+      }
+      
+      console.log('Parsed list:', list);
+      console.log('List length:', list.length);
+      
+      setTransfers(list);
+      setTotalPages(meta.totalPages || 1);
+      setPage(meta.page || p);
       
       if (lossRes) {
         const lossData = lossRes.data;

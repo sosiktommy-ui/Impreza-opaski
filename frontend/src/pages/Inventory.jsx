@@ -74,6 +74,7 @@ export default function Inventory() {
   const init = async () => {
     if (isAdminOrOffice) {
       try {
+        console.log('=== INVENTORY INIT DEBUG ===');
         const [countriesRes, inventoryRes, officesRes] = await Promise.all([
           usersApi.getCountries(),
           inventoryApi.getAll(),
@@ -82,6 +83,11 @@ export default function Inventory() {
             return { data: [] };
           }),
         ]);
+        
+        console.log('Countries response:', countriesRes);
+        console.log('Inventory response:', inventoryRes);
+        console.log('Offices response:', officesRes);
+        
         const cPayload = countriesRes.data?.data || countriesRes.data;
         setCountries(Array.isArray(cPayload) ? cPayload : []);
 
@@ -92,10 +98,18 @@ export default function Inventory() {
         );
         setAllInventory(filtered);
 
-        // Parse offices response
-        const oPayload = officesRes.data?.data || officesRes.data || officesRes;
-        console.log('Offices response:', officesRes, 'Payload:', oPayload);
-        setOffices(Array.isArray(oPayload) ? oPayload : []);
+        // Parse offices - handle multiple formats
+        let officesList = [];
+        const oRaw = officesRes.data;
+        if (Array.isArray(oRaw)) {
+          officesList = oRaw;
+        } else if (oRaw && Array.isArray(oRaw.data)) {
+          officesList = oRaw.data;
+        } else if (Array.isArray(officesRes)) {
+          officesList = officesRes;
+        }
+        console.log('Parsed offices:', officesList);
+        setOffices(officesList);
 
         // Auto-select office for OFFICE users
         if (user.role === 'OFFICE' && user.officeId) {
