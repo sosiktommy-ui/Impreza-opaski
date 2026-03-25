@@ -358,7 +358,7 @@ export default function Inventory() {
     
     // Verify password first
     const verifyRes = await authApi.verifyPassword(password);
-    if (!verifyRes.data?.valid) {
+    if (!verifyRes.data?.verified) {
       throw new Error('Неверный пароль');
     }
     
