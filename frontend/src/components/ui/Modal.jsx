@@ -1,21 +1,22 @@
 import { X, Eye, EyeOff, AlertTriangle, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-export default function Modal({ open, onClose, title, children, wide = false }) {
+export default function Modal({ open, isOpen, onClose, title, children, wide = false }) {
+  const visible = open ?? isOpen;
   useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden';
+    if (visible) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
-  }, [open]);
+  }, [visible]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!visible) return;
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [visible, onClose]);
 
-  if (!open) return null;
+  if (!visible) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center animate-fadeIn">

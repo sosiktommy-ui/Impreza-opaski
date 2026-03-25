@@ -157,9 +157,8 @@ export default function ProblematicTransfers() {
   const fetchData = async (p = 1) => {
     setLoading(true);
     try {
+      // Do NOT filter by countryId/cityId - show all problematic transfers like badge does
       const params = { page: p, limit: 20 };
-      if (countryId) params.countryId = countryId;
-      if (cityId) params.cityId = cityId;
       
       const [transfersRes, lossRes] = await Promise.all([
         transfersApi.getProblematic(params),
@@ -187,7 +186,7 @@ export default function ProblematicTransfers() {
 
   useEffect(() => {
     fetchData();
-  }, [countryId, cityId]);
+  }, []); // Removed countryId, cityId dependencies - show all problematic
 
   // Open resolution modal for a transfer
   const openResolveModal = (transfer) => {
@@ -338,7 +337,7 @@ export default function ProblematicTransfers() {
       </div>
 
       {/* Company Losses Banner (ADMIN/OFFICE only) */}
-      {canResolve && lossSummary && lossSummary.totalQuantity > 0 && (
+      {canResolve && lossSummary && (lossSummary.total || 0) > 0 && (
         <div
           onClick={() => navigate('/company-losses')}
           className="flex items-center justify-between p-4 bg-red-500/10 rounded-xl border border-red-500/30 cursor-pointer hover:bg-red-500/15 transition-colors"
@@ -349,7 +348,7 @@ export default function ProblematicTransfers() {
             </div>
             <div>
               <h4 className="font-semibold text-red-400">Минус компании</h4>
-              <p className="text-xs text-content-muted">Всего потеряно: {lossSummary.totalQuantity} браслетов</p>
+              <p className="text-xs text-content-muted">Всего потеряно: {lossSummary?.total || 0} браслетов</p>
             </div>
           </div>
           <ArrowRight size={18} className="text-red-400" />

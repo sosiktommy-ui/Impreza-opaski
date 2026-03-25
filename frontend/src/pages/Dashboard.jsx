@@ -184,46 +184,73 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Stats Grid ───────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { value: transfers.length, label: 'Отправки', icon: Send, iconColor: 'text-blue-400', bg: 'bg-blue-500/10', path: '/history' },
-          { value: problematicCount, label: 'Проблемные', icon: AlertTriangle, iconColor: 'text-orange-400', bg: 'bg-orange-500/10', tooltip: (user.role === 'CITY' || user.role === 'COUNTRY') ? 'Если есть проблемные отправки — обратитесь к администратору или офису для решения' : null, path: user.role === 'ADMIN' || user.role === 'OFFICE' ? '/problematic' : null },
-          { value: pendingCount || pending.length, label: 'Зависшие', icon: Clock, iconColor: 'text-amber-400', bg: 'bg-amber-500/10', path: '/pending' },
-          // Company losses counter (ADMIN/OFFICE only)
-          ...(lossSummary && (user.role === 'ADMIN' || user.role === 'OFFICE') ? [{
-            value: lossSummary.total || 0,
-            label: 'Минус компании',
-            icon: MinusCircle,
-            iconColor: 'text-red-400',
-            bg: 'bg-red-500/10',
-            path: '/company-losses'
-          }] : [{
-            value: stats.cities,
-            label: 'Городов',
-            icon: MapPin,
-            iconColor: 'text-violet-400',
-            bg: 'bg-violet-500/10'
-          }]),
-        ].map(({ value, label, icon: Icon, iconColor, bg, tooltip, path }) => (
+      {/* ── 3 Clickable Counters ───────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Зависшие */}
+        <div
+          onClick={() => navigate('/pending')}
+          className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 cursor-pointer hover:bg-surface-card-hover hover:border-amber-500/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+              <Clock size={18} className="text-amber-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-content-primary">{pendingCount || pending.length}</div>
+              <div className="text-xs text-content-muted">Зависшие</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Проблемные */}
+        <div
+          onClick={() => (user.role === 'ADMIN' || user.role === 'OFFICE') && navigate('/problematic')}
+          className={`bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 transition-colors ${(user.role === 'ADMIN' || user.role === 'OFFICE') ? 'cursor-pointer hover:bg-surface-card-hover hover:border-orange-500/50' : ''}`}
+          title={(user.role === 'CITY' || user.role === 'COUNTRY') ? 'Если есть проблемные отправки — обратитесь к администратору или офису для решения' : undefined}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-orange-500/10 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle size={18} className="text-orange-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-content-primary">{problematicCount}</div>
+              <div className="text-xs text-content-muted">Проблемные</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Убытки (Минус компании) - только для ADMIN/OFFICE */}
+        {(user.role === 'ADMIN' || user.role === 'OFFICE') && (
           <div
-            key={label}
-            onClick={() => path && navigate(path)}
-            className={`bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 hover:border-edge/80 transition-colors ${path ? 'cursor-pointer hover:bg-surface-card-hover' : ''}`}
-            title={tooltip || undefined}
-            style={tooltip ? { cursor: 'help' } : undefined}
+            onClick={() => navigate('/company-losses')}
+            className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 cursor-pointer hover:bg-surface-card-hover hover:border-red-500/50 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-[var(--radius-sm)] ${bg} flex items-center justify-center flex-shrink-0`}>
-                <Icon size={18} className={iconColor} />
+              <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <MinusCircle size={18} className="text-red-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-content-primary">{value}</div>
-                <div className="text-xs text-content-muted">{label}</div>
+                <div className="text-2xl font-bold text-content-primary">{lossSummary?.total || 0}</div>
+                <div className="text-xs text-content-muted">Минус компании</div>
               </div>
             </div>
           </div>
-        ))}
+        )}
+        
+        {/* Для CITY/COUNTRY показываем счетчик городов вместо убытков */}
+        {(user.role === 'CITY' || user.role === 'COUNTRY') && (
+          <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-violet-500/10 flex items-center justify-center flex-shrink-0">
+                <MapPin size={18} className="text-violet-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-content-primary">{stats.cities}</div>
+                <div className="text-xs text-content-muted">Городов</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Balance (non-admin) ──────────────────────── */}
