@@ -77,7 +77,10 @@ export default function Inventory() {
         const [countriesRes, inventoryRes, officesRes] = await Promise.all([
           usersApi.getCountries(),
           inventoryApi.getAll(),
-          usersApi.getOffices().catch(() => ({ data: [] })),
+          usersApi.getOffices().catch((err) => {
+            console.error('Failed to load offices:', err);
+            return { data: [] };
+          }),
         ]);
         const cPayload = countriesRes.data?.data || countriesRes.data;
         setCountries(Array.isArray(cPayload) ? cPayload : []);
@@ -89,7 +92,9 @@ export default function Inventory() {
         );
         setAllInventory(filtered);
 
-        const oPayload = officesRes.data?.data || officesRes.data;
+        // Parse offices response
+        const oPayload = officesRes.data?.data || officesRes.data || officesRes;
+        console.log('Offices response:', officesRes, 'Payload:', oPayload);
         setOffices(Array.isArray(oPayload) ? oPayload : []);
 
         // Auto-select office for OFFICE users
@@ -356,10 +361,13 @@ export default function Inventory() {
   const handleCreate2FAConfirm = async (password) => {
     if (!pendingCreateData) return;
     
-    // Verify password first
-    const verifyRes = await authApi.verifyPassword(password);
-    if (!verifyRes.data?.verified) {
-      throw new Error('Неверный пароль');
+    // Verify password first - if request succeeds, password is valid
+    // Backend throws 401 if password is wrong
+    try {
+      await authApi.verifyPassword(password);
+    } catch (verifyErr) {
+      // Password verification failed
+      throw new Error(verifyErr.response?.data?.message || 'Неверный пароль');
     }
     
     setCreating(true);
