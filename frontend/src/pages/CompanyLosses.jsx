@@ -7,25 +7,32 @@ import Input from '../components/ui/Input';
 import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   TrendingDown, Search, RefreshCw, AlertTriangle,
-  ArrowRight, Calendar, User,
+  ArrowRight, Calendar, User, Building2, Users,
 } from 'lucide-react';
 
 const RESOLUTION_LABELS = {
-  ACCEPT_SENDER: 'Доверяем отправителю',
-  ACCEPT_RECEIVER: 'Доверяем получателю',
+  ACCEPT_SENDER: 'Сторона отправителя',
+  ACCEPT_RECEIVER: 'Сторона получателя',
   ACCEPT_COMPROMISE: 'Компромисс',
   ACCEPT_AS_IS: 'Принято как есть',
   CANCEL_TRANSFER: 'Трансфер отменён',
 };
 
+const SHORTAGE_REASON_LABELS = {
+  SENDER_BLAMED: 'Отправитель виноват',
+  RECEIVER_BLAMED: 'Получатель виноват',
+  SPLIT_LOSS: 'Обоюдная ответственность',
+};
+
 export default function CompanyLosses() {
   const { user } = useAuthStore();
+  const [mode, setMode] = useState('company'); // 'company' or 'system'
   const [summary, setSummary] = useState(null);
   const [losses, setLosses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
   const TAKE = 20;
@@ -37,11 +44,13 @@ export default function CompanyLosses() {
     if (canAccess) {
       loadData();
     }
-  }, [canAccess]);
+  }, [canAccess, mode]);
 
   const loadData = async () => {
     setLoading(true);
     setError('');
+    setLosses([]);
+    setPage(1);
     try {
       await Promise.all([loadSummary(), loadLosses(true)]);
     } catch (err) {
@@ -53,8 +62,13 @@ export default function CompanyLosses() {
 
   const loadSummary = async () => {
     try {
-      const { data } = await inventoryApi.getCompanyLossesSummary();
-      setSummary(data);
+      if (mode === 'company') {
+        const { data } = await inventoryApi.getCompanyLossesSummary();
+        setSummary(data);
+      } else {
+        const { data } = await inventoryApi.getSystemLossesSummary();
+        setSummary(data);
+      }
     } catch (err) {
       console.error('Failed to load summary', err);
     }
@@ -62,22 +76,28 @@ export default function CompanyLosses() {
 
   const loadLosses = async (reset = false) => {
     try {
-      const skip = reset ? 0 : page * TAKE;
-      const params = { skip, take: TAKE };
-      if (searchQuery.trim()) params.search = searchQuery.trim();
+      const currentPage = reset ? 1 : page;
+      const params = { page: currentPage, limit: TAKE };
 
-      const { data } = await inventoryApi.getCompanyLosses(params);
-      const list = data?.data || data;
-      const items = Array.isArray(list) ? list : [];
+      let response;
+      if (mode === 'company') {
+        response = await inventoryApi.getCompanyLosses(params);
+      } else {
+        response = await inventoryApi.getSystemLosses(params);
+      }
+      
+      const data = response?.data?.data || response?.data;
+      const items = Array.isArray(data) ? data : [];
+      const meta = response?.data?.meta;
 
       if (reset) {
         setLosses(items);
-        setPage(1);
+        setPage(2);
       } else {
         setLosses((prev) => [...prev, ...items]);
         setPage((p) => p + 1);
       }
-      setHasMore(items.length === TAKE);
+      setHasMore(meta ? currentPage < meta.totalPages : items.length === TAKE);
     } catch (err) {
       console.error('Failed to load losses', err);
     }
@@ -106,7 +126,7 @@ export default function CompanyLosses() {
       white: summary.white || 0,
       red: summary.red || 0,
       blue: summary.blue || 0,
-      count: summary.count || 0,
+      count: (summary.count || 0) + (summary.companyCount || 0) + (summary.shortageCount || 0),
     };
   }, [summary]);
 
@@ -135,14 +155,39 @@ export default function CompanyLosses() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-content-primary flex items-center gap-2">
-            <TrendingDown size={22} className="text-red-500" /> Минус компании
+            <TrendingDown size={22} className="text-red-500" /> 
+            {mode === 'company' ? 'Минус компании' : 'Минус системы'}
           </h2>
           <p className="text-xs text-content-muted mt-0.5">
-            Потери браслетов при разрешении проблемных трансферов
+            {mode === 'company' 
+              ? 'Потери браслетов записанные на компанию (ACCEPT_AS_IS)'
+              : 'Все потери: компания + аккаунты (страны, города)'}
           </p>
         </div>
         <Button onClick={handleRefresh} variant="outline" size="sm">
           <RefreshCw size={16} />
+        </Button>
+      </div>
+
+      {/* ── Mode Toggle ───────────────────────────────── */}
+      <div className="flex gap-2">
+        <Button
+          variant={mode === 'company' ? 'primary' : 'outline'}
+          size="sm"
+          onClick={() => setMode('company')}
+          className="flex items-center gap-2"
+        >
+          <Building2 size={16} />
+          Минус компании
+        </Button>
+        <Button
+          variant={mode === 'system' ? 'primary' : 'outline'}
+          size="sm"
+          onClick={() => setMode('system')}
+          className="flex items-center gap-2"
+        >
+          <Users size={16} />
+          Минус системы
         </Button>
       </div>
 
@@ -205,64 +250,95 @@ export default function CompanyLosses() {
               <p>Потерь не зафиксировано</p>
             </div>
           ) : (
-            losses.map((loss) => (
-              <div key={loss.id} className="p-4 hover:bg-surface-hover transition-colors">
-                <div className="flex items-start justify-between gap-4">
-                  {/* Left: Route info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium text-content-primary">
-                      <span className="truncate">{loss.senderName}</span>
-                      {loss.senderCity && (
-                        <span className="text-content-muted text-xs">({loss.senderCity})</span>
-                      )}
-                      <ArrowRight size={14} className="text-content-muted flex-shrink-0" />
-                      <span className="truncate">{loss.receiverName}</span>
-                      {loss.receiverCity && (
-                        <span className="text-content-muted text-xs">({loss.receiverCity})</span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-4 mt-2 text-xs text-content-muted">
-                      <span className="flex items-center gap-1">
-                        <Calendar size={12} />
-                        {new Date(loss.createdAt).toLocaleDateString('ru-RU')}
-                      </span>
-                      {loss.resolvedByUser && (
-                        <span className="flex items-center gap-1">
-                          <User size={12} />
-                          {loss.resolvedByUser.displayName || loss.resolvedByUser.username}
-                        </span>
-                      )}
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                        loss.resolutionType === 'CANCEL_TRANSFER'
-                          ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                      }`}>
-                        {RESOLUTION_LABELS[loss.resolutionType] || loss.resolutionType}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-content-secondary mt-1">
-                      Отправлено: {loss.originalSent} → Получено: {loss.originalReceived}
-                    </div>
-
-                    {loss.notes && (
-                      <div className="text-xs text-content-muted mt-1 italic truncate">
-                        {loss.notes}
+            losses.map((loss) => {
+              // System losses have 'type' field ('COMPANY' or 'SHORTAGE')
+              const isSystemMode = mode === 'system';
+              const lossType = loss.type || 'COMPANY';
+              const isShortage = lossType === 'SHORTAGE';
+              
+              return (
+                <div key={loss.id} className="p-4 hover:bg-surface-hover transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Left: Route info */}
+                    <div className="flex-1 min-w-0">
+                      {/* Transfer route */}
+                      <div className="flex items-center gap-2 text-sm font-medium text-content-primary">
+                        <span className="truncate">{loss.senderName || 'Unknown'}</span>
+                        {loss.senderCity && (
+                          <span className="text-content-muted text-xs">({loss.senderCity})</span>
+                        )}
+                        <ArrowRight size={14} className="text-content-muted flex-shrink-0" />
+                        <span className="truncate">{loss.receiverName || 'Unknown'}</span>
+                        {loss.receiverCity && (
+                          <span className="text-content-muted text-xs">({loss.receiverCity})</span>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  {/* Right: Loss amount */}
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-xl font-bold text-red-600">
-                      −{loss.totalAmount}
+                      {/* Who gets the loss (system mode only) */}
+                      {isSystemMode && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            isShortage 
+                              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                              : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                          }`}>
+                            {isShortage ? 'Минус аккаунту' : 'Минус компании'}
+                          </span>
+                          <span className="text-sm font-medium text-content-secondary">
+                            → {loss.entityName || 'Компания (IMPREZA)'}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4 mt-2 text-xs text-content-muted">
+                        <span className="flex items-center gap-1">
+                          <Calendar size={12} />
+                          {new Date(loss.createdAt || loss.resolvedAt).toLocaleDateString('ru-RU')}
+                        </span>
+                        {(loss.resolvedBy || loss.resolvedByUser) && (
+                          <span className="flex items-center gap-1">
+                            <User size={12} />
+                            {loss.resolvedBy || loss.resolvedByUser?.displayName || loss.resolvedByUser?.username}
+                          </span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                          loss.resolutionType === 'CANCEL_TRANSFER'
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                        }`}>
+                          {RESOLUTION_LABELS[loss.resolutionType] || loss.resolutionType}
+                        </span>
+                        {isShortage && loss.reason && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                            {SHORTAGE_REASON_LABELS[loss.reason] || loss.reason}
+                          </span>
+                        )}
+                      </div>
+
+                      {loss.originalSent !== undefined && (
+                        <div className="text-xs text-content-secondary mt-1">
+                          Отправлено: {loss.originalSent} → Получено: {loss.originalReceived}
+                        </div>
+                      )}
+
+                      {loss.notes && (
+                        <div className="text-xs text-content-muted mt-1 italic truncate">
+                          {loss.notes}
+                        </div>
+                      )}
                     </div>
-                    <BraceletRow black={loss.black} white={loss.white} red={loss.red} blue={loss.blue} size="sm" />
+
+                    {/* Right: Loss amount */}
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xl font-bold text-red-600">
+                        −{loss.totalAmount}
+                      </div>
+                      <BraceletRow black={loss.black} white={loss.white} red={loss.red} blue={loss.blue} size="sm" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

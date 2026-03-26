@@ -40,4 +40,15 @@ export const inventoryApi = {
 
   getCompanyLosses: (params) => api.get('/inventory/company-losses', { params }),
   // params: { skip, take, search }
+
+  // ─────────────────────────────────────────────────────────────────
+  // System Losses - все потери (компания + аккаунты)
+  // ─────────────────────────────────────────────────────────────────
+  getSystemLossesSummary: () => api.get('/inventory/system-losses/summary'),
+
+  getSystemLosses: (params) => api.get('/inventory/system-losses', { params }),
+  // params: { page, limit }
+
+  getAccountLosses: (entityType, entityId) => 
+    api.get(`/inventory/account-losses/${entityType}/${entityId}`),
 };

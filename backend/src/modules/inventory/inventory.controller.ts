@@ -369,6 +369,49 @@ export class InventoryController {
   }
 
   // ──────────────────────────────────────────────
+  // SYSTEM LOSSES ENDPOINTS (Company + Account Shortages)
+  // ──────────────────────────────────────────────
+
+  @Get('system-losses/summary')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getSystemLossesSummary() {
+    try {
+      return await this.inventoryService.getSystemLossesSummary();
+    } catch (error: any) {
+      this.logger.error(`getSystemLossesSummary error: ${error?.message}`, error?.stack);
+      return { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
+    }
+  }
+
+  @Get('system-losses')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getSystemLosses(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    try {
+      return await this.inventoryService.getSystemLosses({ page, limit });
+    } catch (error: any) {
+      this.logger.error(`getSystemLosses error: ${error?.message}`, error?.stack);
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
+    }
+  }
+
+  @Get('account-losses/:entityType/:entityId')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getAccountLosses(
+    @Param('entityType') entityType: string,
+    @Param('entityId') entityId: string,
+  ) {
+    try {
+      return await this.inventoryService.getAccountLosses(entityType, entityId);
+    } catch (error: any) {
+      this.logger.error(`getAccountLosses error: ${error?.message}`, error?.stack);
+      return { data: [], summary: { total: 0, black: 0, white: 0, red: 0, blue: 0 } };
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // PARAMETRIC ROUTE - MUST BE LAST!
   // ──────────────────────────────────────────────
   // This route catches :entityType/:entityId patterns.

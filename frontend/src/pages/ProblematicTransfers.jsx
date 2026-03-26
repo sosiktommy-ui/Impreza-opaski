@@ -32,7 +32,6 @@ const RESOLUTION_TYPES = {
     label: 'Принять сторону отправителя',
     shortLabel: 'От отправителя',
     icon: UserCheck,
-    description: 'Верим отправителю — он отправил правильное количество. Получателю зачисляется полная сумма отправителя. Недостача записывается на аккаунт получателя.',
     color: 'bg-blue-500 hover:bg-blue-600',
     textColor: 'text-blue-400',
     hasCompanyLoss: false,
@@ -42,7 +41,6 @@ const RESOLUTION_TYPES = {
     label: 'Принять сторону получателя',
     shortLabel: 'От получателя',
     icon: UserCheck,
-    description: 'Верим получателю — он получил именно столько, сколько насчитал. Недостача записывается на аккаунт отправителя.',
     color: 'bg-orange-500 hover:bg-orange-600',
     textColor: 'text-orange-400',
     hasCompanyLoss: false,
@@ -52,7 +50,6 @@ const RESOLUTION_TYPES = {
     label: 'Компромисс',
     shortLabel: 'Компромисс',
     icon: Scale,
-    description: 'Обе стороны несут ответственность. Получатель получит сколько насчитал. Расхождение записывается на оба аккаунта.',
     color: 'bg-amber-500 hover:bg-amber-600',
     textColor: 'text-amber-400',
     hasCompanyLoss: false,
@@ -62,12 +59,47 @@ const RESOLUTION_TYPES = {
     label: 'Принять как есть',
     shortLabel: 'Как есть',
     icon: ShieldAlert,
-    description: 'Никто не виноват. Получатель получит сколько насчитал. Разница списывается на компанию.',
     color: 'bg-red-500 hover:bg-red-600',
     textColor: 'text-red-400',
     hasCompanyLoss: true,
   },
 };
+
+// Dynamic description generator based on transfer data
+function getResolutionDescription(transfer, resolutionType) {
+  if (!transfer) return { description: '', consequence: '' };
+  
+  const senderName = getSenderName(transfer);
+  const receiverName = getReceiverName(transfer);
+  const totalSent = transfer.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
+  const totalReceived = transfer.acceptanceRecords?.reduce((s, r) => s + (r.receivedQuantity || 0), 0) || 0;
+  const diff = totalSent - totalReceived;
+  
+  switch (resolutionType) {
+    case 'ACCEPT_SENDER':
+      return {
+        description: `Верим отправителю. Получателю (${receiverName}) зачисляется полная сумма: ${totalSent} шт. Недостача ${diff} шт — ответственность получателя.`,
+        consequence: `Минус ${diff} шт → ${receiverName}`,
+      };
+    case 'ACCEPT_RECEIVER':
+      return {
+        description: `Верим получателю. Получателю (${receiverName}) зачисляется ${totalReceived} шт (сколько насчитал). Недостача ${diff} шт — ответственность отправителя.`,
+        consequence: `Минус ${diff} шт → ${senderName}`,
+      };
+    case 'ACCEPT_COMPROMISE':
+      return {
+        description: `Обе стороны несут ответственность. Получателю (${receiverName}) зачисляется ${totalReceived} шт. Недостача ${diff} шт записывается как минус ОБОИМ по 100%.`,
+        consequence: `Минус ${diff} шт → ${senderName} И Минус ${diff} шт → ${receiverName}`,
+      };
+    case 'ACCEPT_AS_IS':
+      return {
+        description: `Никто не виноват. Получателю (${receiverName}) зачисляется ${totalReceived} шт. Разница ${diff} шт — убыток компании.`,
+        consequence: `Минус ${diff} шт → Компания (IMPREZA)`,
+      };
+    default:
+      return { description: '', consequence: '' };
+  }
+}
 
 function entityLabel(transfer, prefix) {
   const type = transfer[`${prefix}Type`];
@@ -603,6 +635,7 @@ export default function ProblematicTransfers() {
                     const Icon = res.icon;
                     const isSelected = selectedResolution === res.key;
                     const lossPreview = calculateLoss(selectedTransfer, res.key, compromiseValues);
+                    const dynamicDesc = getResolutionDescription(selectedTransfer, res.key);
                     
                     return (
                       <button
@@ -622,11 +655,11 @@ export default function ProblematicTransfers() {
                           </div>
                           <div className="flex-1">
                             <div className="font-medium text-content-primary">{res.label}</div>
-                            <div className="text-xs text-content-muted mt-0.5">{res.description}</div>
-                            {lossPreview.total > 0 && (
-                              <div className="flex items-center gap-1 mt-2 text-xs text-red-400">
+                            <div className="text-xs text-content-muted mt-0.5">{dynamicDesc.description}</div>
+                            {dynamicDesc.consequence && (
+                              <div className="flex items-center gap-1 mt-2 text-xs font-semibold text-amber-400">
                                 <TrendingDown size={12} />
-                                <span>Убыток: {lossPreview.total} шт</span>
+                                <span>{dynamicDesc.consequence}</span>
                               </div>
                             )}
                           </div>

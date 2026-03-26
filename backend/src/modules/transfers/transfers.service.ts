@@ -1311,19 +1311,10 @@ export class TransfersService {
 
       const totalLoss = lossBlack + lossWhite + lossRed + lossBlue;
 
-      // Deduct sender with SENT quantities (for non-ADMIN)
-      if (transfer.senderType !== EntityType.ADMIN) {
-        const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-        for (const item of transfer.items) {
-          await this.deductInventory(
-            tx,
-            transfer.senderType,
-            senderEntityId,
-            item.itemType,
-            item.quantity,
-          );
-        }
-      }
+      // NOTE: No deductInventory here!
+      // Items were conceptually "sent" when transfer was created.
+      // We only record losses (Shortage/CompanyLoss) and credit receiver.
+      // Sender's balance is adjusted via Shortage records.
 
       // Credit receiver with final values (based on resolution)
       const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
@@ -1396,18 +1387,11 @@ export class TransfersService {
             },
           });
           this.logger.log(`Shortage created for SENDER (${senderName}) on transfer ${transferId}: ${totalLoss} bracelets`);
-        } else if (resType === 'ACCEPT_COMPROMISE' && compromiseValues) {
-          // Split loss between both parties (50/50 by default in compromise)
-          const halfLoss = Math.ceil(totalLoss / 2);
-          const otherHalfLoss = totalLoss - halfLoss;
-          
-          // Calculate half losses per color
-          const halfBlack = Math.ceil(lossBlack / 2);
-          const halfWhite = Math.ceil(lossWhite / 2);
-          const halfRed = Math.ceil(lossRed / 2);
-          const halfBlue = Math.ceil(lossBlue / 2);
+        } else if (resType === 'ACCEPT_COMPROMISE') {
+          // COMPROMISE: Both parties get 100% of the loss recorded (not 50/50!)
+          // Each is held responsible for the full discrepancy amount
 
-          // Shortage for sender
+          // Shortage for sender (100% of loss)
           await (tx as any).shortage.create({
             data: {
               entityType: transfer.senderType,
@@ -1415,19 +1399,19 @@ export class TransfersService {
               countryId: transfer.senderCountryId,
               cityId: transfer.senderCityId,
               transferId: transfer.id,
-              black: halfBlack,
-              white: halfWhite,
-              red: halfRed,
-              blue: halfBlue,
-              totalAmount: halfLoss,
+              black: lossBlack,
+              white: lossWhite,
+              red: lossRed,
+              blue: lossBlue,
+              totalAmount: totalLoss,
               reason: 'SPLIT_LOSS',
               resolutionType,
               resolvedBy: actorId,
-              notes: `Compromise split (sender portion). ${notes || ''}`.trim(),
+              notes: `Компромисс: полная сумма недостачи (отправитель). ${notes || ''}`.trim(),
             },
           });
 
-          // Shortage for receiver
+          // Shortage for receiver (100% of loss)
           await (tx as any).shortage.create({
             data: {
               entityType: transfer.receiverType,
@@ -1435,19 +1419,19 @@ export class TransfersService {
               countryId: transfer.receiverCountryId,
               cityId: transfer.receiverCityId,
               transferId: transfer.id,
-              black: lossBlack - halfBlack,
-              white: lossWhite - halfWhite,
-              red: lossRed - halfRed,
-              blue: lossBlue - halfBlue,
-              totalAmount: otherHalfLoss,
+              black: lossBlack,
+              white: lossWhite,
+              red: lossRed,
+              blue: lossBlue,
+              totalAmount: totalLoss,
               reason: 'SPLIT_LOSS',
               resolutionType,
               resolvedBy: actorId,
-              notes: `Compromise split (receiver portion). ${notes || ''}`.trim(),
+              notes: `Компромисс: полная сумма недостачи (получатель). ${notes || ''}`.trim(),
             },
           });
 
-          this.logger.log(`Shortage split between SENDER (${senderName}: ${halfLoss}) and RECEIVER (${receiverName}: ${otherHalfLoss}) on transfer ${transferId}`);
+          this.logger.log(`Shortage (100% each) for SENDER (${senderName}: ${totalLoss}) and RECEIVER (${receiverName}: ${totalLoss}) on transfer ${transferId}`);
         }
       }
 

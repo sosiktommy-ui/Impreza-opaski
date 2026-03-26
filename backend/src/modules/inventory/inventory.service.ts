@@ -899,4 +899,189 @@ export class InventoryService {
       return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
     }
   }
+
+  // ──────────────────────────────────────────────
+  // SYSTEM LOSSES (Company + Account Shortages)
+  // ──────────────────────────────────────────────
+
+  async getSystemLossesSummary() {
+    try {
+      this.logger.log('getSystemLossesSummary: starting...');
+      
+      const summary = { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
+      
+      // Get company losses
+      if ((this.prisma as any).companyLoss) {
+        const companyLosses = await (this.prisma as any).companyLoss.findMany();
+        summary.companyCount = companyLosses?.length || 0;
+        for (const loss of (companyLosses || [])) {
+          summary.total += loss.totalAmount || 0;
+          summary.black += loss.black || 0;
+          summary.white += loss.white || 0;
+          summary.red += loss.red || 0;
+          summary.blue += loss.blue || 0;
+        }
+      }
+      
+      // Get account shortages
+      if ((this.prisma as any).shortage) {
+        const shortages = await (this.prisma as any).shortage.findMany();
+        summary.shortageCount = shortages?.length || 0;
+        for (const s of (shortages || [])) {
+          summary.total += s.totalAmount || 0;
+          summary.black += s.black || 0;
+          summary.white += s.white || 0;
+          summary.red += s.red || 0;
+          summary.blue += s.blue || 0;
+        }
+      }
+      
+      this.logger.log(`getSystemLossesSummary: companyLosses=${summary.companyCount}, shortages=${summary.shortageCount}, total=${summary.total}`);
+      return summary;
+    } catch (error: any) {
+      this.logger.error(`getSystemLossesSummary ERROR: ${error?.message}`, error?.stack);
+      return { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
+    }
+  }
+
+  async getSystemLosses(params: { page?: number; limit?: number }) {
+    const { page = 1, limit = 20 } = params;
+    
+    try {
+      this.logger.log(`getSystemLosses: page=${page}, limit=${limit}`);
+      
+      const all: any[] = [];
+      
+      // Get company losses
+      if ((this.prisma as any).companyLoss) {
+        const companyLosses = await (this.prisma as any).companyLoss.findMany({
+          include: {
+            transfer: { select: { id: true } },
+            resolver: { select: { displayName: true, username: true } },
+          },
+          orderBy: { resolvedAt: 'desc' },
+        });
+        
+        for (const cl of (companyLosses || [])) {
+          all.push({
+            id: cl.id,
+            type: 'COMPANY',
+            entityName: 'Компания (IMPREZA)',
+            entityType: 'COMPANY',
+            transferId: cl.transferId,
+            senderName: cl.senderName,
+            receiverName: cl.receiverName,
+            black: cl.black,
+            white: cl.white,
+            red: cl.red,
+            blue: cl.blue,
+            totalAmount: cl.totalAmount,
+            resolutionType: cl.resolutionType,
+            resolvedBy: cl.resolver?.displayName || cl.resolver?.username || 'Unknown',
+            createdAt: cl.resolvedAt,
+          });
+        }
+      }
+      
+      // Get account shortages
+      if ((this.prisma as any).shortage) {
+        const shortages = await (this.prisma as any).shortage.findMany({
+          include: {
+            transfer: {
+              select: {
+                id: true,
+                senderCity: { select: { name: true } },
+                senderCountry: { select: { name: true } },
+                senderOffice: { select: { name: true } },
+                receiverCity: { select: { name: true } },
+                receiverCountry: { select: { name: true } },
+                receiverOffice: { select: { name: true } },
+              },
+            },
+            office: { select: { name: true } },
+            country: { select: { name: true } },
+            city: { select: { name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        
+        for (const s of (shortages || [])) {
+          const entityName = s.city?.name || s.country?.name || s.office?.name || s.entityType;
+          const senderName = s.transfer?.senderCity?.name || s.transfer?.senderCountry?.name || s.transfer?.senderOffice?.name || 'Admin';
+          const receiverName = s.transfer?.receiverCity?.name || s.transfer?.receiverCountry?.name || s.transfer?.receiverOffice?.name || 'Unknown';
+          
+          all.push({
+            id: s.id,
+            type: 'SHORTAGE',
+            entityName,
+            entityType: s.entityType,
+            entityId: s.cityId || s.countryId || s.officeId,
+            transferId: s.transferId,
+            senderName,
+            receiverName,
+            black: s.black,
+            white: s.white,
+            red: s.red,
+            blue: s.blue,
+            totalAmount: s.totalAmount,
+            resolutionType: s.resolutionType,
+            reason: s.reason,
+            notes: s.notes,
+            createdAt: s.createdAt,
+          });
+        }
+      }
+      
+      // Sort by date desc
+      all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      const total = all.length;
+      const start = (page - 1) * limit;
+      const data = all.slice(start, start + limit);
+      
+      this.logger.log(`getSystemLosses: total=${total}, returning ${data.length} items`);
+      return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    } catch (error: any) {
+      this.logger.error(`getSystemLosses ERROR: ${error?.message}`, error?.stack);
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
+  }
+
+  async getAccountLosses(entityType: string, entityId: string) {
+    try {
+      this.logger.log(`getAccountLosses: ${entityType}/${entityId}`);
+      
+      if (!(this.prisma as any).shortage) {
+        return { data: [], summary: { total: 0, black: 0, white: 0, red: 0, blue: 0 } };
+      }
+      
+      const where: any = { entityType };
+      if (entityType === 'OFFICE') where.officeId = entityId;
+      else if (entityType === 'COUNTRY') where.countryId = entityId;
+      else if (entityType === 'CITY') where.cityId = entityId;
+      
+      const shortages = await (this.prisma as any).shortage.findMany({
+        where,
+        include: {
+          transfer: { select: { id: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      
+      const summary = { total: 0, black: 0, white: 0, red: 0, blue: 0 };
+      for (const s of (shortages || [])) {
+        summary.total += s.totalAmount || 0;
+        summary.black += s.black || 0;
+        summary.white += s.white || 0;
+        summary.red += s.red || 0;
+        summary.blue += s.blue || 0;
+      }
+      
+      this.logger.log(`getAccountLosses: found ${shortages?.length || 0} shortages`);
+      return { data: shortages, summary };
+    } catch (error: any) {
+      this.logger.error(`getAccountLosses ERROR: ${error?.message}`, error?.stack);
+      return { data: [], summary: { total: 0, black: 0, white: 0, red: 0, blue: 0 } };
+    }
+  }
 }
