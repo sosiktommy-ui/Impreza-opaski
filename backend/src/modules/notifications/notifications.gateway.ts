@@ -66,8 +66,8 @@ export class NotificationGateway
       this.logger.debug(
         `Client ${client.id} connected as user ${userId} (${this.userSockets.get(userId)!.size} active)`,
       );
-    } catch (error) {
-      this.logger.warn(`Client ${client.id} disconnected: invalid token — ${(error as Error).message}`);
+    } catch (error: any) {
+      this.logger.warn(`Client ${client.id} disconnected: invalid token — ${error?.message}`);
       client.disconnect();
     }
   }

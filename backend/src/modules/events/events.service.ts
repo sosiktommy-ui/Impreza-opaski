@@ -110,7 +110,7 @@ export class EventsService {
       }
 
       return this.parseTickets(await response.json());
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Failed to fetch from IMPREZA API', error);
       return [];
     }
@@ -156,7 +156,7 @@ export class EventsService {
       }
       this.logger.error('No token in IMPREZA login response');
       return null;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('IMPREZA login error', error);
       return null;
     }
