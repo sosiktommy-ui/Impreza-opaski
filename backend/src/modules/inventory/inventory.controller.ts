@@ -246,8 +246,8 @@ export class InventoryController {
       } else {
         return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, user.officeId!);
       }
-    } catch (error) {
-      this.logger.error(`getWarehouseBalance error: ${error.message}`, error.stack);
+    } catch (error: any) {
+      this.logger.error(`getWarehouseBalance error: ${error?.message}`, error?.stack);
       // Return empty balance instead of 500 to avoid CORS blocking
       return { black: 0, white: 0, red: 0, blue: 0 };
     }
@@ -286,8 +286,8 @@ export class InventoryController {
           limit,
         });
       }
-    } catch (error) {
-      this.logger.error(`getWarehouseHistory error: ${error.message}`, error.stack);
+    } catch (error: any) {
+      this.logger.error(`getWarehouseHistory error: ${error?.message}`, error?.stack);
       // Return empty history instead of 500 to avoid CORS blocking
       return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
@@ -344,8 +344,8 @@ export class InventoryController {
   async getCompanyLossesSummary() {
     try {
       return await this.inventoryService.getCompanyLossesSummary();
-    } catch (error) {
-      this.logger.error(`getCompanyLossesSummary error: ${error.message}`, error.stack);
+    } catch (error: any) {
+      this.logger.error(`getCompanyLossesSummary error: ${error?.message}`, error?.stack);
       // Return empty summary instead of 500 to avoid CORS blocking
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
     }
@@ -368,8 +368,8 @@ export class InventoryController {
         endDate,
         countryId,
       });
-    } catch (error) {
-      this.logger.error(`getCompanyLosses error: ${error.message}`, error.stack);
+    } catch (error: any) {
+      this.logger.error(`getCompanyLosses error: ${error?.message}`, error?.stack);
       // Return empty list instead of 500 to avoid CORS blocking
       return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
