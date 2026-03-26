@@ -159,23 +159,20 @@ export default function ProblematicTransfers() {
     try {
       const params = { page: p, limit: 20 };
       
-      // DEBUG v3 - Log everything
-      alert('fetchData v3 called, page=' + p);
-      
       const [transfersRes, lossRes] = await Promise.all([
         transfersApi.getProblematic(params),
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('=== PROBLEMATIC v3 ===');
-      console.log('transfersRes:', JSON.stringify(transfersRes, null, 2));
+      console.log('=== PROBLEMATIC TRANSFERS DEBUG ===');
+      console.log('transfersRes:', transfersRes);
       
       // Same logic as useAppStore.refreshCounts:
       const payload = transfersRes?.data?.data || transfersRes?.data;
       const list = Array.isArray(payload) ? payload : [];
       const meta = transfersRes?.data?.meta || { totalPages: 1, page: p, total: list.length };
       
-      alert('Got ' + list.length + ' problematic transfers');
+      console.log('Parsed list length:', list.length);
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
