@@ -159,24 +159,23 @@ export default function ProblematicTransfers() {
     try {
       const params = { page: p, limit: 20 };
       
+      // DEBUG v3 - Log everything
+      alert('fetchData v3 called, page=' + p);
+      
       const [transfersRes, lossRes] = await Promise.all([
         transfersApi.getProblematic(params),
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('=== PROBLEMATIC TRANSFERS ===');
-      console.log('Raw transfersRes:', transfersRes);
-      console.log('transfersRes.data:', transfersRes?.data);
+      console.log('=== PROBLEMATIC v3 ===');
+      console.log('transfersRes:', JSON.stringify(transfersRes, null, 2));
       
       // Same logic as useAppStore.refreshCounts:
-      // After axios interceptor unwrap, transfersRes.data = { data: [...], meta: {...} }
       const payload = transfersRes?.data?.data || transfersRes?.data;
       const list = Array.isArray(payload) ? payload : [];
       const meta = transfersRes?.data?.meta || { totalPages: 1, page: p, total: list.length };
       
-      console.log('Parsed payload:', payload);
-      console.log('List length:', list.length);
-      console.log('Meta:', meta);
+      alert('Got ' + list.length + ' problematic transfers');
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
