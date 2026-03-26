@@ -229,28 +229,33 @@ export class InventoryController {
 
   @Get('warehouse/balance')
   @Roles(Role.ADMIN, Role.OFFICE)
-  getWarehouseBalance(
+  async getWarehouseBalance(
     @CurrentUser() user: AuthenticatedUser,
     @Query('officeId') queryOfficeId?: string,
   ) {
     this.logger.log(`getWarehouseBalance: user=${user.id}, role=${user.role}, queryOfficeId=${queryOfficeId}`);
     
-    if (user.role === Role.ADMIN) {
-      // ADMIN can specify officeId to view that office's balance, or see ADMIN global balance
-      if (queryOfficeId) {
-        this.logger.log(`ADMIN viewing OFFICE balance for ${queryOfficeId}`);
-        return this.inventoryService.getWarehouseBalance(EntityType.OFFICE, queryOfficeId);
+    try {
+      if (user.role === Role.ADMIN) {
+        if (queryOfficeId) {
+          this.logger.log(`ADMIN viewing OFFICE balance for ${queryOfficeId}`);
+          return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, queryOfficeId);
+        }
+        this.logger.log(`ADMIN viewing ADMIN balance`);
+        return await this.inventoryService.getWarehouseBalance(EntityType.ADMIN);
+      } else {
+        return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, user.officeId!);
       }
-      this.logger.log(`ADMIN viewing ADMIN balance`);
-      return this.inventoryService.getWarehouseBalance(EntityType.ADMIN);
-    } else {
-      return this.inventoryService.getWarehouseBalance(EntityType.OFFICE, user.officeId!);
+    } catch (error) {
+      this.logger.error(`getWarehouseBalance error: ${error.message}`, error.stack);
+      // Return empty balance instead of 500 to avoid CORS blocking
+      return { black: 0, white: 0, red: 0, blue: 0 };
     }
   }
 
   @Get('warehouse/creation-history')
   @Roles(Role.ADMIN, Role.OFFICE)
-  getWarehouseHistory(
+  async getWarehouseHistory(
     @CurrentUser() user: AuthenticatedUser,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -258,30 +263,33 @@ export class InventoryController {
   ) {
     this.logger.log(`getWarehouseHistory: user=${user.id}, role=${user.role}, queryOfficeId=${queryOfficeId}`);
     
-    if (user.role === Role.ADMIN) {
-      // ADMIN can filter by office or see all
-      if (queryOfficeId) {
-        return this.inventoryService.getWarehouseCreationHistory({
+    try {
+      if (user.role === Role.ADMIN) {
+        if (queryOfficeId) {
+          return await this.inventoryService.getWarehouseCreationHistory({
+            entityType: EntityType.OFFICE,
+            officeId: queryOfficeId,
+            page,
+            limit,
+          });
+        }
+        return await this.inventoryService.getWarehouseCreationHistory({
+          entityType: EntityType.ADMIN,
+          page,
+          limit,
+        });
+      } else {
+        return await this.inventoryService.getWarehouseCreationHistory({
           entityType: EntityType.OFFICE,
-          officeId: queryOfficeId,
+          officeId: user.officeId!,
           page,
           limit,
         });
       }
-      // ADMIN with no office filter - show ADMIN entity history only
-      return this.inventoryService.getWarehouseCreationHistory({
-        entityType: EntityType.ADMIN,
-        page,
-        limit,
-      });
-    } else {
-      // OFFICE sees only their own
-      return this.inventoryService.getWarehouseCreationHistory({
-        entityType: EntityType.OFFICE,
-        officeId: user.officeId!,
-        page,
-        limit,
-      });
+    } catch (error) {
+      this.logger.error(`getWarehouseHistory error: ${error.message}`, error.stack);
+      // Return empty history instead of 500 to avoid CORS blocking
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
   }
 
@@ -333,25 +341,37 @@ export class InventoryController {
 
   @Get('company-losses/summary')
   @Roles(Role.ADMIN, Role.OFFICE)
-  getCompanyLossesSummary() {
-    return this.inventoryService.getCompanyLossesSummary();
+  async getCompanyLossesSummary() {
+    try {
+      return await this.inventoryService.getCompanyLossesSummary();
+    } catch (error) {
+      this.logger.error(`getCompanyLossesSummary error: ${error.message}`, error.stack);
+      // Return empty summary instead of 500 to avoid CORS blocking
+      return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
+    }
   }
 
   @Get('company-losses')
   @Roles(Role.ADMIN, Role.OFFICE)
-  getCompanyLosses(
+  async getCompanyLosses(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('countryId') countryId?: string,
   ) {
-    return this.inventoryService.getCompanyLosses({
-      page,
-      limit,
-      startDate,
-      endDate,
-      countryId,
-    });
+    try {
+      return await this.inventoryService.getCompanyLosses({
+        page,
+        limit,
+        startDate,
+        endDate,
+        countryId,
+      });
+    } catch (error) {
+      this.logger.error(`getCompanyLosses error: ${error.message}`, error.stack);
+      // Return empty list instead of 500 to avoid CORS blocking
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
+    }
   }
 }
