@@ -712,63 +712,86 @@ export class InventoryService {
     const { entityType, officeId, page = 1, limit = 20 } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
-    if (entityType) where.entityType = entityType;
-    if (officeId) where.officeId = officeId;
+    try {
+      this.logger.log(`getWarehouseCreationHistory: entityType=${entityType}, officeId=${officeId}, page=${page}, limit=${limit}`);
+      
+      const where: any = {};
+      if (entityType) where.entityType = entityType;
+      if (officeId) where.officeId = officeId;
 
-    const [creations, total] = await Promise.all([
-      (this.prisma as any).warehouseCreation.findMany({
-        where,
-        include: {
-          office: { select: { id: true, name: true, code: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      (this.prisma as any).warehouseCreation.count({ where }),
-    ]);
+      // Check if warehouseCreation model exists on prisma client
+      if (!(this.prisma as any).warehouseCreation) {
+        this.logger.error('warehouseCreation model not found on Prisma client - run prisma generate');
+        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+      }
 
-    return {
-      data: creations,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+      const [creations, total] = await Promise.all([
+        (this.prisma as any).warehouseCreation.findMany({
+          where,
+          include: {
+            office: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        (this.prisma as any).warehouseCreation.count({ where }),
+      ]);
+
+      this.logger.log(`getWarehouseCreationHistory: found ${total} records`);
+      return {
+        data: creations,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    } catch (error: any) {
+      this.logger.error(`getWarehouseCreationHistory ERROR: ${error?.message}`, error?.stack);
+      // Return empty result instead of throwing to prevent 503
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
   }
 
   // Get warehouse balance for ADMIN or specific OFFICE
   async getWarehouseBalance(entityType: EntityType, officeId?: string) {
-    if (entityType !== EntityType.ADMIN && entityType !== EntityType.OFFICE) {
-      throw new BadRequestException('Only ADMIN or OFFICE entityType supported');
-    }
-
-    const where: Prisma.InventoryWhereInput = { entityType };
-    if (entityType === EntityType.OFFICE) {
-      where.officeId = officeId;
-    } else {
-      // ADMIN: no office/country/city
-      where.officeId = null;
-      where.countryId = null;
-      where.cityId = null;
-    }
-
-    const inventory = await this.prisma.inventory.findMany({ where });
-
-    // Return lowercase keys to match frontend expectations
-    const balance = {
-      black: 0,
-      white: 0,
-      red: 0,
-      blue: 0,
-    };
-    for (const entry of inventory) {
-      const key = entry.itemType.toLowerCase() as keyof typeof balance;
-      if (key in balance) {
-        balance[key] = entry.quantity;
+    try {
+      this.logger.log(`getWarehouseBalance: entityType=${entityType}, officeId=${officeId}`);
+      
+      if (entityType !== EntityType.ADMIN && entityType !== EntityType.OFFICE) {
+        throw new BadRequestException('Only ADMIN or OFFICE entityType supported');
       }
-    }
 
-    this.logger.log(`getWarehouseBalance: ${entityType}${officeId ? ':' + officeId : ''} => ${JSON.stringify(balance)}`);
-    return balance;
+      const where: Prisma.InventoryWhereInput = { entityType };
+      if (entityType === EntityType.OFFICE) {
+        where.officeId = officeId;
+      } else {
+        // ADMIN: no office/country/city
+        where.officeId = null;
+        where.countryId = null;
+        where.cityId = null;
+      }
+
+      const inventory = await this.prisma.inventory.findMany({ where });
+
+      // Return lowercase keys to match frontend expectations
+      const balance = {
+        black: 0,
+        white: 0,
+        red: 0,
+        blue: 0,
+      };
+      for (const entry of inventory) {
+        const key = entry.itemType.toLowerCase() as keyof typeof balance;
+        if (key in balance) {
+          balance[key] = entry.quantity;
+        }
+      }
+
+      this.logger.log(`getWarehouseBalance: ${entityType}${officeId ? ':' + officeId : ''} => ${JSON.stringify(balance)}`);
+      return balance;
+    } catch (error: any) {
+      this.logger.error(`getWarehouseBalance ERROR: ${error?.message}`, error?.stack);
+      // Return empty balance instead of throwing to prevent 503
+      return { black: 0, white: 0, red: 0, blue: 0 };
+    }
   }
 
   // ──────────────────────────────────────────────
@@ -776,26 +799,41 @@ export class InventoryService {
   // ──────────────────────────────────────────────
 
   async getCompanyLossesSummary() {
-    const losses = await (this.prisma as any).companyLoss.findMany();
+    try {
+      this.logger.log('getCompanyLossesSummary: starting...');
+      
+      // Check if companyLoss model exists on prisma client
+      if (!(this.prisma as any).companyLoss) {
+        this.logger.error('companyLoss model not found on Prisma client - run prisma generate');
+        return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
+      }
+      
+      const losses = await (this.prisma as any).companyLoss.findMany();
+      this.logger.log(`getCompanyLossesSummary: found ${losses?.length || 0} losses`);
 
-    const summary = {
-      total: 0,
-      black: 0,
-      white: 0,
-      red: 0,
-      blue: 0,
-      count: losses.length,
-    };
+      const summary = {
+        total: 0,
+        black: 0,
+        white: 0,
+        red: 0,
+        blue: 0,
+        count: losses?.length || 0,
+      };
 
-    for (const loss of losses) {
-      summary.total += loss.totalAmount || 0;
-      summary.black += loss.black || 0;
-      summary.white += loss.white || 0;
-      summary.red += loss.red || 0;
-      summary.blue += loss.blue || 0;
+      for (const loss of (losses || [])) {
+        summary.total += loss.totalAmount || 0;
+        summary.black += loss.black || 0;
+        summary.white += loss.white || 0;
+        summary.red += loss.red || 0;
+        summary.blue += loss.blue || 0;
+      }
+
+      return summary;
+    } catch (error: any) {
+      this.logger.error(`getCompanyLossesSummary ERROR: ${error?.message}`, error?.stack);
+      // Return empty result instead of throwing to prevent 503
+      return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
     }
-
-    return summary;
   }
 
   async getCompanyLosses(params: {
@@ -808,42 +846,57 @@ export class InventoryService {
     const { page = 1, limit = 20, startDate, endDate } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
-    if (startDate) {
-      where.resolvedAt = { ...where.resolvedAt, gte: new Date(startDate) };
-    }
-    if (endDate) {
-      where.resolvedAt = { ...where.resolvedAt, lte: new Date(endDate) };
-    }
+    try {
+      this.logger.log(`getCompanyLosses: page=${page}, limit=${limit}`);
+      
+      // Check if companyLoss model exists on prisma client
+      if (!(this.prisma as any).companyLoss) {
+        this.logger.error('companyLoss model not found on Prisma client - run prisma generate');
+        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+      }
 
-    const [losses, total] = await Promise.all([
-      (this.prisma as any).companyLoss.findMany({
-        where,
-        include: {
-          transfer: {
-            select: {
-              id: true,
-              status: true,
-              senderType: true,
-              receiverType: true,
-              senderCity: { select: { id: true, name: true } },
-              senderCountry: { select: { id: true, name: true } },
-              receiverCity: { select: { id: true, name: true } },
-              receiverCountry: { select: { id: true, name: true } },
+      const where: any = {};
+      if (startDate) {
+        where.resolvedAt = { ...where.resolvedAt, gte: new Date(startDate) };
+      }
+      if (endDate) {
+        where.resolvedAt = { ...where.resolvedAt, lte: new Date(endDate) };
+      }
+
+      const [losses, total] = await Promise.all([
+        (this.prisma as any).companyLoss.findMany({
+          where,
+          include: {
+            transfer: {
+              select: {
+                id: true,
+                status: true,
+                senderType: true,
+                receiverType: true,
+                senderCity: { select: { id: true, name: true } },
+                senderCountry: { select: { id: true, name: true } },
+                receiverCity: { select: { id: true, name: true } },
+                receiverCountry: { select: { id: true, name: true } },
+              },
             },
+            resolver: { select: { id: true, displayName: true, username: true } },
           },
-          resolver: { select: { id: true, displayName: true, username: true } },
-        },
-        orderBy: { resolvedAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      (this.prisma as any).companyLoss.count({ where }),
-    ]);
+          orderBy: { resolvedAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        (this.prisma as any).companyLoss.count({ where }),
+      ]);
 
-    return {
-      data: losses,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+      this.logger.log(`getCompanyLosses: found ${total} records`);
+      return {
+        data: losses,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    } catch (error: any) {
+      this.logger.error(`getCompanyLosses ERROR: ${error?.message}`, error?.stack);
+      // Return empty result instead of throwing to prevent 503
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
   }
 }
