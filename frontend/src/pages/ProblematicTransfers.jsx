@@ -164,8 +164,18 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('=== PROBLEMATIC TRANSFERS DEBUG ===');
-      console.log('transfersRes:', transfersRes);
+      console.log('=== PROBLEMATIC TRANSFERS DEBUG v6 ===');
+      console.log('transfersRes full:', JSON.stringify(transfersRes));
+      
+      // DEBUG: Show alert with response structure
+      const debugInfo = {
+        hasData: !!transfersRes?.data,
+        dataType: typeof transfersRes?.data,
+        hasNestedData: !!transfersRes?.data?.data,
+        nestedDataLength: Array.isArray(transfersRes?.data?.data) ? transfersRes.data.data.length : 'not array',
+        directDataLength: Array.isArray(transfersRes?.data) ? transfersRes.data.length : 'not array',
+      };
+      alert('DEBUG v6: ' + JSON.stringify(debugInfo, null, 2));
       
       // Same logic as useAppStore.refreshCounts:
       const payload = transfersRes?.data?.data || transfersRes?.data;
@@ -173,6 +183,7 @@ export default function ProblematicTransfers() {
       const meta = transfersRes?.data?.meta || { totalPages: 1, page: p, total: list.length };
       
       console.log('Parsed list length:', list.length);
+      alert('DEBUG v6: list.length = ' + list.length);
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
