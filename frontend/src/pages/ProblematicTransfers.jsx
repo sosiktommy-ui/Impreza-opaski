@@ -159,27 +159,22 @@ export default function ProblematicTransfers() {
     try {
       const params = { page: p, limit: 20 };
       
-      // Деструктурируем data сразу как в Acceptance.jsx
-      const [{ data: transfersData }, lossRes] = await Promise.all([
-        transfersApi.getProblematic(params),
-        canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve({ data: null }),
-      ]);
+      // Простой запрос без деструктуризации
+      const transfersRes = await transfersApi.getProblematic(params);
+      const lossRes = canResolve ? await inventoryApi.getCompanyLossesSummary() : { data: null };
       
-      // DEBUG v9
-      console.log('=== ProblematicTransfers v9 ===');
-      console.log('transfersData:', transfersData);
-      console.log('transfersData type:', typeof transfersData);
-      console.log('transfersData.data:', transfersData?.data);
+      // DEBUG v10 - смотрим что реально приходит
+      console.log('=== ProblematicTransfers v10 ===');
+      console.log('transfersRes:', transfersRes);
+      console.log('transfersRes.data:', transfersRes.data);
       
-      // Парсинг как в Acceptance.jsx (который работает)
-      const payload = transfersData?.data || transfersData;
-      console.log('payload:', payload);
-      console.log('payload is array:', Array.isArray(payload));
+      // Данные уже развернуты axios interceptor: { data: [...], meta: {...} }
+      const transfersData = transfersRes.data;
+      const list = transfersData?.data || [];
+      const meta = transfersData?.meta || { totalPages: 1, page: p, total: list.length };
       
-      const list = Array.isArray(payload) ? payload : (payload?.data || payload?.items || []);
-      console.log('list length:', list.length);
-      
-      const meta = transfersData?.meta || payload?.meta || { totalPages: 1, page: p, total: list.length };
+      console.log('list:', list);
+      console.log('list.length:', list.length);
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
