@@ -167,19 +167,12 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Привет, {user.displayName}!
+              Привет, {user.displayName}! <span className="text-xs text-white/40">v8</span>
             </h1>
             <p className="text-white/60 mt-1 text-sm flex items-center gap-1.5">
               {(user.role === 'ADMIN' || user.role === 'OFFICE') ? <Globe size={14} /> : <MapPin size={14} />}
               {entityLabel}
             </p>
-          </div>
-          <div className="hidden sm:flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-[var(--radius-sm)] px-4 py-3">
-            <Activity size={22} className="text-white/60" />
-            <div>
-              <div className="text-xl font-bold">{transfers.length}</div>
-              <div className="text-[11px] text-white/50 leading-tight">отправок</div>
-            </div>
           </div>
         </div>
       </div>
