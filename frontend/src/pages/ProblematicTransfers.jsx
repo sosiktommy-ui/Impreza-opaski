@@ -157,62 +157,34 @@ export default function ProblematicTransfers() {
   const fetchData = async (p = 1) => {
     setLoading(true);
     try {
-      // Do NOT filter by countryId/cityId - show all problematic transfers like badge does
       const params = { page: p, limit: 20 };
-      
-      console.log('=== PROBLEMATIC START ===');
-      console.log('Params:', params);
       
       const [transfersRes, lossRes] = await Promise.all([
         transfersApi.getProblematic(params),
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('=== RAW API RESPONSE ===');
-      console.log('transfersRes:', transfersRes);
-      console.log('typeof transfersRes:', typeof transfersRes);
+      console.log('=== PROBLEMATIC TRANSFERS ===');
+      console.log('Raw transfersRes:', transfersRes);
       console.log('transfersRes.data:', transfersRes?.data);
-      console.log('typeof transfersRes.data:', typeof transfersRes?.data);
       
-      // Parse the data array correctly
-      let list = [];
-      let meta = { totalPages: 1, page: p, total: 0 };
+      // Same logic as useAppStore.refreshCounts:
+      // After axios interceptor unwrap, transfersRes.data = { data: [...], meta: {...} }
+      const payload = transfersRes?.data?.data || transfersRes?.data;
+      const list = Array.isArray(payload) ? payload : [];
+      const meta = transfersRes?.data?.meta || { totalPages: 1, page: p, total: list.length };
       
-      const responseData = transfersRes?.data;
-      console.log('responseData:', responseData);
-      
-      // Try different response formats
-      if (responseData) {
-        if (Array.isArray(responseData)) {
-          // Direct array (TransformInterceptor might not be wrapping)
-          list = responseData;
-          console.log('FORMAT: Direct array, length:', list.length);
-        } else if (responseData.data && Array.isArray(responseData.data)) {
-          // Standard format: { data: [...], meta: {...} }
-          list = responseData.data;
-          meta = responseData.meta || meta;
-          console.log('FORMAT: { data, meta }, list length:', list.length, 'meta:', meta);
-        } else if (Array.isArray(responseData.items)) {
-          list = responseData.items;
-          console.log('FORMAT: { items }, length:', list.length);
-        } else {
-          console.log('FORMAT: Unknown structure, keys:', Object.keys(responseData));
-        }
-      } else {
-        console.log('FORMAT: No responseData');
-      }
-      
-      console.log('=== FINAL PARSED ===');
-      console.log('list length:', list.length);
-      console.log('first item:', list[0]);
+      console.log('Parsed payload:', payload);
+      console.log('List length:', list.length);
+      console.log('Meta:', meta);
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
       setPage(meta.page || p);
       
       if (lossRes) {
-        const lossData = lossRes.data;
-        setLossSummary(lossData?.data || lossData);
+        const lossData = lossRes?.data?.data || lossRes?.data;
+        setLossSummary(lossData);
       }
     } catch (err) {
       console.error('Failed to fetch problematic transfers', err);
