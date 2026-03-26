@@ -171,14 +171,7 @@ export class InventoryController {
     });
   }
 
-  @Get(':entityType/:entityId')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
-  getBalance(
-    @Param('entityType') entityType: EntityType,
-    @Param('entityId') entityId: string,
-  ) {
-    return this.inventoryService.getBalance(entityType, entityId);
-  }
+  // NOTE: Parametric route moved to the end of controller to avoid matching before static routes
 
   @Post('adjust')
   @Roles(Role.ADMIN, Role.OFFICE)
@@ -373,5 +366,21 @@ export class InventoryController {
       // Return empty list instead of 500 to avoid CORS blocking
       return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
+  }
+
+  // ──────────────────────────────────────────────
+  // PARAMETRIC ROUTE - MUST BE LAST!
+  // ──────────────────────────────────────────────
+  // This route catches :entityType/:entityId patterns.
+  // It MUST be after all static routes like warehouse/balance, company-losses/summary
+  // otherwise NestJS will match those requests to this parametric route.
+
+  @Get(':entityType/:entityId')
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  getBalance(
+    @Param('entityType') entityType: EntityType,
+    @Param('entityId') entityId: string,
+  ) {
+    return this.inventoryService.getBalance(entityType, entityId);
   }
 }
