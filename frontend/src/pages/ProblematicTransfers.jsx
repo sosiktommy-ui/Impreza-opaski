@@ -159,20 +159,25 @@ export default function ProblematicTransfers() {
     try {
       const params = { page: p, limit: 20 };
       
-      // Простой запрос без деструктуризации
+      // DEBUG v11 - добавляем alert для диагностики в браузере
       const transfersRes = await transfersApi.getProblematic(params);
       const lossRes = canResolve ? await inventoryApi.getCompanyLossesSummary() : { data: null };
       
-      // DEBUG v10 - смотрим что реально приходит
-      console.log('=== ProblematicTransfers v10 ===');
-      console.log('transfersRes:', transfersRes);
-      console.log('transfersRes.data:', transfersRes.data);
+      // DEBUG v11 - показываем что получили
+      const debugInfo = `v11 DEBUG:
+transfersRes type: ${typeof transfersRes}
+transfersRes.data type: ${typeof transfersRes?.data}
+transfersRes.data keys: ${transfersRes?.data ? Object.keys(transfersRes.data).join(', ') : 'null'}
+data.data is array: ${Array.isArray(transfersRes?.data?.data)}
+data.data length: ${transfersRes?.data?.data?.length || 0}`;
+      alert(debugInfo);
       
       // Данные уже развернуты axios interceptor: { data: [...], meta: {...} }
       const transfersData = transfersRes.data;
       const list = transfersData?.data || [];
       const meta = transfersData?.meta || { totalPages: 1, page: p, total: list.length };
       
+      console.log('=== ProblematicTransfers v11 ===');
       console.log('list:', list);
       console.log('list.length:', list.length);
       

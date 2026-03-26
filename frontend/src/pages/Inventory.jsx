@@ -361,6 +361,16 @@ export default function Inventory() {
     e.preventDefault();
     setCreateError('');
     const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
+    
+    // DEBUG v11 - показываем что происходит
+    alert(`v11 DEBUG handleCreateBracelets:
+user.role: ${user.role}
+officeId: ${officeId}
+black: ${createForm.black}
+white: ${createForm.white}
+red: ${createForm.red}
+blue: ${createForm.blue}`);
+    
     // ADMIN doesn't need officeId, OFFICE does
     if (user.role === 'OFFICE' && !officeId) {
       setCreateError('Выберите офис');
