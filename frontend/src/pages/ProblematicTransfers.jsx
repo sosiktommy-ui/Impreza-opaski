@@ -160,52 +160,51 @@ export default function ProblematicTransfers() {
       // Do NOT filter by countryId/cityId - show all problematic transfers like badge does
       const params = { page: p, limit: 20 };
       
+      console.log('=== PROBLEMATIC START ===');
+      console.log('Params:', params);
+      
       const [transfersRes, lossRes] = await Promise.all([
         transfersApi.getProblematic(params),
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('=== PROBLEMATIC DEBUG ===');
-      console.log('Full transfersRes:', transfersRes);
-      console.log('transfersRes.data:', transfersRes.data);
+      console.log('=== RAW API RESPONSE ===');
+      console.log('transfersRes:', transfersRes);
+      console.log('typeof transfersRes:', typeof transfersRes);
+      console.log('transfersRes.data:', transfersRes?.data);
+      console.log('typeof transfersRes.data:', typeof transfersRes?.data);
       
-      // After axios interceptor unwrap, transfersRes.data should be:
-      // { data: [...], meta: { total, page, limit, totalPages } }
       // Parse the data array correctly
       let list = [];
       let meta = { totalPages: 1, page: p, total: 0 };
       
-      const responseData = transfersRes.data;
+      const responseData = transfersRes?.data;
+      console.log('responseData:', responseData);
       
       // Try different response formats
       if (responseData) {
         if (Array.isArray(responseData)) {
-          // Direct array (shouldn't happen but handle it)
+          // Direct array (TransformInterceptor might not be wrapping)
           list = responseData;
-          console.log('Format: Direct array, length:', list.length);
+          console.log('FORMAT: Direct array, length:', list.length);
         } else if (responseData.data && Array.isArray(responseData.data)) {
           // Standard format: { data: [...], meta: {...} }
           list = responseData.data;
           meta = responseData.meta || meta;
-          console.log('Format: { data, meta }, list length:', list.length, 'meta:', meta);
-        } else if (typeof responseData === 'object') {
-          // Try to extract array from any key
-          const possibleKeys = ['data', 'items', 'transfers', 'list', 'results'];
-          for (const key of possibleKeys) {
-            if (Array.isArray(responseData[key])) {
-              list = responseData[key];
-              console.log(`Format: Found array in key "${key}", length:`, list.length);
-              break;
-            }
-          }
-          // Also try meta extraction
-          if (responseData.meta) meta = responseData.meta;
+          console.log('FORMAT: { data, meta }, list length:', list.length, 'meta:', meta);
+        } else if (Array.isArray(responseData.items)) {
+          list = responseData.items;
+          console.log('FORMAT: { items }, length:', list.length);
+        } else {
+          console.log('FORMAT: Unknown structure, keys:', Object.keys(responseData));
         }
+      } else {
+        console.log('FORMAT: No responseData');
       }
       
-      console.log('Final parsed list:', list);
-      console.log('List length:', list.length);
-      console.log('Meta:', meta);
+      console.log('=== FINAL PARSED ===');
+      console.log('list length:', list.length);
+      console.log('first item:', list[0]);
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);

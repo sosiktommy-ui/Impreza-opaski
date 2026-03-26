@@ -913,9 +913,14 @@ export class TransfersService {
     const { page = 1, limit = 20, userRole, userCountryId, userCityId, userOfficeId } = params;
     const skip = (page - 1) * limit;
 
+    this.logger.log(`=== findProblematic START ===`);
+    this.logger.log(`Params: ${JSON.stringify(params)}`);
+
     const where: Prisma.TransferWhereInput = {
       status: TransferStatus.DISCREPANCY_FOUND,
     };
+
+    this.logger.log(`Base where: status = DISCREPANCY_FOUND`);
 
     // RBAC scope
     if (userRole === 'COUNTRY' && userCountryId) {
@@ -972,6 +977,11 @@ export class TransfersService {
       }),
       this.prisma.transfer.count({ where }),
     ]);
+
+    this.logger.log(`=== findProblematic RESULTS ===`);
+    this.logger.log(`Total count: ${total}`);
+    this.logger.log(`Transfers returned: ${transfers.length}`);
+    this.logger.log(`Transfer IDs: ${transfers.map(t => t.id).join(', ')}`);
 
     // Enrich with creator info
     const creatorIds = [...new Set(transfers.map((t) => t.createdBy))];
