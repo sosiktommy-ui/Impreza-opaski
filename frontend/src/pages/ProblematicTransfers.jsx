@@ -165,35 +165,47 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
       ]);
       
-      console.log('=== PROBLEMATIC DEBUG ===' );
-      console.log('Raw response:', transfersRes);
+      console.log('=== PROBLEMATIC DEBUG ===');
+      console.log('Full transfersRes:', transfersRes);
       console.log('transfersRes.data:', transfersRes.data);
       
-      // Handle multiple possible response formats:
-      // 1. Direct array (already unwrapped)
-      // 2. { data: [...], meta: {...} } (backend format)
-      // 3. Axios unwrapped { data: [...], meta: {...} }
+      // After axios interceptor unwrap, transfersRes.data should be:
+      // { data: [...], meta: { total, page, limit, totalPages } }
+      // Parse the data array correctly
       let list = [];
-      let meta = { totalPages: 1, page: p };
+      let meta = { totalPages: 1, page: p, total: 0 };
       
-      const rawData = transfersRes.data;
-      if (Array.isArray(rawData)) {
-        // Direct array
-        list = rawData;
-        console.log('Format: Direct array');
-      } else if (rawData && Array.isArray(rawData.data)) {
-        // { data: [...], meta: {...} }
-        list = rawData.data;
-        meta = rawData.meta || meta;
-        console.log('Format: Object with data array');
-      } else if (rawData && typeof rawData === 'object') {
-        // Try to find array in response
-        list = Object.values(rawData).find(v => Array.isArray(v)) || [];
-        console.log('Format: Unknown object, extracted:', list);
+      const responseData = transfersRes.data;
+      
+      // Try different response formats
+      if (responseData) {
+        if (Array.isArray(responseData)) {
+          // Direct array (shouldn't happen but handle it)
+          list = responseData;
+          console.log('Format: Direct array, length:', list.length);
+        } else if (responseData.data && Array.isArray(responseData.data)) {
+          // Standard format: { data: [...], meta: {...} }
+          list = responseData.data;
+          meta = responseData.meta || meta;
+          console.log('Format: { data, meta }, list length:', list.length, 'meta:', meta);
+        } else if (typeof responseData === 'object') {
+          // Try to extract array from any key
+          const possibleKeys = ['data', 'items', 'transfers', 'list', 'results'];
+          for (const key of possibleKeys) {
+            if (Array.isArray(responseData[key])) {
+              list = responseData[key];
+              console.log(`Format: Found array in key "${key}", length:`, list.length);
+              break;
+            }
+          }
+          // Also try meta extraction
+          if (responseData.meta) meta = responseData.meta;
+        }
       }
       
-      console.log('Parsed list:', list);
+      console.log('Final parsed list:', list);
       console.log('List length:', list.length);
+      console.log('Meta:', meta);
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);

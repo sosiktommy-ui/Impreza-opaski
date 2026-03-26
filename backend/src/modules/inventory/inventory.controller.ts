@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -98,12 +99,18 @@ class CreateBraceletsDto {
 
   @IsString()
   @IsOptional()
+  officeId?: string; // For ADMIN to specify which office
+
+  @IsString()
+  @IsOptional()
   password?: string; // For 2FA verification
 }
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InventoryController {
+  private readonly logger = new Logger('InventoryController');
+  
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('map')
@@ -257,14 +264,29 @@ export class InventoryController {
     @Body() dto: CreateBraceletsDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // 2FA verification would happen here, but password is verified on frontend
-    // In production, you'd call AuthService.verifyPassword(user.id, dto.password)
-
+    this.logger.log(`=== CREATE BRACELETS REQUEST ===`);
+    this.logger.log(`User: ${user.id}, Role: ${user.role}, OfficeId: ${user.officeId}`);
+    this.logger.log(`DTO: ${JSON.stringify(dto)}`);
+    
+    // Determine entity type and officeId
     const entityType = user.role === Role.ADMIN ? EntityType.ADMIN : EntityType.OFFICE;
-    const officeId = user.role === Role.OFFICE && user.officeId ? user.officeId : undefined;
+    
+    // ADMIN can specify officeId from request, OFFICE uses their own officeId
+    let officeId: string | undefined;
+    if (user.role === Role.ADMIN) {
+      // If ADMIN specifies officeId, use OFFICE entity type instead of ADMIN
+      officeId = dto.officeId || undefined;
+    } else {
+      officeId = user.officeId || undefined;
+    }
 
-    return this.inventoryService.createBracelets({
-      entityType,
+    // If ADMIN specified an officeId, treat as OFFICE creation, else as ADMIN creation
+    const finalEntityType = (user.role === Role.ADMIN && officeId) ? EntityType.OFFICE : entityType;
+    
+    this.logger.log(`Final: entityType=${finalEntityType}, officeId=${officeId}`);
+
+    const result = await this.inventoryService.createBracelets({
+      entityType: finalEntityType,
       officeId,
       black: dto.black,
       white: dto.white,
@@ -273,6 +295,9 @@ export class InventoryController {
       notes: dto.notes,
       actorId: user.id,
     });
+    
+    this.logger.log(`Created: ${JSON.stringify(result)}`);
+    return result;
   }
 
   // ──────────────────────────────────────────────

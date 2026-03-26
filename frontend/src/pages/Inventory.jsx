@@ -375,23 +375,37 @@ export default function Inventory() {
   const handleCreate2FAConfirm = async (password) => {
     if (!pendingCreateData) return;
     
+    console.log('=== CREATE BRACELETS DEBUG ===');
+    console.log('pendingCreateData:', pendingCreateData);
+    
     // Verify password first - if request succeeds, password is valid
     // Backend throws 401 if password is wrong
     try {
+      console.log('Verifying password...');
       await authApi.verifyPassword(password);
+      console.log('Password verified successfully');
     } catch (verifyErr) {
       // Password verification failed
+      console.error('Password verification failed:', verifyErr);
       throw new Error(verifyErr.response?.data?.message || 'Неверный пароль');
     }
     
     setCreating(true);
     try {
-      await inventoryApi.createBracelets(pendingCreateData);
+      console.log('Creating bracelets...');
+      const createRes = await inventoryApi.createBracelets(pendingCreateData);
+      console.log('Create response:', createRes);
+      
       setShow2FA(false);
       setPendingCreateData(null);
       setCreateForm({ black: '', white: '', red: '', blue: '', notes: '' });
+      
+      console.log('Reloading warehouse data...');
       await loadWarehouseData();
+      console.log('Warehouse data reloaded');
     } catch (err) {
+      console.error('Create bracelets error:', err);
+      console.error('Error response:', err.response);
       throw new Error(err.response?.data?.message || 'Ошибка создания браслетов');
     } finally {
       setCreating(false);
