@@ -229,8 +229,19 @@ export class InventoryController {
 
   @Get('warehouse/balance')
   @Roles(Role.ADMIN, Role.OFFICE)
-  getWarehouseBalance(@CurrentUser() user: AuthenticatedUser) {
+  getWarehouseBalance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('officeId') queryOfficeId?: string,
+  ) {
+    this.logger.log(`getWarehouseBalance: user=${user.id}, role=${user.role}, queryOfficeId=${queryOfficeId}`);
+    
     if (user.role === Role.ADMIN) {
+      // ADMIN can specify officeId to view that office's balance, or see ADMIN global balance
+      if (queryOfficeId) {
+        this.logger.log(`ADMIN viewing OFFICE balance for ${queryOfficeId}`);
+        return this.inventoryService.getWarehouseBalance(EntityType.OFFICE, queryOfficeId);
+      }
+      this.logger.log(`ADMIN viewing ADMIN balance`);
       return this.inventoryService.getWarehouseBalance(EntityType.ADMIN);
     } else {
       return this.inventoryService.getWarehouseBalance(EntityType.OFFICE, user.officeId!);
@@ -243,10 +254,26 @@ export class InventoryController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('officeId') queryOfficeId?: string,
   ) {
+    this.logger.log(`getWarehouseHistory: user=${user.id}, role=${user.role}, queryOfficeId=${queryOfficeId}`);
+    
     if (user.role === Role.ADMIN) {
-      // ADMIN sees all creation history
-      return this.inventoryService.getWarehouseCreationHistory({ page, limit });
+      // ADMIN can filter by office or see all
+      if (queryOfficeId) {
+        return this.inventoryService.getWarehouseCreationHistory({
+          entityType: EntityType.OFFICE,
+          officeId: queryOfficeId,
+          page,
+          limit,
+        });
+      }
+      // ADMIN with no office filter - show ADMIN entity history only
+      return this.inventoryService.getWarehouseCreationHistory({
+        entityType: EntityType.ADMIN,
+        page,
+        limit,
+      });
     } else {
       // OFFICE sees only their own
       return this.inventoryService.getWarehouseCreationHistory({
