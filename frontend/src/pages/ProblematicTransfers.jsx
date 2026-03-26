@@ -159,38 +159,23 @@ export default function ProblematicTransfers() {
     try {
       const params = { page: p, limit: 20 };
       
-      const [transfersRes, lossRes] = await Promise.all([
+      // Деструктурируем data сразу как в Acceptance.jsx
+      const [{ data: transfersData }, lossRes] = await Promise.all([
         transfersApi.getProblematic(params),
-        canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve(null),
+        canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve({ data: null }),
       ]);
       
-      console.log('=== PROBLEMATIC TRANSFERS DEBUG v6 ===');
-      console.log('transfersRes full:', JSON.stringify(transfersRes));
-      
-      // DEBUG: Show alert with response structure
-      const debugInfo = {
-        hasData: !!transfersRes?.data,
-        dataType: typeof transfersRes?.data,
-        hasNestedData: !!transfersRes?.data?.data,
-        nestedDataLength: Array.isArray(transfersRes?.data?.data) ? transfersRes.data.data.length : 'not array',
-        directDataLength: Array.isArray(transfersRes?.data) ? transfersRes.data.length : 'not array',
-      };
-      alert('DEBUG v6: ' + JSON.stringify(debugInfo, null, 2));
-      
-      // Same logic as useAppStore.refreshCounts:
-      const payload = transfersRes?.data?.data || transfersRes?.data;
-      const list = Array.isArray(payload) ? payload : [];
-      const meta = transfersRes?.data?.meta || { totalPages: 1, page: p, total: list.length };
-      
-      console.log('Parsed list length:', list.length);
-      alert('DEBUG v6: list.length = ' + list.length);
+      // Парсинг как в Acceptance.jsx (который работает)
+      const payload = transfersData?.data || transfersData;
+      const list = Array.isArray(payload) ? payload : (payload?.data || payload?.items || []);
+      const meta = transfersData?.meta || payload?.meta || { totalPages: 1, page: p, total: list.length };
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
       setPage(meta.page || p);
       
-      if (lossRes) {
-        const lossData = lossRes?.data?.data || lossRes?.data;
+      if (lossRes?.data) {
+        const lossData = lossRes.data?.data || lossRes.data;
         setLossSummary(lossData);
       }
     } catch (err) {
