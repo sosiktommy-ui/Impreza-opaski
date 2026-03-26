@@ -167,7 +167,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Привет, {user.displayName}! <span className="text-xs text-white/40">v12</span>
+              Привет, {user.displayName}!
             </h1>
             <p className="text-white/60 mt-1 text-sm flex items-center gap-1.5">
               {(user.role === 'ADMIN' || user.role === 'OFFICE') ? <Globe size={14} /> : <MapPin size={14} />}
@@ -223,7 +223,9 @@ export default function Dashboard() {
                 <MinusCircle size={18} className="text-red-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-content-primary">{lossSummary?.total || 0}</div>
+                <div className="text-2xl font-bold text-red-400">
+                  {(lossSummary?.total || 0) > 0 ? `-${lossSummary.total}` : '0'}
+                </div>
                 <div className="text-xs text-content-muted">Минус компании</div>
               </div>
             </div>

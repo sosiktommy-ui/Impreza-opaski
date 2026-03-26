@@ -39,6 +39,55 @@ export default function Acceptance() {
   // Detail modal
   const [detailTarget, setDetailTarget] = useState(null);
 
+  // Helper to check if current user is the receiver of a transfer
+  const isUserReceiver = (transfer) => {
+    if (user.role === 'COUNTRY' && transfer.receiverType === 'COUNTRY') {
+      return transfer.receiverCountryId === user.countryId;
+    }
+    if (user.role === 'CITY' && transfer.receiverType === 'CITY') {
+      return transfer.receiverCityId === user.cityId;
+    }
+    // ADMIN/OFFICE can be receivers in some flows
+    if ((user.role === 'ADMIN' || user.role === 'OFFICE') && 
+        (transfer.receiverType === 'ADMIN' || transfer.receiverType === 'OFFICE')) {
+      return true;
+    }
+    return false;
+  };
+
+  // Helper to check if current user is the sender of a transfer
+  const isUserSender = (transfer) => {
+    if (user.role === 'ADMIN' && transfer.senderType === 'ADMIN') {
+      return true;
+    }
+    if (user.role === 'OFFICE' && transfer.senderType === 'OFFICE') {
+      return true;
+    }
+    if (user.role === 'COUNTRY' && transfer.senderType === 'COUNTRY') {
+      return transfer.senderCountryId === user.countryId;
+    }
+    if (user.role === 'CITY' && transfer.senderType === 'CITY') {
+      return transfer.senderCityId === user.cityId;
+    }
+    return false;
+  };
+
+  // Cancel handler for senders
+  const handleCancel = async (transfer) => {
+    if (!window.confirm('Вы уверены, что хотите отменить эту отправку?')) return;
+    setProcessing(true);
+    setError('');
+    try {
+      await transfersApi.cancel(transfer.id);
+      await loadTransfers();
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка отмены');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   useEffect(() => {
     loadTransfers();
   }, [activeTab]);
@@ -276,6 +325,15 @@ export default function Acceptance() {
               const receiver = getReceiverName(t);
               const isAdmin = isAdminTransfer(t);
               const totalQty = getTotalQuantity(t);
+              
+              // Role-based button visibility
+              const userIsReceiver = isUserReceiver(t);
+              const userIsSender = isUserSender(t);
+              const userIsAdmin = user.role === 'ADMIN';
+              // ADMIN can do everything, otherwise show buttons based on role
+              const canAccept = userIsReceiver || userIsAdmin;
+              const canReject = userIsReceiver || userIsAdmin;
+              const canCancel = userIsSender || userIsAdmin;
 
               return (
                 <Card key={t.id} className={getTransferCardClass(t)}>
@@ -310,18 +368,34 @@ export default function Acceptance() {
 
                     {t.notes && <p className="text-xs text-content-muted">{t.notes}</p>}
 
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="success" onClick={() => openAccept(t)} loading={processing}>
-                        <CheckCircle size={16} /> Принять
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-orange-500 hover:text-orange-700 hover:bg-orange-50"
-                        onClick={() => openDisagree(t)}
-                      >
-                        <XCircle size={16} /> Не согласен
-                      </Button>
+                    <div className="flex gap-2 flex-wrap">
+                      {/* Receiver buttons: Accept & Reject */}
+                      {canAccept && (
+                        <Button size="sm" variant="success" onClick={() => openAccept(t)} loading={processing}>
+                          <CheckCircle size={16} /> Принять
+                        </Button>
+                      )}
+                      {canReject && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                          onClick={() => openDisagree(t)}
+                        >
+                          <XCircle size={16} /> Отклонить
+                        </Button>
+                      )}
+                      {/* Sender button: Cancel */}
+                      {canCancel && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => handleCancel(t)}
+                          loading={processing}
+                        >
+                          <AlertTriangle size={16} /> Отменить
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </Card>
