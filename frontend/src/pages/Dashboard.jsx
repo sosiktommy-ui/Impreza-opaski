@@ -167,7 +167,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Привет, {user.displayName}! <span className="text-xs text-white/40">v8</span>
+              Привет, {user.displayName}! <span className="text-xs text-white/40">v9</span>
             </h1>
             <p className="text-white/60 mt-1 text-sm flex items-center gap-1.5">
               {(user.role === 'ADMIN' || user.role === 'OFFICE') ? <Globe size={14} /> : <MapPin size={14} />}
@@ -206,7 +206,7 @@ export default function Dashboard() {
               <AlertTriangle size={18} className="text-orange-400" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-content-primary">{problematicCount}</div>
+              <div className="text-2xl font-bold text-content-primary">{badgeProblematic}</div>
               <div className="text-xs text-content-muted">Проблемные</div>
             </div>
           </div>

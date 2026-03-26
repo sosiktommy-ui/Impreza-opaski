@@ -165,9 +165,20 @@ export default function ProblematicTransfers() {
         canResolve ? inventoryApi.getCompanyLossesSummary() : Promise.resolve({ data: null }),
       ]);
       
+      // DEBUG v9
+      console.log('=== ProblematicTransfers v9 ===');
+      console.log('transfersData:', transfersData);
+      console.log('transfersData type:', typeof transfersData);
+      console.log('transfersData.data:', transfersData?.data);
+      
       // Парсинг как в Acceptance.jsx (который работает)
       const payload = transfersData?.data || transfersData;
+      console.log('payload:', payload);
+      console.log('payload is array:', Array.isArray(payload));
+      
       const list = Array.isArray(payload) ? payload : (payload?.data || payload?.items || []);
+      console.log('list length:', list.length);
+      
       const meta = transfersData?.meta || payload?.meta || { totalPages: 1, page: p, total: list.length };
       
       setTransfers(list);
