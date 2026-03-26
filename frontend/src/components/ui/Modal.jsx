@@ -49,6 +49,7 @@ export default function Modal({ open, isOpen, onClose, title, children, wide = f
 // ─────────────────────────────────────────────────────────────────────────────
 export function TwoFactorModal({
   isOpen,
+  open,
   onClose,
   onConfirm,
   title = 'Подтверждение действия',
@@ -57,18 +58,21 @@ export function TwoFactorModal({
   confirmButtonText = 'Подтвердить',
   confirmButtonVariant = 'danger', // 'danger' | 'warning' | 'primary'
   isLoading = false,
+  loading = false,
 }) {
+  const visible = isOpen ?? open;
+  const isLoadingState = isLoading || loading;
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!visible) {
       setPassword('');
       setError('');
       setShowPassword(false);
     }
-  }, [isOpen]);
+  }, [visible]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -90,7 +94,7 @@ export function TwoFactorModal({
     primary: 'bg-brand-600 hover:bg-brand-700 focus:ring-brand-500',
   };
 
-  if (!isOpen) return null;
+  if (!visible) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center animate-fadeIn">
@@ -170,17 +174,17 @@ export function TwoFactorModal({
             <button
               type="button"
               onClick={onClose}
-              disabled={isLoading}
+              disabled={isLoadingState}
               className="flex-1 px-4 py-2.5 border border-edge rounded-[var(--radius-sm)] text-content-secondary hover:bg-surface-card-hover transition-colors font-medium"
             >
               Отмена
             </button>
             <button
               type="submit"
-              disabled={isLoading || !password.trim()}
+              disabled={isLoadingState || !password.trim()}
               className={`flex-1 px-4 py-2.5 rounded-[var(--radius-sm)] text-white font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-elevated disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${buttonColors[confirmButtonVariant]}`}
             >
-              {isLoading && <Loader2 size={16} className="animate-spin" />}
+              {isLoadingState && <Loader2 size={16} className="animate-spin" />}
               {confirmButtonText}
             </button>
           </div>

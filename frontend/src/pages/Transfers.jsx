@@ -115,8 +115,16 @@ export default function Transfers() {
     // Load sender balance
     setBalanceLoading(true);
     try {
-      const { data } = await inventoryApi.getMy();
-      const payload = data?.data || data;
+      // ADMIN and OFFICE get their balance from warehouse, not from inventory/my
+      let payload;
+      if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+        const { data } = await inventoryApi.getWarehouseBalance();
+        payload = data?.data || data;
+      } else {
+        const { data } = await inventoryApi.getMy();
+        payload = data?.data || data;
+      }
+      
       if (payload && typeof payload === 'object') {
         setSenderBalance({
           BLACK: payload.BLACK || payload.black || 0,

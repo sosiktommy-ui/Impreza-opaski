@@ -240,6 +240,7 @@ export default function ProblematicTransfers() {
 
   // Open resolution modal for a transfer
   const openResolveModal = (transfer) => {
+    console.log('openResolveModal called with transfer:', transfer?.id);
     setSelectedTransfer(transfer);
     setSelectedResolution(null);
     setResolveError('');
@@ -249,6 +250,7 @@ export default function ProblematicTransfers() {
       initValues[r.itemType] = r.receivedQuantity || 0;
     });
     setCompromiseValues(initValues);
+    console.log('selectedTransfer set, modal should open now');
   };
 
   // Select a resolution type and show 2FA
@@ -543,7 +545,7 @@ export default function ProblematicTransfers() {
         open={!!selectedTransfer && !show2FA}
         onClose={() => { setSelectedTransfer(null); setSelectedResolution(null); }}
         title="Разрешение расхождения"
-        size="lg"
+        wide
       >
         {selectedTransfer && (
           <div className="space-y-6">
