@@ -154,43 +154,81 @@ export default function ProblematicTransfers() {
   // Search
   const [search, setSearch] = useState('');
 
+  // Error state for displaying fetch errors
+  const [fetchError, setFetchError] = useState(null);
+
   const fetchData = async (p = 1) => {
     setLoading(true);
+    setFetchError(null);
     try {
       const params = { page: p, limit: 20 };
       
-      // DEBUG v11 - добавляем alert для диагностики в браузере
+      console.log('=== ProblematicTransfers v12 FETCH START ===');
       const transfersRes = await transfersApi.getProblematic(params);
-      const lossRes = canResolve ? await inventoryApi.getCompanyLossesSummary() : { data: null };
+      console.log('v12 raw response:', transfersRes);
       
-      // DEBUG v11 - показываем что получили
-      const debugInfo = `v11 DEBUG:
-transfersRes type: ${typeof transfersRes}
-transfersRes.data type: ${typeof transfersRes?.data}
-transfersRes.data keys: ${transfersRes?.data ? Object.keys(transfersRes.data).join(', ') : 'null'}
-data.data is array: ${Array.isArray(transfersRes?.data?.data)}
-data.data length: ${transfersRes?.data?.data?.length || 0}`;
-      alert(debugInfo);
+      // Axios interceptor unwraps: { success: true, data: X } -> res.data = X
+      // Backend returns: { data: [...], meta: {...} }
+      // So transfersRes.data = { data: [...], meta: {...} }
+      const responseData = transfersRes?.data;
+      console.log('v12 responseData:', responseData);
       
-      // Данные уже развернуты axios interceptor: { data: [...], meta: {...} }
-      const transfersData = transfersRes.data;
-      const list = transfersData?.data || [];
-      const meta = transfersData?.meta || { totalPages: 1, page: p, total: list.length };
+      // Try multiple parsing strategies
+      let list = [];
+      let meta = { totalPages: 1, page: p, total: 0 };
       
-      console.log('=== ProblematicTransfers v11 ===');
-      console.log('list:', list);
-      console.log('list.length:', list.length);
+      if (Array.isArray(responseData)) {
+        // Response is directly an array
+        list = responseData;
+        meta.total = list.length;
+        console.log('v12: responseData is array, length:', list.length);
+      } else if (responseData && Array.isArray(responseData.data)) {
+        // Response is { data: [...], meta: {...} }
+        list = responseData.data;
+        meta = responseData.meta || meta;
+        console.log('v12: responseData.data is array, length:', list.length);
+      } else if (responseData && typeof responseData === 'object') {
+        // Maybe responseData itself is the array wrapped differently
+        const keys = Object.keys(responseData);
+        console.log('v12: responseData is object with keys:', keys);
+        // Try to find an array in the response
+        for (const key of keys) {
+          if (Array.isArray(responseData[key])) {
+            list = responseData[key];
+            console.log(`v12: found array at key '${key}', length:`, list.length);
+            break;
+          }
+        }
+        if (responseData.meta) meta = responseData.meta;
+      }
+      
+      console.log('v12 FINAL list length:', list.length);
+      console.log('v12 FINAL meta:', meta);
+      
+      if (list.length === 0 && meta.total > 0) {
+        console.warn('v12 WARNING: meta.total > 0 but list is empty!');
+      }
       
       setTransfers(list);
       setTotalPages(meta.totalPages || 1);
       setPage(meta.page || p);
       
-      if (lossRes?.data) {
-        const lossData = lossRes.data?.data || lossRes.data;
-        setLossSummary(lossData);
+      // Fetch company losses if user can resolve
+      if (canResolve) {
+        try {
+          const lossRes = await inventoryApi.getCompanyLossesSummary();
+          const lossData = lossRes?.data?.data || lossRes?.data;
+          setLossSummary(lossData);
+        } catch (lossErr) {
+          console.error('Failed to fetch company losses:', lossErr);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch problematic transfers', err);
+      console.error('=== ProblematicTransfers v12 FETCH ERROR ===', err);
+      console.error('Error response:', err.response);
+      const errorMessage = err.response?.data?.message || err.message || 'Ошибка загрузки';
+      setFetchError(errorMessage);
+      setTransfers([]);
     } finally {
       setLoading(false);
     }

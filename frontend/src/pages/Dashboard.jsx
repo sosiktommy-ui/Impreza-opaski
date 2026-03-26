@@ -167,7 +167,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Привет, {user.displayName}! <span className="text-xs text-white/40">v11</span>
+              Привет, {user.displayName}! <span className="text-xs text-white/40">v12</span>
             </h1>
             <p className="text-white/60 mt-1 text-sm flex items-center gap-1.5">
               {(user.role === 'ADMIN' || user.role === 'OFFICE') ? <Globe size={14} /> : <MapPin size={14} />}

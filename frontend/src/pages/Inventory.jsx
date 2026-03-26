@@ -357,19 +357,19 @@ export default function Inventory() {
     }
   };
 
+  // Success message state
+  const [createSuccess, setCreateSuccess] = useState('');
+
   const handleCreateBracelets = async (e) => {
     e.preventDefault();
     setCreateError('');
+    setCreateSuccess('');
     const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
     
-    // DEBUG v11 - показываем что происходит
-    alert(`v11 DEBUG handleCreateBracelets:
-user.role: ${user.role}
-officeId: ${officeId}
-black: ${createForm.black}
-white: ${createForm.white}
-red: ${createForm.red}
-blue: ${createForm.blue}`);
+    console.log('=== handleCreateBracelets v12 ===');
+    console.log('user.role:', user.role);
+    console.log('officeId:', officeId);
+    console.log('createForm:', createForm);
     
     // ADMIN doesn't need officeId, OFFICE does
     if (user.role === 'OFFICE' && !officeId) {
@@ -392,40 +392,52 @@ blue: ${createForm.blue}`);
 
   // Confirm creation after 2FA
   const handleCreate2FAConfirm = async (password) => {
-    if (!pendingCreateData) return;
+    if (!pendingCreateData) {
+      console.error('v12: pendingCreateData is null!');
+      throw new Error('Нет данных для создания');
+    }
     
-    console.log('=== CREATE BRACELETS DEBUG ===');
-    console.log('pendingCreateData:', pendingCreateData);
+    console.log('=== CREATE BRACELETS v12 START ===');
+    console.log('pendingCreateData:', JSON.stringify(pendingCreateData));
     
-    // Verify password first - if request succeeds, password is valid
-    // Backend throws 401 if password is wrong
+    // Verify password first
     try {
-      console.log('Verifying password...');
-      await authApi.verifyPassword(password);
-      console.log('Password verified successfully');
+      console.log('v12: Verifying password...');
+      const verifyRes = await authApi.verifyPassword(password);
+      console.log('v12: Password verified:', verifyRes);
     } catch (verifyErr) {
-      // Password verification failed
-      console.error('Password verification failed:', verifyErr);
-      throw new Error(verifyErr.response?.data?.message || 'Неверный пароль');
+      console.error('v12: Password verification failed:', verifyErr);
+      console.error('v12: verifyErr.response:', verifyErr.response);
+      const msg = verifyErr.response?.data?.message || verifyErr.message || 'Неверный пароль';
+      throw new Error(msg);
     }
     
     setCreating(true);
     try {
-      console.log('Creating bracelets...');
+      console.log('v12: Creating bracelets with data:', pendingCreateData);
       const createRes = await inventoryApi.createBracelets(pendingCreateData);
-      console.log('Create response:', createRes);
+      console.log('v12: Create response:', createRes);
+      
+      // Calculate total for success message
+      const total = (pendingCreateData.black || 0) + (pendingCreateData.white || 0) + 
+                    (pendingCreateData.red || 0) + (pendingCreateData.blue || 0);
       
       setShow2FA(false);
       setPendingCreateData(null);
       setCreateForm({ black: '', white: '', red: '', blue: '', notes: '' });
+      setCreateSuccess(`Успешно создано ${total} браслетов!`);
       
-      console.log('Reloading warehouse data...');
+      // Clear success message after 5 seconds
+      setTimeout(() => setCreateSuccess(''), 5000);
+      
+      console.log('v12: Reloading warehouse data...');
       await loadWarehouseData();
-      console.log('Warehouse data reloaded');
+      console.log('v12: Warehouse data reloaded successfully');
     } catch (err) {
-      console.error('Create bracelets error:', err);
-      console.error('Error response:', err.response);
-      throw new Error(err.response?.data?.message || 'Ошибка создания браслетов');
+      console.error('v12: Create bracelets error:', err);
+      console.error('v12: err.response:', err.response);
+      const msg = err.response?.data?.message || err.message || 'Ошибка создания браслетов';
+      throw new Error(msg);
     } finally {
       setCreating(false);
     }
@@ -519,6 +531,14 @@ blue: ${createForm.blue}`);
               <Plus size={18} /> Создать браслеты
             </Button>
           </div>
+
+          {/* Success message */}
+          {createSuccess && (
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-[var(--radius-md)] text-green-600 dark:text-green-400 text-sm flex items-center gap-2">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
+              {createSuccess}
+            </div>
+          )}
 
           {/* Balance Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
