@@ -331,15 +331,24 @@ export default function Inventory() {
   // WAREHOUSE (Мой баланс) FUNCTIONS
   // ─────────────────────────────────────────────────────────────────────
   const loadWarehouseData = async () => {
+    console.log('=== LOAD WAREHOUSE DATA ===');
     setWarehouseLoading(true);
     try {
       const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
+      console.log('officeId for query:', officeId);
+      
       const [balanceRes, historyRes] = await Promise.all([
         inventoryApi.getWarehouseBalance(officeId || undefined),
         inventoryApi.getWarehouseCreationHistory({ officeId: officeId || undefined, take: 50 }),
       ]);
+      
+      console.log('balanceRes:', balanceRes);
+      console.log('balanceRes.data:', balanceRes.data);
+      console.log('historyRes:', historyRes);
+      
       setWarehouseBalance(balanceRes.data);
       const histList = historyRes.data?.data || historyRes.data;
+      console.log('histList:', histList);
       setWarehouseHistory(Array.isArray(histList) ? histList : []);
     } catch (err) {
       console.error('Failed to load warehouse data', err);

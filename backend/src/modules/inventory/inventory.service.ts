@@ -753,12 +753,21 @@ export class InventoryService {
 
     const inventory = await this.prisma.inventory.findMany({ where });
 
-    const balance: Record<string, number> = {};
-    for (const itemType of Object.values(ItemType)) {
-      const entry = inventory.find((i) => i.itemType === itemType);
-      balance[itemType] = entry?.quantity ?? 0;
+    // Return lowercase keys to match frontend expectations
+    const balance = {
+      black: 0,
+      white: 0,
+      red: 0,
+      blue: 0,
+    };
+    for (const entry of inventory) {
+      const key = entry.itemType.toLowerCase() as keyof typeof balance;
+      if (key in balance) {
+        balance[key] = entry.quantity;
+      }
     }
 
+    this.logger.log(`getWarehouseBalance: ${entityType}${officeId ? ':' + officeId : ''} => ${JSON.stringify(balance)}`);
     return balance;
   }
 
