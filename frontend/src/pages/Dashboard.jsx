@@ -392,7 +392,7 @@ export default function Dashboard() {
               </div>
               {action.badge > 0 && (
                 <span className="absolute top-2 right-2 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-2xs font-bold px-1.5 animate-pulse">
-                  {action.badge > 99 ? '99+' : action.badge}
+                  {action.badge}
                 </span>
               )}
             </button>

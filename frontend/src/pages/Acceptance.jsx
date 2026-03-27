@@ -31,9 +31,9 @@ export default function Acceptance() {
   // Accept confirmation modal
   const [acceptTarget, setAcceptTarget] = useState(null);
 
-  // Disagree modal state
+  // Disagree modal state (simplified: single total number)
   const [disagreeTarget, setDisagreeTarget] = useState(null);
-  const [disagreeCounts, setDisagreeCounts] = useState({});
+  const [receivedTotal, setReceivedTotal] = useState('');
   const [disagreeReason, setDisagreeReason] = useState('');
 
   // Detail modal
@@ -55,24 +55,7 @@ export default function Acceptance() {
     return false;
   };
 
-  // Helper to check if current user is the sender of a transfer
-  const isUserSender = (transfer) => {
-    if (user.role === 'ADMIN' && transfer.senderType === 'ADMIN') {
-      return true;
-    }
-    if (user.role === 'OFFICE' && transfer.senderType === 'OFFICE') {
-      return true;
-    }
-    if (user.role === 'COUNTRY' && transfer.senderType === 'COUNTRY') {
-      return transfer.senderCountryId === user.countryId;
-    }
-    if (user.role === 'CITY' && transfer.senderType === 'CITY') {
-      return transfer.senderCityId === user.cityId;
-    }
-    return false;
-  };
-
-  // Cancel handler for senders
+  // Cancel handler for ADMIN only
   const handleCancel = async (transfer) => {
     if (!window.confirm('Вы уверены, что хотите отменить эту отправку?')) return;
     setProcessing(true);
@@ -184,16 +167,12 @@ export default function Acceptance() {
     }
   };
 
-  // ── DISAGREE: open modal to count what was actually received ──
+  // ── DISAGREE: open modal to enter total received count ──
   const openDisagree = (transfer) => {
     setDisagreeTarget(transfer);
     setDisagreeReason('');
+    setReceivedTotal('');
     setError('');
-    const counts = {};
-    transfer.items?.forEach((item) => {
-      counts[item.itemType] = '';
-    });
-    setDisagreeCounts(counts);
   };
 
   const handleDisagreeSubmit = async () => {
@@ -202,37 +181,50 @@ export default function Acceptance() {
     setError('');
 
     try {
-      const counts = {};
-      let totalCounted = 0;
-      ITEM_TYPES.forEach((t) => {
-        if (disagreeCounts[t] !== undefined) {
-          const val = parseInt(disagreeCounts[t]) || 0;
-          counts[t] = val;
-          totalCounted += val;
-        }
-      });
+      const totalReceived = parseInt(receivedTotal) || 0;
+      const totalSent = getTotalQuantity(disagreeTarget);
 
-      if (totalCounted === 0) {
-        // All zeros — will be handled by backend as CANCELLED
-        const items = ITEM_TYPES
-          .filter((t) => disagreeCounts[t] !== undefined)
-          .map((t) => ({
-            itemType: t,
-            receivedQuantity: 0,
-          }));
-        await transfersApi.accept(disagreeTarget.id, items);
-      } else {
-        // Has some counted — send through accept which detects discrepancy
-        const items = ITEM_TYPES
-          .filter((t) => disagreeCounts[t] !== undefined)
-          .map((t) => ({
-            itemType: t,
-            receivedQuantity: counts[t],
-          }));
-        await transfersApi.accept(disagreeTarget.id, items);
+      if (totalReceived === totalSent) {
+        setError('Количество совпадает с отправленным. Используйте кнопку "Принять".');
+        setProcessing(false);
+        return;
       }
 
+      // Distribute received total proportionally across colors
+      const items = [];
+      const sentItems = disagreeTarget.items || [];
+      
+      if (totalReceived === 0) {
+        // All zeros — will be handled by backend as CANCELLED
+        for (const item of sentItems) {
+          items.push({ itemType: item.itemType, receivedQuantity: 0 });
+        }
+      } else {
+        // Distribute proportionally based on sent quantities
+        let remaining = totalReceived;
+        const sortedItems = [...sentItems].sort((a, b) => b.quantity - a.quantity);
+        
+        for (let i = 0; i < sortedItems.length; i++) {
+          const item = sortedItems[i];
+          const proportion = item.quantity / totalSent;
+          let receivedQty;
+          
+          if (i === sortedItems.length - 1) {
+            // Last item gets the remainder to avoid rounding issues
+            receivedQty = Math.max(0, remaining);
+          } else {
+            receivedQty = Math.round(totalReceived * proportion);
+            receivedQty = Math.min(receivedQty, remaining);
+          }
+          
+          items.push({ itemType: item.itemType, receivedQuantity: receivedQty });
+          remaining -= receivedQty;
+        }
+      }
+
+      await transfersApi.accept(disagreeTarget.id, items);
       setDisagreeTarget(null);
+      setReceivedTotal('');
       setDisagreeReason('');
       await loadTransfers();
       // Update sidebar badges immediately
@@ -246,21 +238,13 @@ export default function Acceptance() {
 
   const getDisagreePreview = () => {
     if (!disagreeTarget) return null;
-    let totalCounted = 0;
-    let hasDiscrepancy = false;
+    const totalReceived = parseInt(receivedTotal) || 0;
+    const totalSent = getTotalQuantity(disagreeTarget);
 
-    ITEM_TYPES.forEach((t) => {
-      if (disagreeCounts[t] !== undefined) {
-        const counted = parseInt(disagreeCounts[t]) || 0;
-        totalCounted += counted;
-        const sent = (disagreeTarget.items || []).find((i) => i.itemType === t)?.quantity || 0;
-        if (counted !== sent) hasDiscrepancy = true;
-      }
-    });
-
-    if (totalCounted === 0) return { type: 'cancelled', label: 'Ничего не получено — отправка будет отменена' };
-    if (hasDiscrepancy) return { type: 'discrepancy', label: 'Расхождение — количество не совпадает с отправленным' };
-    return { type: 'match', label: 'Количество совпадает — лучше нажмите «Принять»' };
+    if (totalReceived === 0 && receivedTotal !== '') return { type: 'cancelled', label: 'Ничего не получено — отправка будет отменена' };
+    if (totalReceived !== totalSent && receivedTotal !== '') return { type: 'discrepancy', label: `Расхождение: отправлено ${totalSent}, получено ${totalReceived}` };
+    if (totalReceived === totalSent && receivedTotal !== '') return { type: 'match', label: 'Количество совпадает — лучше нажмите «Принять»' };
+    return null;
   };
 
   if (loading && transfers.length === 0) {
@@ -328,12 +312,12 @@ export default function Acceptance() {
               
               // Role-based button visibility
               const userIsReceiver = isUserReceiver(t);
-              const userIsSender = isUserSender(t);
               const userIsAdmin = user.role === 'ADMIN';
               // ADMIN can do everything, otherwise show buttons based on role
               const canAccept = userIsReceiver || userIsAdmin;
               const canReject = userIsReceiver || userIsAdmin;
-              const canCancel = userIsSender || userIsAdmin;
+              // Cancel button is ADMIN-only
+              const canCancel = userIsAdmin;
 
               return (
                 <Card key={t.id} className={getTransferCardClass(t)}>
@@ -579,43 +563,48 @@ export default function Acceptance() {
         )}
       </Modal>
 
-      {/* ── Disagree / Count Modal ── */}
+      {/* ── Disagree / Count Modal (simplified: one total number) ── */}
       <Modal
         open={!!disagreeTarget}
         onClose={() => setDisagreeTarget(null)}
-        title="Не согласен с отправкой"
+        title="Сколько браслетов вы насчитали?"
       >
         {disagreeTarget && (
           <div className="space-y-4">
             <div className="bg-orange-50 border border-orange-200 rounded-[var(--radius-sm)] p-3">
               <p className="text-sm text-orange-800 flex items-center gap-2">
                 <AlertTriangle size={16} />
-                Укажите сколько браслетов вы фактически насчитали.
-              </p>
-              <p className="text-xs text-orange-600 mt-1">
-                Если ничего не получено — оставьте всё по 0.
+                Укажите общее количество браслетов, которое вы фактически получили.
               </p>
             </div>
 
-            <div className="space-y-3">
-              {disagreeTarget.items?.map((item) => (
-                <div key={item.itemType} className="flex items-center justify-between gap-4">
-                  <div className="text-sm flex items-center gap-2">
-                    <BraceletBadge type={item.itemType} count="?" size="sm" />
-                    <span className="font-medium">{ITEM_LABELS[item.itemType]}</span>
-                  </div>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={disagreeCounts[item.itemType] ?? ''}
-                    onChange={(e) =>
-                      setDisagreeCounts((p) => ({ ...p, [item.itemType]: e.target.value }))
-                    }
-                    placeholder="0"
-                    className="w-24 text-center"
-                  />
-                </div>
-              ))}
+            {/* Show what was sent */}
+            <div className="bg-gray-50 rounded-[var(--radius-sm)] p-3">
+              <p className="text-xs text-content-muted mb-2">Отправлено:</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(disagreeTarget.items || []).map((item) => (
+                  <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity} />
+                ))}
+                <span className="text-sm font-bold text-gray-700 ml-2">
+                  Итого: {getTotalQuantity(disagreeTarget)} шт
+                </span>
+              </div>
+            </div>
+
+            {/* Single input for total received */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-content-secondary">
+                Сколько браслетов вы насчитали (общее число)?
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={receivedTotal}
+                onChange={(e) => setReceivedTotal(e.target.value)}
+                placeholder="0"
+                className="text-center text-lg font-bold"
+                autoFocus
+              />
             </div>
 
             {(() => {
@@ -633,31 +622,33 @@ export default function Acceptance() {
               );
             })()}
 
-            <Input
-              label="Причина / комментарий"
-              value={disagreeReason}
-              onChange={(e) => setDisagreeReason(e.target.value)}
-              placeholder="Опишите проблему..."
-            />
-
             {error && (
               <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
             )}
 
-            <Button
-              onClick={handleDisagreeSubmit}
-              loading={processing}
-              className="w-full"
-              variant={getDisagreePreview()?.type === 'match' ? 'primary' : 'danger'}
-            >
-              {getDisagreePreview()?.type === 'cancelled' ? (
-                <><XCircle size={18} /> Отменить отправку</>
-              ) : getDisagreePreview()?.type === 'discrepancy' ? (
-                <><AlertTriangle size={18} /> Отправить расхождение</>
-              ) : (
-                <><CheckCircle size={18} /> Подтвердить</>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleDisagreeSubmit}
+                loading={processing}
+                className="flex-1"
+                variant={getDisagreePreview()?.type === 'match' ? 'outline' : 'danger'}
+                disabled={receivedTotal === ''}
+              >
+                {getDisagreePreview()?.type === 'cancelled' ? (
+                  <><XCircle size={18} /> Ничего не получил</>
+                ) : getDisagreePreview()?.type === 'discrepancy' ? (
+                  <><AlertTriangle size={18} /> Отправить расхождение</>
+                ) : (
+                  <><CheckCircle size={18} /> Подтвердить</>
+                )}
+              </Button>
+              <Button
+                onClick={() => setDisagreeTarget(null)}
+                variant="ghost"
+              >
+                Отмена
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

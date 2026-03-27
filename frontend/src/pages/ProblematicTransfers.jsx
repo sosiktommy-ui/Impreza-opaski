@@ -276,10 +276,10 @@ export default function ProblematicTransfers() {
     setSelectedTransfer(transfer);
     setSelectedResolution(null);
     setResolveError('');
-    // Initialize compromise values with received quantities
+    // Initialize compromise values with received quantities (lowercase keys for DTO)
     const initValues = {};
     transfer.acceptanceRecords?.forEach((r) => {
-      initValues[r.itemType] = r.receivedQuantity || 0;
+      initValues[r.itemType.toLowerCase()] = r.receivedQuantity || 0;
     });
     setCompromiseValues(initValues);
     console.log('selectedTransfer set, modal should open now');
@@ -685,10 +685,10 @@ export default function ProblematicTransfers() {
                             type="number"
                             min="0"
                             max={Math.max(r.sentQuantity, r.receivedQuantity)}
-                            value={compromiseValues[r.itemType] || ''}
+                            value={compromiseValues[r.itemType.toLowerCase()] || ''}
                             onChange={(e) => setCompromiseValues({
                               ...compromiseValues,
-                              [r.itemType]: parseInt(e.target.value) || 0
+                              [r.itemType.toLowerCase()]: parseInt(e.target.value) || 0
                             })}
                             className="w-20 text-center"
                           />

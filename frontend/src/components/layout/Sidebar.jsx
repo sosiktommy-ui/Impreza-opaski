@@ -114,7 +114,7 @@ export default function Sidebar() {
                 {!collapsed && <span className="flex-1 truncate">{displayLabel}</span>}
                 {!collapsed && badge && (
                   <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full ${badgeColor} text-white text-2xs font-bold px-1.5 animate-pulse`}>
-                    {badge > 99 ? '99+' : badge}
+                    {badge}
                   </span>
                 )}
                 {collapsed && badge && (

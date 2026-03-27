@@ -164,12 +164,13 @@ export default function Transfers() {
   const loadOffices = async () => {
     setOfficesLoading(true);
     try {
-      const res = await usersApi.getOffices();
-      const payload = res.data?.data ?? res.data;
-      const list = Array.isArray(payload) ? payload : [];
+      const { data } = await usersApi.getOffices();
+      // Handle both wrapped { data: [...] } and direct array responses
+      const list = Array.isArray(data) ? data : (data?.data || []);
       setOffices(list);
     } catch (err) {
       console.error('Failed to load offices:', err);
+      setOffices([]);
     } finally {
       setOfficesLoading(false);
     }

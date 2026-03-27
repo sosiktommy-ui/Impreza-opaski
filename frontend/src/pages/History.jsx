@@ -132,8 +132,18 @@ export default function History() {
       items.push(...expenses.map((e) => ({ ...e, _type: 'expense', _date: new Date(e.createdAt) })));
     }
     if (tab === 'problematic') {
+      // Show both unresolved (DISCREPANCY_FOUND) and resolved problematic transfers
+      // Resolved = ACCEPTED status but had discrepancy in acceptanceRecords
+      const isProblematic = (t) => {
+        if (t.status === 'DISCREPANCY_FOUND') return true;
+        // Check if ACCEPTED transfer had discrepancy (resolved)
+        if (t.status === 'ACCEPTED' && t.acceptanceRecords?.length > 0) {
+          return t.acceptanceRecords.some((r) => r.sentQuantity !== r.receivedQuantity);
+        }
+        return false;
+      };
       items.push(...transfers
-        .filter((t) => t.status === 'DISCREPANCY_FOUND')
+        .filter(isProblematic)
         .map((t) => ({ ...t, _type: 'transfer', _date: new Date(t.createdAt) })));
     }
     
