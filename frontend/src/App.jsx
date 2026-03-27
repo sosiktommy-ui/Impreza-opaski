@@ -290,7 +290,7 @@ function PendingTransfers() {
             const totalQty = getTotalQuantity(transfer);
             const canAccept = isAdmin || isReceiver(transfer);
             const canReject = isAdmin || isReceiver(transfer);
-            const canCancel = isAdmin || isSender(transfer);
+            const canCancel = isAdmin; // Only ADMIN can cancel
             return (
             <div
               key={transfer.id}

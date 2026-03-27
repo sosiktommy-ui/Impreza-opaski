@@ -31,9 +31,9 @@ export default function Acceptance() {
   // Accept confirmation modal
   const [acceptTarget, setAcceptTarget] = useState(null);
 
-  // Disagree modal state (simplified: single total number)
+  // Disagree modal state (per-color input)
   const [disagreeTarget, setDisagreeTarget] = useState(null);
-  const [receivedTotal, setReceivedTotal] = useState('');
+  const [receivedItems, setReceivedItems] = useState({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
   const [disagreeReason, setDisagreeReason] = useState('');
 
   // Detail modal
@@ -181,50 +181,34 @@ export default function Acceptance() {
     setError('');
 
     try {
-      const totalReceived = parseInt(receivedTotal) || 0;
+      // Build items array from per-color inputs
+      const items = [];
+      let totalReceived = 0;
+      
+      for (const item of (disagreeTarget.items || [])) {
+        const receivedQty = parseInt(receivedItems[item.itemType]) || 0;
+        items.push({ itemType: item.itemType, receivedQuantity: receivedQty });
+        totalReceived += receivedQty;
+      }
+
       const totalSent = getTotalQuantity(disagreeTarget);
 
       if (totalReceived === totalSent) {
-        setError('Количество совпадает с отправленным. Используйте кнопку "Принять".');
-        setProcessing(false);
-        return;
-      }
-
-      // Distribute received total proportionally across colors
-      const items = [];
-      const sentItems = disagreeTarget.items || [];
-      
-      if (totalReceived === 0) {
-        // All zeros — will be handled by backend as CANCELLED
-        for (const item of sentItems) {
-          items.push({ itemType: item.itemType, receivedQuantity: 0 });
-        }
-      } else {
-        // Distribute proportionally based on sent quantities
-        let remaining = totalReceived;
-        const sortedItems = [...sentItems].sort((a, b) => b.quantity - a.quantity);
-        
-        for (let i = 0; i < sortedItems.length; i++) {
-          const item = sortedItems[i];
-          const proportion = item.quantity / totalSent;
-          let receivedQty;
-          
-          if (i === sortedItems.length - 1) {
-            // Last item gets the remainder to avoid rounding issues
-            receivedQty = Math.max(0, remaining);
-          } else {
-            receivedQty = Math.round(totalReceived * proportion);
-            receivedQty = Math.min(receivedQty, remaining);
-          }
-          
-          items.push({ itemType: item.itemType, receivedQuantity: receivedQty });
-          remaining -= receivedQty;
+        // Check if each color matches too
+        const allMatch = (disagreeTarget.items || []).every(item => {
+          const received = parseInt(receivedItems[item.itemType]) || 0;
+          return received === item.quantity;
+        });
+        if (allMatch) {
+          setError('Количество совпадает с отправленным. Используйте кнопку "Принять".');
+          setProcessing(false);
+          return;
         }
       }
 
       await transfersApi.accept(disagreeTarget.id, items);
       setDisagreeTarget(null);
-      setReceivedTotal('');
+      setReceivedItems({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
       setDisagreeReason('');
       await loadTransfers();
       // Update sidebar badges immediately
@@ -238,12 +222,20 @@ export default function Acceptance() {
 
   const getDisagreePreview = () => {
     if (!disagreeTarget) return null;
-    const totalReceived = parseInt(receivedTotal) || 0;
+    
+    let totalReceived = 0;
+    for (const item of (disagreeTarget.items || [])) {
+      totalReceived += parseInt(receivedItems[item.itemType]) || 0;
+    }
     const totalSent = getTotalQuantity(disagreeTarget);
+    
+    // Check if any value was entered
+    const hasAnyInput = Object.values(receivedItems).some(v => v !== '');
+    if (!hasAnyInput) return null;
 
-    if (totalReceived === 0 && receivedTotal !== '') return { type: 'cancelled', label: 'Ничего не получено — отправка будет отменена' };
-    if (totalReceived !== totalSent && receivedTotal !== '') return { type: 'discrepancy', label: `Расхождение: отправлено ${totalSent}, получено ${totalReceived}` };
-    if (totalReceived === totalSent && receivedTotal !== '') return { type: 'match', label: 'Количество совпадает — лучше нажмите «Принять»' };
+    if (totalReceived === 0) return { type: 'cancelled', label: 'Ничего не получено — отправка будет отменена' };
+    if (totalReceived !== totalSent) return { type: 'discrepancy', label: `Расхождение: отправлено ${totalSent}, получено ${totalReceived}` };
+    if (totalReceived === totalSent) return { type: 'match', label: 'Количество совпадает — лучше нажмите «Принять»' };
     return null;
   };
 
@@ -563,7 +555,7 @@ export default function Acceptance() {
         )}
       </Modal>
 
-      {/* ── Disagree / Count Modal (simplified: one total number) ── */}
+      {/* ── Disagree / Count Modal (per-color input) ── */}
       <Modal
         open={!!disagreeTarget}
         onClose={() => setDisagreeTarget(null)}
@@ -574,37 +566,41 @@ export default function Acceptance() {
             <div className="bg-orange-50 border border-orange-200 rounded-[var(--radius-sm)] p-3">
               <p className="text-sm text-orange-800 flex items-center gap-2">
                 <AlertTriangle size={16} />
-                Укажите общее количество браслетов, которое вы фактически получили.
+                Укажите количество браслетов каждого цвета, которое вы фактически получили.
               </p>
             </div>
 
-            {/* Show what was sent */}
-            <div className="bg-gray-50 rounded-[var(--radius-sm)] p-3">
-              <p className="text-xs text-content-muted mb-2">Отправлено:</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {(disagreeTarget.items || []).map((item) => (
-                  <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity} />
-                ))}
-                <span className="text-sm font-bold text-gray-700 ml-2">
-                  Итого: {getTotalQuantity(disagreeTarget)} шт
-                </span>
-              </div>
+            {/* Per-color inputs */}
+            <div className="space-y-3">
+              {(disagreeTarget.items || []).map((item) => (
+                <div key={item.itemType} className="flex items-center gap-3">
+                  <BraceletBadge type={item.itemType} count={item.quantity} />
+                  <span className="text-xs text-content-muted">→</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={receivedItems[item.itemType]}
+                    onChange={(e) => setReceivedItems(prev => ({ ...prev, [item.itemType]: e.target.value }))}
+                    placeholder={`${item.quantity}`}
+                    className="w-24 text-center"
+                  />
+                  <span className="text-xs text-content-muted">{ITEM_LABELS[item.itemType]}</span>
+                </div>
+              ))}
             </div>
 
-            {/* Single input for total received */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-content-secondary">
-                Сколько браслетов вы насчитали (общее число)?
-              </label>
-              <Input
-                type="number"
-                min="0"
-                value={receivedTotal}
-                onChange={(e) => setReceivedTotal(e.target.value)}
-                placeholder="0"
-                className="text-center text-lg font-bold"
-                autoFocus
-              />
+            {/* Summary */}
+            <div className="bg-gray-50 rounded-[var(--radius-sm)] p-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-content-muted">Отправлено:</span>
+                <span className="font-medium">{getTotalQuantity(disagreeTarget)} шт</span>
+              </div>
+              <div className="flex justify-between text-sm mt-1">
+                <span className="text-content-muted">Получено:</span>
+                <span className="font-medium">
+                  {Object.entries(receivedItems).reduce((sum, [_, v]) => sum + (parseInt(v) || 0), 0)} шт
+                </span>
+              </div>
             </div>
 
             {(() => {
@@ -632,7 +628,7 @@ export default function Acceptance() {
                 loading={processing}
                 className="flex-1"
                 variant={getDisagreePreview()?.type === 'match' ? 'outline' : 'danger'}
-                disabled={receivedTotal === ''}
+                disabled={!Object.values(receivedItems).some(v => v !== '')}
               >
                 {getDisagreePreview()?.type === 'cancelled' ? (
                   <><XCircle size={18} /> Ничего не получил</>

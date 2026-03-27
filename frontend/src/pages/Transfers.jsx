@@ -148,7 +148,7 @@ export default function Transfers() {
       } catch (err) {
         console.error(err);
       }
-      if (user.role === 'ADMIN') {
+      if (user.role === 'ADMIN' || user.role === 'OFFICE') {
         loadOffices();
       }
     } else if (user.role === 'COUNTRY') {

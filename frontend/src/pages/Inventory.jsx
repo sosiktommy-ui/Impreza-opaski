@@ -608,7 +608,7 @@ export default function Inventory() {
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-bold text-green-600">+{item.totalAmount?.toLocaleString()}</div>
-                        <BraceletRow black={item.black} white={item.white} red={item.red} blue={item.blue} size="sm" />
+                        <BraceletRow items={{ BLACK: item.black, WHITE: item.white, RED: item.red, BLUE: item.blue }} size="sm" />
                       </div>
                     </div>
                   </div>

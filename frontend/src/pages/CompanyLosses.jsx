@@ -333,7 +333,7 @@ export default function CompanyLosses() {
                       <div className="text-xl font-bold text-red-600">
                         −{loss.totalAmount}
                       </div>
-                      <BraceletRow black={loss.black} white={loss.white} red={loss.red} blue={loss.blue} size="sm" />
+                      <BraceletRow items={{ BLACK: loss.black, WHITE: loss.white, RED: loss.red, BLUE: loss.blue }} size="sm" />
                     </div>
                   </div>
                 </div>
