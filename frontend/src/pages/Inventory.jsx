@@ -594,12 +594,12 @@ export default function Inventory() {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-medium text-content-primary">
-                          {item.office?.name || 'Офис'}
+                          {item.createdByUser?.displayName || item.createdByUser?.username || item.office?.name || 'Неизвестно'}
                         </div>
                         <div className="text-xs text-content-muted mt-1">
                           {new Date(item.createdAt).toLocaleString('ru-RU')}
-                          {item.createdByUser && (
-                            <span className="ml-2">• {item.createdByUser.displayName || item.createdByUser.username}</span>
+                          {item.office && (
+                            <span className="ml-2">• {item.office.name}</span>
                           )}
                         </div>
                         {item.notes && (

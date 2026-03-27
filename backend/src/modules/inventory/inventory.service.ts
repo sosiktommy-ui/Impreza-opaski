@@ -738,9 +738,25 @@ export class InventoryService {
         (this.prisma as any).warehouseCreation.count({ where }),
       ]);
 
+      // Fetch creator user info for each creation
+      const userIds = [...new Set(creations.map((c: any) => c.createdBy).filter(Boolean))] as string[];
+      const users = userIds.length > 0 
+        ? await this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, username: true, displayName: true, role: true },
+          })
+        : [];
+      const userMap = new Map(users.map(u => [u.id, u]));
+
+      // Attach user info to each creation
+      const creationsWithUser = creations.map((c: any) => ({
+        ...c,
+        createdByUser: userMap.get(c.createdBy) || null,
+      }));
+
       this.logger.log(`getWarehouseCreationHistory: found ${total} records`);
       return {
-        data: creations,
+        data: creationsWithUser,
         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
       };
     } catch (error: any) {

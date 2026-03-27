@@ -23,7 +23,7 @@ import { usersApi } from './api/users';
 import { inventoryApi } from './api/inventory';
 import {
   Clock, AlertTriangle, Package, TrendingDown, TrendingUp,
-  ArrowRight, Calendar, Filter, RefreshCw, Download,
+  ArrowRight, ArrowRightLeft, Calendar, Filter, RefreshCw, Download,
   BarChart3, PieChart, Activity, Users as UsersIcon, MapPin, Search,
   Check, X, Ban, Loader2
 } from 'lucide-react';
