@@ -150,6 +150,31 @@ export class UsersService {
   }
 
   async getOffices() {
+    // Ensure every OFFICE-role user has an Office entity
+    const officeUsers = await this.prisma.user.findMany({
+      where: { role: Role.OFFICE, isActive: true },
+      select: { id: true, username: true, displayName: true, officeId: true },
+    });
+
+    for (const u of officeUsers) {
+      if (!u.officeId) {
+        const code = `office-${u.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        const name = u.displayName || u.username;
+
+        // Create Office entity and link user
+        const office = await this.prisma.office.upsert({
+          where: { code },
+          create: { name, code },
+          update: {},
+        });
+        await this.prisma.user.update({
+          where: { id: u.id },
+          data: { officeId: office.id },
+        });
+        this.logger.log(`Auto-created Office "${name}" (${code}) for user ${u.username}`);
+      }
+    }
+
     return this.prisma.office.findMany({
       include: {
         countries: {

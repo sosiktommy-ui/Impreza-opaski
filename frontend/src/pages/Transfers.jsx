@@ -164,12 +164,35 @@ export default function Transfers() {
   const loadOffices = async () => {
     setOfficesLoading(true);
     try {
+      // Primary source: physical office entities (backend auto-creates for OFFICE users)
       const { data } = await usersApi.getOffices();
-      // Handle both wrapped { data: [...] } and direct array responses
       const list = Array.isArray(data) ? data : (data?.data || []);
-      setOffices(list);
+
+      if (Array.isArray(list) && list.length > 0) {
+        setOffices(list);
+        return;
+      }
     } catch (err) {
-      console.error('Failed to load offices:', err);
+      console.error('Primary getOffices failed:', err);
+    }
+
+    // Fallback: users with role OFFICE
+    try {
+      const result = await usersApi.getAll({ role: 'OFFICE', limit: 500 });
+      const usersList = Array.isArray(result.data)
+        ? result.data
+        : (result.data?.data || []);
+
+      const mapped = usersList.map((u) => ({
+        id: u.officeId || u.id,
+        name: u.displayName ? `${u.displayName} (${u.username})` : u.username,
+        code: u.office?.code || undefined,
+        _source: 'user',
+      }));
+
+      setOffices(mapped);
+    } catch (err) {
+      console.error('Fallback getAll OFFICE failed:', err);
       setOffices([]);
     } finally {
       setOfficesLoading(false);

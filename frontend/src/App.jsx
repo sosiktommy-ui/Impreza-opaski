@@ -51,7 +51,7 @@ function PendingTransfers() {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [acceptItems, setAcceptItems] = useState({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
-  const [rejectReason, setRejectReason] = useState('');
+  const [rejectItems, setRejectItems] = useState({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
 
@@ -108,7 +108,7 @@ function PendingTransfers() {
   // Open reject modal
   const openRejectModal = (transfer) => {
     setSelectedTransfer(transfer);
-    setRejectReason('');
+    setRejectItems({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
     setActionError(null);
     setRejectModalOpen(true);
   };
@@ -142,16 +142,18 @@ function PendingTransfers() {
     }
   };
 
-  // Handle reject
+  // Handle reject (submit received quantities → accept API handles discrepancy detection)
   const handleReject = async () => {
-    if (!selectedTransfer || !rejectReason.trim()) return;
+    if (!selectedTransfer) return;
     setActionLoading(true);
     setActionError(null);
     try {
-      await transfersApi.reject(selectedTransfer.id, rejectReason);
+      const items = Object.entries(rejectItems)
+        .filter(([_, qty]) => qty > 0)
+        .map(([itemType, receivedQuantity]) => ({ itemType, receivedQuantity }));
+      await transfersApi.accept(selectedTransfer.id, items);
       setRejectModalOpen(false);
       setSelectedTransfer(null);
-      setRejectReason('');
       loadPendingTransfers();
       // Update sidebar badges immediately
       useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
@@ -450,12 +452,12 @@ function PendingTransfers() {
         </div>
       )}
 
-      {/* Reject Modal */}
+      {/* Reject Modal — numeric received quantity inputs */}
       {rejectModalOpen && selectedTransfer && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-surface-card border border-edge rounded-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b border-edge">
-              <h3 className="text-lg font-semibold text-content-primary">Отклонить перевод</h3>
+              <h3 className="text-lg font-semibold text-content-primary">Сколько браслетов получено?</h3>
               <button
                 onClick={() => setRejectModalOpen(false)}
                 className="p-1 rounded-lg hover:bg-surface-card-hover transition-colors"
@@ -465,15 +467,60 @@ function PendingTransfers() {
             </div>
             <div className="p-4 space-y-4">
               <p className="text-sm text-content-muted">
-                Укажите причину отклонения перевода:
+                Укажите фактическое количество полученных браслетов:
               </p>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Причина отклонения..."
-                rows={3}
-                className="w-full px-3 py-2 border border-edge bg-surface-primary text-content-primary rounded-lg text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none resize-none"
-              />
+
+              {/* Sent quantities reference */}
+              <div className="p-3 rounded-lg bg-surface-primary border border-edge">
+                <p className="text-xs text-content-muted mb-2">Отправлено:</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {selectedTransfer.items?.map((item) => (
+                    <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity || item.sentQuantity || 0} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Input fields for received quantities */}
+              <div className="grid grid-cols-2 gap-3">
+                {['BLACK', 'WHITE', 'RED', 'BLUE'].map((color) => {
+                  const colorLabels = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
+                  const colorClasses = { BLACK: 'border-gray-600', WHITE: 'border-gray-300', RED: 'border-red-500', BLUE: 'border-blue-500' };
+                  const sentItem = selectedTransfer.items?.find(i => i.itemType === color);
+                  const sentQty = sentItem ? (sentItem.quantity || sentItem.sentQuantity || 0) : 0;
+                  const diff = rejectItems[color] - sentQty;
+                  return (
+                    <div key={color} className="space-y-1">
+                      <label className="text-xs text-content-muted">{colorLabels[color]}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={rejectItems[color]}
+                        onChange={(e) => setRejectItems(prev => ({ ...prev, [color]: parseInt(e.target.value) || 0 }))}
+                        className={`w-full px-3 py-2 border-2 ${colorClasses[color]} bg-surface-primary text-content-primary rounded-lg text-sm focus:ring-2 focus:ring-brand-500/20 focus:outline-none`}
+                      />
+                      {sentQty > 0 && diff !== 0 && (
+                        <p className={`text-xs ${diff < 0 ? 'text-red-400' : 'text-amber-400'}`}>
+                          {diff < 0 ? `−${Math.abs(diff)} недостача` : `+${diff} излишек`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Discrepancy warning */}
+              {(() => {
+                const hasDiscrepancy = selectedTransfer.items?.some(item => {
+                  const sent = item.quantity || item.sentQuantity || 0;
+                  return rejectItems[item.itemType] !== sent;
+                });
+                return hasDiscrepancy ? (
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+                    ⚠️ Количество не совпадает с отправленным — будет создана расхождение
+                  </div>
+                ) : null;
+              })()}
+
               {actionError && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
                   {actionError}
@@ -489,11 +536,11 @@ function PendingTransfers() {
               </button>
               <button
                 onClick={handleReject}
-                disabled={actionLoading || !rejectReason.trim()}
+                disabled={actionLoading}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
-                Отклонить
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                Подтвердить
               </button>
             </div>
           </div>
@@ -591,184 +638,92 @@ function Statistics() {
       if (cityId) params.cityId = cityId;
       if (eventId) params.eventId = eventId;
 
-      // Fetch all statistics in parallel - ALWAYS fetch transfers for manual calculation
-      const [statsRes, usersRes, eventsRes, allTransfersRes] = await Promise.all([
-        transfersApi.getStats(params).catch((e) => { console.log('Stats API error:', e); return { data: null }; }),
-        usersApi.getUsers({ limit: 500 }).catch(() => ({ data: [] })),
+      // Fetch backend stats (primary) + users + events in parallel
+      const [statsRes, usersRes, eventsRes] = await Promise.all([
+        transfersApi.getStats(params).catch((e) => { console.error('Stats API error:', e); return { data: null }; }),
+        usersApi.getAll({ limit: 500 }).catch(() => ({ data: [] })),
         eventsApi.getAll().catch(() => ({ data: [] })),
-        transfersApi.getAll({ limit: 1000 }).catch(() => ({ data: [] })),
       ]);
 
-      console.log('=== STATISTICS DEBUG ===');
-      console.log('statsRes:', statsRes);
-      console.log('allTransfersRes:', allTransfersRes);
-      
-      // Extract transfers array - handle various response formats
-      let allTransfers = [];
-      const transferData = allTransfersRes?.data;
-      if (Array.isArray(transferData)) {
-        allTransfers = transferData;
-      } else if (transferData?.data && Array.isArray(transferData.data)) {
-        allTransfers = transferData.data;
-      } else if (transferData && typeof transferData === 'object') {
-        // Try to find array in response
-        for (const key of Object.keys(transferData)) {
-          if (Array.isArray(transferData[key])) {
-            allTransfers = transferData[key];
-            break;
-          }
-        }
-      }
-      console.log('Parsed transfers count:', allTransfers.length);
+      // --- Parse backend stats response ---
+      // Axios interceptor unwraps { success, data } → res.data = inner data
+      const stats = statsRes?.data?.data || statsRes?.data || null;
 
-      // Calculate date range for filtering
-      const now = new Date();
-      let periodDays = 30;
-      if (dateRange === 'week') periodDays = 7;
-      else if (dateRange === 'quarter') periodDays = 90;
-      else if (dateRange === 'year') periodDays = 365;
-      const startDate = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
-      
-      const filteredTransfers = allTransfers.filter(t => new Date(t.createdAt) >= startDate);
-      console.log('Filtered transfers count:', filteredTransfers.length);
+      if (stats && stats.summary) {
+        // Backend returned full stats — use them directly
+        const { summary, statusBreakdown, braceletBreakdown, trend } = stats;
 
-      // Calculate status breakdown from actual transfers
-      const byStatus = { SENT: 0, ACCEPTED: 0, DISCREPANCY_FOUND: 0, CANCELLED: 0 };
-      filteredTransfers.forEach(t => {
-        if (byStatus[t.status] !== undefined) byStatus[t.status]++;
-      });
-      
-      // Calculate bracelet breakdown from actual transfers
-      const byType = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-      let totalBracelets = 0;
-      filteredTransfers.forEach(t => {
-        (t.items || []).forEach(item => {
-          const qty = item.quantity || item.sentQuantity || 0;
-          if (byType[item.itemType] !== undefined) {
-            byType[item.itemType] += qty;
-            totalBracelets += qty;
-          }
-        });
-      });
-      
-      // Build daily trend
-      const trendMap = new Map();
-      const statusTrendMap = new Map();
-      filteredTransfers.forEach(t => {
-        const dateKey = new Date(t.createdAt).toISOString().split('T')[0];
-        if (!trendMap.has(dateKey)) {
-          trendMap.set(dateKey, { total: 0, accepted: 0, problematic: 0 });
-        }
-        const entry = trendMap.get(dateKey);
-        entry.total++;
-        if (t.status === 'ACCEPTED') entry.accepted++;
-        if (t.status === 'DISCREPANCY_FOUND') entry.problematic++;
-      });
-      
-      const dailyTrend = Array.from(trendMap.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .slice(-14)
-        .map(([date, data]) => ({
-          date: new Date(date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
-          sent: data.total,
-          received: data.accepted,
-          problematic: data.problematic,
+        const byStatus = {
+          SENT: statusBreakdown?.pending || 0,
+          ACCEPTED: statusBreakdown?.accepted || 0,
+          DISCREPANCY_FOUND: statusBreakdown?.discrepancy || 0,
+          CANCELLED: statusBreakdown?.cancelled || 0,
+        };
+
+        const byType = {
+          BLACK: braceletBreakdown?.black || 0,
+          WHITE: braceletBreakdown?.white || 0,
+          RED: braceletBreakdown?.red || 0,
+          BLUE: braceletBreakdown?.blue || 0,
+        };
+
+        const dailyTrend = (trend || []).slice(-14).map((t) => ({
+          date: new Date(t.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+          sent: t.count || 0,
+          received: 0,
+          problematic: 0,
         }));
 
-      // Calculate top senders and receivers
-      const senderCounts = new Map();
-      const receiverCounts = new Map();
-      filteredTransfers.forEach(t => {
-        // Sender
-        let senderKey = '';
-        let senderName = '';
-        if (t.senderType === 'ADMIN') {
-          senderKey = 'admin';
-          senderName = t.createdByUser?.displayName || 'Админ';
-        } else if (t.senderType === 'OFFICE') {
-          senderKey = `office-${t.senderOffice?.id}`;
-          senderName = t.senderOffice?.name || 'Офис';
-        } else if (t.senderType === 'COUNTRY') {
-          senderKey = `country-${t.senderCountry?.id}`;
-          senderName = t.senderCountry?.name || 'Страна';
-        } else if (t.senderType === 'CITY') {
-          senderKey = `city-${t.senderCity?.id}`;
-          senderName = t.senderCity?.name || 'Город';
-        }
-        if (senderKey) {
-          if (!senderCounts.has(senderKey)) {
-            senderCounts.set(senderKey, { name: senderName, count: 0, bracelets: 0 });
-          }
-          const s = senderCounts.get(senderKey);
-          s.count++;
-          s.bracelets += (t.items || []).reduce((sum, i) => sum + (i.quantity || 0), 0);
-        }
+        setTransferStats({
+          total: summary.totalTransfers || 0,
+          byStatus,
+          byType,
+          dailyTrend,
+          totalBracelets: summary.totalBracelets || 0,
+          totalLoss: summary.totalLoss || 0,
+          prevPeriodChange: 0,
+        });
+      } else {
+        // Fallback: no backend stats available
+        setTransferStats({
+          total: 0, byStatus: { SENT: 0, ACCEPTED: 0, DISCREPANCY_FOUND: 0, CANCELLED: 0 },
+          byType: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
+          dailyTrend: [], totalBracelets: 0, totalLoss: 0, prevPeriodChange: 0,
+        });
+      }
 
-        // Receiver
-        let receiverKey = '';
-        let receiverName = '';
-        if (t.receiverType === 'OFFICE') {
-          receiverKey = `office-${t.receiverOffice?.id}`;
-          receiverName = t.receiverOffice?.name || 'Офис';
-        } else if (t.receiverType === 'COUNTRY') {
-          receiverKey = `country-${t.receiverCountry?.id}`;
-          receiverName = t.receiverCountry?.name || 'Страна';
-        } else if (t.receiverType === 'CITY') {
-          receiverKey = `city-${t.receiverCity?.id}`;
-          receiverName = t.receiverCity?.name || 'Город';
-        }
-        if (receiverKey) {
-          if (!receiverCounts.has(receiverKey)) {
-            receiverCounts.set(receiverKey, { name: receiverName, count: 0, bracelets: 0 });
-          }
-          const r = receiverCounts.get(receiverKey);
-          r.count++;
-          r.bracelets += (t.items || []).reduce((sum, i) => sum + (i.quantity || 0), 0);
-        }
-      });
+      setTopSenders([]);
+      setTopReceivers([]);
 
-      setTopSenders(Array.from(senderCounts.values()).sort((a, b) => b.bracelets - a.bracelets).slice(0, 5));
-      setTopReceivers(Array.from(receiverCounts.values()).sort((a, b) => b.bracelets - a.bracelets).slice(0, 5));
-
-      // Calculate loss (DISCREPANCY or CANCELLED)
-      let totalLoss = 0;
-      filteredTransfers.forEach(t => {
-        if (t.status === 'DISCREPANCY_FOUND' || t.status === 'CANCELLED') {
-          // Could calculate actual loss from acceptance records if available
-        }
-      });
-
-      setTransferStats({
-        total: filteredTransfers.length,
-        byStatus,
-        byType,
-        dailyTrend,
-        totalBracelets,
-        totalLoss,
-        prevPeriodChange: Math.floor(Math.random() * 30) - 10, // Placeholder for real calculation
-      });
-
-      // Process user statistics
-      const users = usersRes.data?.data || usersRes.data || [];
+      // --- Process user statistics ---
+      const usersRaw = usersRes?.data;
+      const users = usersRaw?.data || (Array.isArray(usersRaw) ? usersRaw : []);
       const userList = Array.isArray(users) ? users : [];
       const byRole = userList.reduce((acc, u) => {
         acc[u.role] = (acc[u.role] || 0) + 1;
         return acc;
       }, {});
+
+      // Use backend stats totalUsers as fallback when users endpoint is restricted
+      const totalUsersFromStats = stats?.summary?.totalUsers || 0;
       
       setUserStats({
-        total: userList.length,
+        total: userList.length || totalUsersFromStats,
         byRole,
-        active: userList.filter(u => u.active !== false).length,
+        active: userList.length > 0 ? userList.filter(u => u.isActive !== false).length : totalUsersFromStats,
       });
 
-      // Process event statistics
-      const events = eventsRes.data?.data || eventsRes.data || [];
+      // --- Process event statistics ---
+      const eventsRaw = eventsRes?.data;
+      const events = eventsRaw?.data || (Array.isArray(eventsRaw) ? eventsRaw : []);
       const eventList = Array.isArray(events) ? events : [];
-      const activeEvents = eventList.filter(e => e.active !== false);
+      const activeEvents = eventList.filter(e => e.active !== false && e.isActive !== false);
+
+      // Use backend stats totalEvents as fallback
+      const totalEventsFromStats = stats?.summary?.totalEvents || 0;
       
       setEventStats({
-        total: eventList.length,
+        total: eventList.length || totalEventsFromStats,
         active: activeEvents.length,
         byCountry: eventList.reduce((acc, e) => {
           const country = e.country?.name || 'Неизвестно';
