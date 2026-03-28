@@ -31,6 +31,7 @@ const RESOLUTION_TYPES = {
     key: 'ACCEPT_SENDER',
     label: 'Принять сторону отправителя',
     shortLabel: 'От отправителя',
+    subtitle: 'Все браслеты вернутся отправителю',
     icon: UserCheck,
     color: 'bg-blue-500 hover:bg-blue-600',
     textColor: 'text-blue-400',
@@ -40,6 +41,7 @@ const RESOLUTION_TYPES = {
     key: 'ACCEPT_RECEIVER', 
     label: 'Принять сторону получателя',
     shortLabel: 'От получателя',
+    subtitle: 'Все браслеты зачислятся получателю',
     icon: UserCheck,
     color: 'bg-orange-500 hover:bg-orange-600',
     textColor: 'text-orange-400',
@@ -49,6 +51,7 @@ const RESOLUTION_TYPES = {
     key: 'ACCEPT_COMPROMISE',
     label: 'Компромисс',
     shortLabel: 'Компромисс',
+    subtitle: 'Распределить вручную между сторонами',
     icon: Scale,
     color: 'bg-amber-500 hover:bg-amber-600',
     textColor: 'text-amber-400',
@@ -58,6 +61,7 @@ const RESOLUTION_TYPES = {
     key: 'ACCEPT_AS_IS',
     label: 'Принять как есть',
     shortLabel: 'Как есть',
+    subtitle: 'Получатель получит фактическое количество, разница → минус компании',
     icon: ShieldAlert,
     color: 'bg-red-500 hover:bg-red-600',
     textColor: 'text-red-400',
@@ -657,6 +661,7 @@ export default function ProblematicTransfers() {
                           </div>
                           <div className="flex-1">
                             <div className="font-medium text-content-primary">{res.label}</div>
+                            <div className="text-xs text-content-secondary mt-0.5 font-medium">{res.subtitle}</div>
                             <div className="text-xs text-content-muted mt-0.5">{dynamicDesc.description}</div>
                             {dynamicDesc.consequence && (
                               <div className="flex items-center gap-1 mt-2 text-xs font-semibold text-amber-400">
