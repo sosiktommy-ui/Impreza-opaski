@@ -9,7 +9,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
-import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft, Globe, MapPin, Sparkles } from 'lucide-react';
+import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft, Globe, MapPin, Sparkles, Home, Building2 } from 'lucide-react';
 
 const COLORS = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const COLOR_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -679,6 +679,75 @@ export default function Inventory() {
       {/* ════════════════════════════════════════════════════════════════ */}
       {(activeTab === 'system' || !isAdminOrOffice) && (
         <div className="space-y-4">
+          
+          {/* ── BREADCRUMBS NAVIGATION ─────────────────────── */}
+          {isAdminOrOffice && (
+            <nav className="flex items-center gap-2 text-sm bg-surface-card rounded-xl px-4 py-3 border border-edge">
+              <button
+                onClick={() => { setSelectedCountry(''); setSelectedCity(''); setViewEntity({ type: '', id: '' }); setBalances([]); setCities([]); }}
+                className={`flex items-center gap-1.5 hover:text-brand-500 transition-colors ${!selectedCountry ? 'text-brand-500 font-semibold' : 'text-content-muted'}`}
+              >
+                <Home size={16} />
+                <span>Баланс системы</span>
+              </button>
+              {selectedCountry && (() => {
+                const countryData = countryBreakdown.find((c) => c.id === selectedCountry);
+                const countryName = countryData?.name || countries.find(c => c.id === selectedCountry)?.name || 'Страна';
+                return (
+                  <>
+                    <ChevronRight size={16} className="text-content-muted" />
+                    <button
+                      onClick={() => { setSelectedCity(''); handleCountrySelect({ target: { value: selectedCountry } }); }}
+                      className={`flex items-center gap-1.5 hover:text-brand-500 transition-colors ${!selectedCity ? 'text-brand-500 font-semibold' : 'text-content-muted'}`}
+                    >
+                      <Globe size={16} />
+                      <span>{countryName}</span>
+                    </button>
+                  </>
+                );
+              })()}
+              {selectedCity && (() => {
+                const cityData = cities.find((c) => c.id === selectedCity);
+                const cityName = cityData?.name || 'Город';
+                return (
+                  <>
+                    <ChevronRight size={16} className="text-content-muted" />
+                    <span className="flex items-center gap-1.5 text-brand-500 font-semibold">
+                      <MapPin size={16} />
+                      <span>{cityName}</span>
+                    </span>
+                  </>
+                );
+              })()}
+            </nav>
+          )}
+
+          {/* ── CURRENT LEVEL HEADER ─────────────────────── */}
+          {isAdminOrOffice && (selectedCountry || selectedCity) && (() => {
+            const countryData = countryBreakdown.find((c) => c.id === selectedCountry);
+            const countryName = countryData?.name || countries.find(c => c.id === selectedCountry)?.name || 'Страна';
+            const cityData = cities.find((c) => c.id === selectedCity);
+            const cityName = cityData?.name || '';
+            
+            return (
+              <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-2xl p-6 shadow-xl shadow-brand-500/20">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                    {selectedCity ? <MapPin size={28} className="text-white" /> : <Globe size={28} className="text-white" />}
+                  </div>
+                  <div>
+                    <p className="text-brand-100 text-sm font-medium">
+                      {selectedCity ? 'Баланс города' : 'Баланс страны'}
+                    </p>
+                    <h2 className="text-2xl font-bold text-white">
+                      {selectedCity ? `${cityName}, ${countryName}` : countryName}
+                    </h2>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Action button for adjustments */}
           {isAdminOrOffice && viewEntity.type && viewEntity.id && (
             <div className="flex justify-end">
@@ -688,8 +757,8 @@ export default function Inventory() {
             </div>
           )}
 
-      {/* ── System Totals (Admin/Office) ──────────────── */}
-      {isAdminOrOffice && allInventory.length > 0 && (
+      {/* ── System Totals (Admin/Office - no country selected) ──────────────── */}
+      {isAdminOrOffice && allInventory.length > 0 && !selectedCountry && (
         <div className="space-y-3">
           {/* Total System Balance Card */}
           <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-2xl p-6 shadow-xl shadow-brand-500/20">
@@ -735,7 +804,7 @@ export default function Inventory() {
         </div>
       )}
 
-      {/* ── Country Breakdown with Accordion (Admin/Office) ────── */}
+      {/* ── Country Breakdown with Accordion (Admin/Office - no country selected) ────── */}
       {isAdminOrOffice && countryBreakdown.length > 0 && !selectedCountry && (
         <Card>
           <div className="flex items-center gap-2 mb-4">
@@ -821,45 +890,231 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* ── Back button when country/city selected ────── */}
-      {isAdminOrOffice && (selectedCountry || selectedCity) && (
-        <Button
-          onClick={() => { setSelectedCountry(''); setSelectedCity(''); setViewEntity({ type: '', id: '' }); setBalances([]); setCities([]); }}
-          variant="outline"
-          size="sm"
-          className="mb-2"
-        >
-          <ArrowLeft size={16} /> Вернуться к списку
-        </Button>
-      )}
-
-      {/* ── Admin/Office filters ──────────────────────── */}
-      {isAdminOrOffice && (
-        <Card>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Select
-              label="Страна"
-              value={selectedCountry}
-              onChange={handleCountrySelect}
-              options={[
-                { value: '', label: '— Все страны —' },
-                ...countries.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-            {cities.length > 0 && (
-              <Select
-                label="Город"
-                value={selectedCity}
-                onChange={handleCitySelect}
-                options={[
-                  { value: '', label: '— Все города —' },
-                  ...cities.map((c) => ({ value: c.id, label: c.name })),
-                ]}
-              />
-            )}
+      {/* ── COUNTRY VIEW: Show separate balances when inside a country ────── */}
+      {isAdminOrOffice && selectedCountry && !selectedCity && (() => {
+        const countryData = countryBreakdown.find((c) => c.id === selectedCountry);
+        if (!countryData) return null;
+        
+        const citiesList = Object.values(countryData.cities);
+        
+        // Country account balance (on the country entity itself)
+        const countryAccountBalance = countryData.totals;
+        const countryAccountTotal = COLORS.reduce((s, c) => s + (countryAccountBalance[c] || 0), 0);
+        
+        // Sum of all cities' balances
+        const citiesSumBalance = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+        citiesList.forEach(city => {
+          COLORS.forEach(c => {
+            citiesSumBalance[c] += city.totals[c] || 0;
+          });
+        });
+        const citiesSumTotal = COLORS.reduce((s, c) => s + citiesSumBalance[c], 0);
+        
+        // Grand total
+        const grandTotal = countryAccountTotal + citiesSumTotal;
+        
+        const colorConfigs = {
+          BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-600', text: 'text-white', subtext: 'text-gray-300', dot: 'bg-gray-300' },
+          WHITE: { gradient: 'from-gray-100 to-gray-200 border border-gray-300', icon: 'bg-white border-2 border-gray-400', text: 'text-gray-800', subtext: 'text-gray-500', dot: 'bg-gray-600' },
+          RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100', dot: 'bg-white' },
+          BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100', dot: 'bg-white' },
+        };
+        
+        return (
+          <div className="space-y-4">
+            {/* Grand Total Summary */}
+            <div className="bg-surface-card rounded-xl border border-edge p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center">
+                    <Package size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-content-muted">Итого по стране</p>
+                    <p className="text-2xl font-bold text-content-primary">{grandTotal.toLocaleString()} браслетов</p>
+                  </div>
+                </div>
+                <BraceletRow items={{ 
+                  BLACK: (countryAccountBalance.BLACK || 0) + (citiesSumBalance.BLACK || 0),
+                  WHITE: (countryAccountBalance.WHITE || 0) + (citiesSumBalance.WHITE || 0),
+                  RED: (countryAccountBalance.RED || 0) + (citiesSumBalance.RED || 0),
+                  BLUE: (countryAccountBalance.BLUE || 0) + (citiesSumBalance.BLUE || 0)
+                }} size="md" />
+              </div>
+            </div>
+            
+            {/* Country Account Balance */}
+            <div className="bg-surface-card rounded-xl border border-edge overflow-hidden">
+              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-edge px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/25">
+                    <Building2 size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-content-primary">Баланс аккаунта {countryData.name}</h3>
+                    <p className="text-sm text-content-muted">Браслеты на аккаунте страны (не распределены по городам)</p>
+                  </div>
+                  <div className="ml-auto px-4 py-2 bg-amber-500/20 rounded-xl">
+                    <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{countryAccountTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {COLORS.map((type) => {
+                    const cfg = colorConfigs[type];
+                    const value = countryAccountBalance[type] || 0;
+                    return (
+                      <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
+                            <div className={`w-4 h-4 rounded-full ${cfg.dot}`} />
+                          </div>
+                          <div>
+                            <p className={`text-2xl font-bold ${cfg.text}`}>{value.toLocaleString()}</p>
+                            <p className={`text-xs ${cfg.subtext}`}>{COLOR_LABELS[type]}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            {/* Cities Sum Balance */}
+            <div className="bg-surface-card rounded-xl border border-edge overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-b border-edge px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+                    <MapPin size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-content-primary">Суммарный баланс городов</h3>
+                    <p className="text-sm text-content-muted">{citiesList.length} {citiesList.length === 1 ? 'город' : citiesList.length < 5 ? 'города' : 'городов'}</p>
+                  </div>
+                  <div className="ml-auto px-4 py-2 bg-blue-500/20 rounded-xl">
+                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{citiesSumTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Sum cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {COLORS.map((type) => {
+                    const cfg = colorConfigs[type];
+                    const value = citiesSumBalance[type] || 0;
+                    return (
+                      <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
+                            <div className={`w-4 h-4 rounded-full ${cfg.dot}`} />
+                          </div>
+                          <div>
+                            <p className={`text-2xl font-bold ${cfg.text}`}>{value.toLocaleString()}</p>
+                            <p className={`text-xs ${cfg.subtext}`}>{COLOR_LABELS[type]}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Cities list */}
+                {citiesList.length > 0 && (
+                  <div className="border-t border-edge pt-4">
+                    <h4 className="text-sm font-semibold text-content-primary mb-3 flex items-center gap-2">
+                      <MapPin size={14} className="text-content-muted" />
+                      Детализация по городам
+                    </h4>
+                    <div className="space-y-2">
+                      {citiesList.sort((a, b) => a.name.localeCompare(b.name)).map((city) => {
+                        const cityTotal = Object.values(city.totals).reduce((s, v) => s + v, 0);
+                        return (
+                          <div
+                            key={city.id}
+                            onClick={() => {
+                              setSelectedCity(city.id);
+                              handleCitySelect({ target: { value: city.id } });
+                            }}
+                            className="flex items-center justify-between p-3 rounded-xl bg-surface-secondary/50 hover:bg-surface-card-hover border border-transparent hover:border-brand-200 dark:hover:border-brand-700 cursor-pointer transition-all group"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-surface-card rounded-lg flex items-center justify-center group-hover:bg-brand-500/10 transition-colors">
+                                <MapPin size={16} className="text-brand-500" />
+                              </div>
+                              <span className="font-medium text-content-primary group-hover:text-brand-500 transition-colors">{city.name}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <BraceletRow items={{ BLACK: city.totals.BLACK || 0, WHITE: city.totals.WHITE || 0, RED: city.totals.RED || 0, BLUE: city.totals.BLUE || 0 }} size="sm" />
+                              <span className="px-3 py-1 bg-content-primary/10 rounded-lg text-sm font-bold text-content-primary group-hover:bg-brand-500 group-hover:text-white transition-all">{cityTotal}</span>
+                              <ChevronRight size={16} className="text-content-muted group-hover:text-brand-500 transition-colors" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                
+                {citiesList.length === 0 && (
+                  <div className="text-center py-6 text-content-muted">
+                    <MapPin size={32} className="mx-auto mb-2 opacity-30" />
+                    <p>Нет городов в этой стране</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </Card>
-      )}
+        );
+      })()}
+
+      {/* ── CITY VIEW: Balance display for selected city ────── */}
+      {isAdminOrOffice && selectedCity && (() => {
+        const colorConfigs = {
+          BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-600', text: 'text-white', subtext: 'text-gray-300', dot: 'bg-gray-300' },
+          WHITE: { gradient: 'from-gray-100 to-gray-200 border border-gray-300', icon: 'bg-white border-2 border-gray-400', text: 'text-gray-800', subtext: 'text-gray-500', dot: 'bg-gray-600' },
+          RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100', dot: 'bg-white' },
+          BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100', dot: 'bg-white' },
+        };
+        
+        return (
+          <div className="bg-surface-card rounded-xl border border-edge overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-b border-edge px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                  <Package size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-content-primary">Баланс города</h3>
+                  <p className="text-sm text-content-muted">{totalBracelets.toLocaleString()} браслетов всего</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {COLORS.map((type) => {
+                  const cfg = colorConfigs[type];
+                  const value = balanceMap[type] || 0;
+                  return (
+                    <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg hover:shadow-xl transition-shadow`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
+                          <div className={`w-4 h-4 rounded-full ${cfg.dot}`} />
+                        </div>
+                        <div>
+                          <p className={`text-2xl font-bold ${cfg.text}`}>{value.toLocaleString()}</p>
+                          <p className={`text-xs ${cfg.subtext}`}>{COLOR_LABELS[type]}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Country: city breakdown table */}
       {user.role === 'COUNTRY' && allInventory.length > 0 && (
@@ -918,33 +1173,33 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* Balance display for selected entity */}
-      {balances.length > 0 && (selectedCountry || !isAdminOrOffice) ? (
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
-              <Package size={20} className="text-white" />
+      {/* Balance display for COUNTRY/CITY users (non-admin) */}
+      {!isAdminOrOffice && balances.length > 0 && (() => {
+        const colorConfigs = {
+          BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-600', text: 'text-white', subtext: 'text-gray-300', dot: 'bg-gray-300' },
+          WHITE: { gradient: 'from-gray-100 to-gray-200 border border-gray-300', icon: 'bg-white border-2 border-gray-400', text: 'text-gray-800', subtext: 'text-gray-500', dot: 'bg-gray-600' },
+          RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100', dot: 'bg-white' },
+          BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100', dot: 'bg-white' },
+        };
+        return (
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
+                <Package size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-content-primary">Текущий баланс</h3>
+                <p className="text-sm text-content-muted">{totalBracelets.toLocaleString()} браслетов всего</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-content-primary">Текущий баланс</h3>
-              <p className="text-sm text-content-muted">{totalBracelets.toLocaleString()} браслетов всего</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {(() => {
-              const colorConfigs = {
-                BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-700', text: 'text-white', subtext: 'text-gray-300' },
-                WHITE: { gradient: 'from-gray-50 to-gray-100 border border-gray-200', icon: 'bg-white border border-gray-300', text: 'text-gray-800', subtext: 'text-gray-500' },
-                RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100' },
-                BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100' },
-              };
-              return COLORS.map((type) => {
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {COLORS.map((type) => {
                 const cfg = colorConfigs[type];
                 return (
                   <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg`}>
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
-                        <div className="w-4 h-4 rounded-full bg-current opacity-60" />
+                        <div className={`w-4 h-4 rounded-full ${cfg.dot}`} />
                       </div>
                       <div>
                         <p className={`text-2xl font-bold ${cfg.text}`}>{(balanceMap[type] || 0).toLocaleString()}</p>
@@ -953,62 +1208,17 @@ export default function Inventory() {
                     </div>
                   </div>
                 );
-              });
-            })()}
-          </div>
-        </Card>
-      ) : !isAdminOrOffice ? (
-        <Card>
-          <p className="text-sm text-gray-500 text-center py-8">Нет данных</p>
-        </Card>
-      ) : null}
-
-      {/* ── City breakdown when country selected (Admin/Office) ── */}
-      {isAdminOrOffice && selectedCountry && !selectedCity && (() => {
-        const countryData = countryBreakdown.find((c) => c.id === selectedCountry);
-        const citiesList = countryData ? Object.values(countryData.cities) : [];
-        if (citiesList.length === 0) return null;
-        return (
-          <Card title="Города">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-edge text-xs text-content-muted">
-                    <th className="text-left py-2 px-2">Город</th>
-                    {COLORS.map((c) => (
-                      <th key={c} className="text-center py-2 px-2">{COLOR_LABELS[c]}</th>
-                    ))}
-                    <th className="text-center py-2 px-2">Итого</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {citiesList.sort((a, b) => a.name.localeCompare(b.name)).map((city) => {
-                    const cityTotal = Object.values(city.totals).reduce((s, v) => s + v, 0);
-                    return (
-                      <tr
-                        key={city.id}
-                        className="border-b border-edge hover:bg-surface-card-hover cursor-pointer transition-colors"
-                        onClick={() => {
-                          setSelectedCity(city.id);
-                          handleCitySelect({ target: { value: city.id } });
-                        }}
-                      >
-                        <td className="py-2.5 px-2 font-medium text-content-primary">{city.name}</td>
-                        {COLORS.map((c) => (
-                          <td key={c} className="text-center py-2.5 px-2 text-content-secondary">
-                            {city.totals[c] || 0}
-                          </td>
-                        ))}
-                        <td className="text-center py-2.5 px-2 font-semibold text-content-primary">{cityTotal}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              })}
             </div>
           </Card>
         );
       })()}
+      
+      {!isAdminOrOffice && balances.length === 0 && (
+        <Card>
+          <p className="text-sm text-gray-500 text-center py-8">Нет данных</p>
+        </Card>
+      )}
         </div>
       )}
 
