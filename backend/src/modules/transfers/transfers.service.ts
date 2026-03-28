@@ -121,7 +121,19 @@ export class TransfersService {
           );
         }
       }
-      // NOTE: No deduction here! Deduction happens on accept.
+
+      // DEDUCT from sender immediately when transfer is created
+      // This "freezes" the bracelets - they're no longer available to sender
+      for (const item of input.items) {
+        await this.deductInventory(
+          tx,
+          input.senderType,
+          entityId,
+          item.itemType,
+          item.quantity,
+        );
+      }
+      this.logger.log(`Transfer created: Deducted from sender ${input.senderType} (${entityId || 'ADMIN'}): ${JSON.stringify(input.items)}`);
 
       const transfer = await tx.transfer.create({
         data: {
@@ -156,6 +168,14 @@ export class TransfersService {
       });
 
       // No sender cache to invalidate (inventory not changed on send)
+
+      // Invalidate sender cache since we deducted inventory
+      if (entityId) {
+        await this.redis.invalidateInventory(input.senderType, entityId);
+      } else if (input.senderType === EntityType.ADMIN) {
+        // ADMIN has no entityId but may have inventory cache
+        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
+      }
 
       await this.storeDomainEvent(transfer.id, 'TransferSent', {
         transfer,
@@ -305,29 +325,31 @@ export class TransfersService {
           );
         }
 
-        // If CANCELLED (all zero) — no balance changes at all
-        // If DISCREPANCY_FOUND — freeze balances until Admin/Office resolves
-        // If ACCEPTED — deduct sender + credit receiver
+        // BALANCE LOGIC (sender was already deducted on send!):
+        // - CANCELLED (all zero) → Return all bracelets to sender
+        // - DISCREPANCY_FOUND → Wait for admin resolution
+        // - ACCEPTED → Credit receiver (sender already deducted)
+        const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+        const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+        
         if (finalStatus === TransferStatus.CANCELLED) {
-          // All zeros — nothing received, no balance changes
-        } else if (finalStatus === TransferStatus.DISCREPANCY_FOUND) {
-          // Nothing happens to balances — frozen until resolve
-        } else {
-          // ACCEPTED: deduct sender (sentQty) + credit receiver (receivedQty)
-          if (transfer.senderType !== EntityType.ADMIN) {
-            const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-            for (const item of transfer.items) {
-              await this.deductInventory(
-                tx,
-                transfer.senderType,
-                senderEntityId,
-                item.itemType,
-                item.quantity,
-              );
-            }
+          // All zeros — return bracelets to sender (they were deducted on send)
+          for (const item of transfer.items) {
+            await this.creditInventory(
+              tx,
+              transfer.senderType,
+              senderEntityId,
+              item.itemType,
+              item.quantity,
+            );
           }
-
-          const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+          this.logger.log(`Transfer ${transferId} CANCELLED (all zeros): Returned ${transfer.items.length} items to sender`);
+        } else if (finalStatus === TransferStatus.DISCREPANCY_FOUND) {
+          // Nothing happens to balances — frozen until admin resolves
+          // Sender's bracelets are still "in transit" (deducted but not credited anywhere)
+          this.logger.log(`Transfer ${transferId} DISCREPANCY: Balances frozen until resolution`);
+        } else {
+          // ACCEPTED: Credit receiver only (sender was already deducted on send)
           for (const ri of receivedItems) {
             if (ri.receivedQuantity > 0) {
               await this.creditInventory(
@@ -339,6 +361,7 @@ export class TransfersService {
               );
             }
           }
+          this.logger.log(`Transfer ${transferId} ACCEPTED: Credited ${JSON.stringify(receivedItems)} to receiver`);
         }
 
         // Update city status for low stock / zero stock notifications
@@ -488,8 +511,18 @@ export class TransfersService {
         },
       });
 
-      // NOTE: No return-to-sender needed — inventory is NOT deducted on send.
-      // Deduction only happens on accept.
+      // RETURN bracelets to sender — they were deducted on send
+      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+      for (const item of transfer.items) {
+        await this.creditInventory(
+          tx,
+          transfer.senderType,
+          senderEntityId,
+          item.itemType,
+          item.quantity,
+        );
+      }
+      this.logger.log(`Transfer ${transferId} REJECTED: Returned ${transfer.items.map(i => `${i.itemType}:${i.quantity}`).join(', ')} to sender`);
 
       await this.storeDomainEvent(transferId, 'TransferRejected', {
         previousStatus: TransferStatus.SENT,
@@ -527,6 +560,13 @@ export class TransfersService {
         actorId,
       });
 
+      // Invalidate sender cache since we returned bracelets
+      if (senderEntityId) {
+        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+      } else if (transfer.senderType === EntityType.ADMIN) {
+        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
+      }
+
       return tx.transfer.findUnique({
         where: { id: transferId },
         include: { items: true, rejection: true },
@@ -560,8 +600,18 @@ export class TransfersService {
         );
       }
 
-      // NOTE: No return-to-sender needed — inventory is NOT deducted on send.
-      // Deduction only happens on accept.
+      // RETURN bracelets to sender — they were deducted on send
+      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+      for (const item of transfer.items) {
+        await this.creditInventory(
+          tx,
+          transfer.senderType,
+          senderEntityId,
+          item.itemType,
+          item.quantity,
+        );
+      }
+      this.logger.log(`Transfer ${transferId} CANCELLED: Returned ${transfer.items.map(i => `${i.itemType}:${i.quantity}`).join(', ')} to sender`);
 
       await tx.transfer.update({
         where: { id: transferId },
@@ -621,6 +671,13 @@ export class TransfersService {
         actorId,
         cancelledByName: canceller?.displayName || canceller?.username || 'Unknown',
       });
+
+      // Invalidate sender cache since we returned bracelets
+      if (senderEntityId) {
+        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+      } else if (transfer.senderType === EntityType.ADMIN) {
+        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
+      }
 
       return tx.transfer.findUnique({
         where: { id: transferId },
@@ -1311,23 +1368,42 @@ export class TransfersService {
 
       const totalLoss = lossBlack + lossWhite + lossRed + lossBlue;
 
-      // NOTE: No deductInventory here!
-      // Items were conceptually "sent" when transfer was created.
-      // We only record losses (Shortage/CompanyLoss) and credit receiver.
-      // Sender's balance is adjusted via Shortage records.
-
-      // Credit receiver with final values (based on resolution)
+      // BALANCE CHANGES:
+      // Sender was already deducted when transfer was created.
+      // Now we need to:
+      // - Credit receiver with final values
+      // - For CANCEL_TRANSFER: Return all to sender (no receiver credit)
+      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
       const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-      for (const [colorStr, quantity] of Object.entries(finalByColor)) {
-        if (quantity > 0) {
-          await this.creditInventory(
-            tx,
-            transfer.receiverType,
-            receiverEntityId,
-            colorStr as ItemType,
-            quantity,
-          );
+      
+      if (resType === 'CANCEL_TRANSFER') {
+        // Return ALL bracelets to sender (they were deducted on send)
+        for (const [colorStr, quantity] of Object.entries(sentByColor)) {
+          if (quantity > 0) {
+            await this.creditInventory(
+              tx,
+              transfer.senderType,
+              senderEntityId,
+              colorStr as ItemType,
+              quantity,
+            );
+          }
         }
+        this.logger.log(`Transfer ${transferId} CANCEL_TRANSFER: Returned ${JSON.stringify(sentByColor)} to sender`);
+      } else {
+        // Credit receiver with final values (based on resolution)
+        for (const [colorStr, quantity] of Object.entries(finalByColor)) {
+          if (quantity > 0) {
+            await this.creditInventory(
+              tx,
+              transfer.receiverType,
+              receiverEntityId,
+              colorStr as ItemType,
+              quantity,
+            );
+          }
+        }
+        this.logger.log(`Transfer ${transferId} resolved: Credited ${JSON.stringify(finalByColor)} to receiver`);
       }
 
       // Update city statuses
