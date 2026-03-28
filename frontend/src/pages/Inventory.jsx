@@ -9,7 +9,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
-import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft, Globe, MapPin, Sparkles } from 'lucide-react';
 
 const COLORS = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const COLOR_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -527,8 +527,8 @@ export default function Inventory() {
             <Button onClick={() => loadWarehouseData()} variant="outline" size="sm" disabled={warehouseLoading}>
               <RefreshCw size={16} className={warehouseLoading ? 'animate-spin' : ''} />
             </Button>
-            <Button onClick={() => setShowCreate(true)} size="sm">
-              <Plus size={18} /> Создать браслеты
+            <Button onClick={() => setShowCreate(true)} size="sm" className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white shadow-lg shadow-brand-500/25">
+              <Sparkles size={16} className="mr-1" /> Создать браслеты
             </Button>
           </div>
 
@@ -690,22 +690,61 @@ export default function Inventory() {
 
       {/* ── System Totals (Admin/Office) ──────────────── */}
       {isAdminOrOffice && allInventory.length > 0 && (
-        <Card title={`Общий баланс системы — ${systemTotal} шт`}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {COLORS.map((type) => (
-              <div key={type} className={`rounded-[var(--radius-md)] p-4 text-center ${COLOR_STYLES[type]}`}>
-                <div className="text-3xl font-bold">{systemTotals[type]}</div>
-                <div className="text-sm mt-1 opacity-80">{COLOR_LABELS[type]}</div>
+        <div className="space-y-3">
+          {/* Total System Balance Card */}
+          <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-2xl p-6 shadow-xl shadow-brand-500/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-brand-100 text-sm font-medium">Общий баланс системы</p>
+                <p className="text-4xl font-bold text-white mt-1">{systemTotal.toLocaleString()}</p>
+                <p className="text-brand-200 text-sm mt-1">браслетов в обороте</p>
               </div>
-            ))}
+              <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                <Boxes size={32} className="text-white" />
+              </div>
+            </div>
           </div>
-        </Card>
+          
+          {/* Color Breakdown Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(() => {
+              const colorConfigs = {
+                BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-700', text: 'text-white', subtext: 'text-gray-300' },
+                WHITE: { gradient: 'from-gray-50 to-gray-100 border border-gray-200', icon: 'bg-white border border-gray-300', text: 'text-gray-800', subtext: 'text-gray-500' },
+                RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100' },
+                BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100' },
+              };
+              return COLORS.map((type) => {
+                const cfg = colorConfigs[type];
+                return (
+                  <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
+                        <div className="w-4 h-4 rounded-full bg-current opacity-60" />
+                      </div>
+                      <div>
+                        <p className={`text-2xl font-bold ${cfg.text}`}>{systemTotals[type].toLocaleString()}</p>
+                        <p className={`text-xs ${cfg.subtext}`}>{COLOR_LABELS[type]}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
       )}
 
       {/* ── Country Breakdown with Accordion (Admin/Office) ────── */}
       {isAdminOrOffice && countryBreakdown.length > 0 && !selectedCountry && (
-        <Card title="Остатки по странам">
-          <div className="space-y-1">
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/25">
+              <Globe size={16} className="text-white" />
+            </div>
+            <h3 className="text-lg font-semibold text-content-primary">Остатки по странам</h3>
+          </div>
+          <div className="space-y-2">
             {countryBreakdown.map((country) => {
               const citiesList = Object.values(country.cities);
               const citiesTotal = {};
@@ -716,54 +755,54 @@ export default function Inventory() {
               const isExpanded = expandedCountries[country.id];
               
               return (
-                <div key={country.id}>
+                <div key={country.id} className="group">
                   {/* Country row */}
                   <div
                     onClick={() => setExpandedCountries(prev => ({ ...prev, [country.id]: !prev[country.id] }))}
-                    className="flex items-center justify-between p-3 rounded-lg bg-surface-card border border-edge cursor-pointer hover:bg-surface-card-hover transition-colors"
+                    className={`flex items-center justify-between p-4 rounded-xl cursor-pointer transition-all duration-200 ${
+                      isExpanded 
+                        ? 'bg-gradient-to-r from-brand-50 to-brand-100/50 dark:from-brand-900/30 dark:to-brand-800/20 border-2 border-brand-200 dark:border-brand-700 shadow-sm' 
+                        : 'bg-surface-card border border-edge hover:border-brand-200 dark:hover:border-brand-700 hover:shadow-md'
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <ChevronRight size={16} className={`text-content-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                      <span className="font-medium text-content-primary">{country.name}</span>
-                      {citiesList.length > 0 && (
-                        <span className="text-xs text-content-muted">({citiesList.length} гор.)</span>
-                      )}
+                    <div className="flex items-center gap-3">
+                      <ChevronRight size={18} className={`text-brand-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                      <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center shadow">
+                        <span className="text-white text-sm font-bold">{country.name.slice(0, 1)}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-content-primary">{country.name}</span>
+                        {citiesList.length > 0 && (
+                          <span className="ml-2 px-2 py-0.5 bg-surface-secondary rounded-full text-xs text-content-muted">{citiesList.length} гор.</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-sm">
-                      {COLORS.map((c) => {
-                        const colorLabels = { BLACK: 'Ч', WHITE: 'Б', RED: 'К', BLUE: 'С' };
-                        const val = (country.totals[c] || 0) + (citiesTotal[c] || 0);
-                        return (
-                          <span key={c} className="text-content-secondary">
-                            {colorLabels[c]}:{val}
-                          </span>
-                        );
-                      })}
-                      <span className="font-bold text-content-primary ml-2">= {allTotal}</span>
+                    <div className="flex items-center gap-2">
+                      <BraceletRow items={{ BLACK: (country.totals.BLACK || 0) + (citiesTotal.BLACK || 0), WHITE: (country.totals.WHITE || 0) + (citiesTotal.WHITE || 0), RED: (country.totals.RED || 0) + (citiesTotal.RED || 0), BLUE: (country.totals.BLUE || 0) + (citiesTotal.BLUE || 0) }} size="sm" />
+                      <div className="ml-2 px-3 py-1 bg-brand-500 text-white rounded-lg text-sm font-bold shadow">
+                        {allTotal.toLocaleString()}
+                      </div>
                     </div>
                   </div>
                   
                   {/* Cities accordion */}
                   {isExpanded && citiesList.length > 0 && (
-                    <div className="ml-6 mt-1 mb-2 space-y-1">
+                    <div className="ml-8 mt-2 mb-3 space-y-1.5 border-l-2 border-brand-200 dark:border-brand-700 pl-4">
                       {citiesList.sort((a, b) => a.name.localeCompare(b.name)).map((city) => {
                         const cityTotal = Object.values(city.totals).reduce((s, v) => s + v, 0);
                         return (
                           <div
                             key={city.id}
-                            className="flex items-center justify-between p-2.5 rounded-md bg-surface-secondary border border-edge/50"
+                            className="flex items-center justify-between p-3 rounded-lg bg-surface-secondary/80 backdrop-blur border border-edge/50 hover:bg-surface-card hover:border-brand-200 dark:hover:border-brand-700 transition-all cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setSelectedCountry(country.id); setSelectedCity(city.id); handleCitySelect({ target: { value: city.id } }); }}
                           >
-                            <span className="text-sm text-content-primary">{city.name}</span>
-                            <div className="flex items-center gap-2.5 text-sm">
-                              {COLORS.map((c) => {
-                                const colorLabels = { BLACK: 'Ч', WHITE: 'Б', RED: 'К', BLUE: 'С' };
-                                return (
-                                  <span key={c} className="text-content-muted">
-                                    {colorLabels[c]}:{city.totals[c] || 0}
-                                  </span>
-                                );
-                              })}
-                              <span className="font-medium text-content-primary ml-1">= {cityTotal}</span>
+                            <div className="flex items-center gap-2">
+                              <MapPin size={14} className="text-brand-400" />
+                              <span className="text-sm font-medium text-content-primary">{city.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <BraceletRow items={{ BLACK: city.totals.BLACK || 0, WHITE: city.totals.WHITE || 0, RED: city.totals.RED || 0, BLUE: city.totals.BLUE || 0 }} size="sm" />
+                              <span className="px-2 py-0.5 bg-content-primary/10 rounded-md text-xs font-semibold text-content-primary">{cityTotal}</span>
                             </div>
                           </div>
                         );
@@ -771,7 +810,7 @@ export default function Inventory() {
                     </div>
                   )}
                   {isExpanded && citiesList.length === 0 && (
-                    <div className="ml-6 mt-1 mb-2 p-3 text-sm text-content-muted italic">
+                    <div className="ml-8 mt-2 mb-3 p-4 text-sm text-content-muted italic border-l-2 border-gray-200 dark:border-gray-700 pl-4">
                       Нет городов в этой стране
                     </div>
                   )}
@@ -881,14 +920,41 @@ export default function Inventory() {
 
       {/* Balance display for selected entity */}
       {balances.length > 0 && (selectedCountry || !isAdminOrOffice) ? (
-        <Card title={`Текущий баланс — ${totalBracelets} шт всего`}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {COLORS.map((type) => (
-              <div key={type} className={`rounded-[var(--radius-md)] p-4 text-center ${COLOR_STYLES[type]}`}>
-                <div className="text-3xl font-bold">{balanceMap[type] || 0}</div>
-                <div className="text-sm mt-1 opacity-80">{COLOR_LABELS[type]}</div>
-              </div>
-            ))}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
+              <Package size={20} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-content-primary">Текущий баланс</h3>
+              <p className="text-sm text-content-muted">{totalBracelets.toLocaleString()} браслетов всего</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(() => {
+              const colorConfigs = {
+                BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-700', text: 'text-white', subtext: 'text-gray-300' },
+                WHITE: { gradient: 'from-gray-50 to-gray-100 border border-gray-200', icon: 'bg-white border border-gray-300', text: 'text-gray-800', subtext: 'text-gray-500' },
+                RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100' },
+                BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100' },
+              };
+              return COLORS.map((type) => {
+                const cfg = colorConfigs[type];
+                return (
+                  <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
+                        <div className="w-4 h-4 rounded-full bg-current opacity-60" />
+                      </div>
+                      <div>
+                        <p className={`text-2xl font-bold ${cfg.text}`}>{(balanceMap[type] || 0).toLocaleString()}</p>
+                        <p className={`text-xs ${cfg.subtext}`}>{COLOR_LABELS[type]}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </Card>
       ) : !isAdminOrOffice ? (
