@@ -120,8 +120,11 @@ export class InventoryController {
 
   @Get()
   @Roles(Role.ADMIN, Role.OFFICE)
-  getAllBalances() {
-    return this.inventoryService.getAllBalances();
+  getAllBalances(
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
+  ) {
+    return this.inventoryService.getAllBalances({ countryId, cityId });
   }
 
   @Get('my')
@@ -334,9 +337,12 @@ export class InventoryController {
 
   @Get('company-losses/summary')
   @Roles(Role.ADMIN, Role.OFFICE)
-  async getCompanyLossesSummary() {
+  async getCompanyLossesSummary(
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
+  ) {
     try {
-      return await this.inventoryService.getCompanyLossesSummary();
+      return await this.inventoryService.getCompanyLossesSummary({ countryId, cityId });
     } catch (error: any) {
       this.logger.error(`getCompanyLossesSummary error: ${error?.message}`, error?.stack);
       // Return empty summary instead of 500 to avoid CORS blocking
@@ -352,6 +358,7 @@ export class InventoryController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
   ) {
     try {
       return await this.inventoryService.getCompanyLosses({
@@ -360,6 +367,7 @@ export class InventoryController {
         startDate,
         endDate,
         countryId,
+        cityId,
       });
     } catch (error: any) {
       this.logger.error(`getCompanyLosses error: ${error?.message}`, error?.stack);

@@ -173,6 +173,8 @@ export class TransfersController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('direction') direction?: 'sent' | 'received',
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     return this.transfersService.findAll({
@@ -180,6 +182,8 @@ export class TransfersController {
       page,
       limit,
       direction,
+      countryId,
+      cityId,
       userRole: user?.role,
       userId: user?.id,
       userCountryId: user?.countryId ?? undefined,
@@ -223,11 +227,15 @@ export class TransfersController {
   findProblematic(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     return this.transfersService.findProblematic({
       page,
       limit,
+      countryId,
+      cityId,
       userRole: user?.role,
       userCountryId: user?.countryId ?? undefined,
       userCityId: user?.cityId ?? undefined,

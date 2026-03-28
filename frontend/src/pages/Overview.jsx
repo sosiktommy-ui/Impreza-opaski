@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Eye, ChevronRight, ArrowLeft } from 'lucide-react';
 import { inventoryApi } from '../api/inventory';
+import { useFilterStore } from '../store/useAppStore';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Skeleton from '../components/ui/Skeleton';
 
@@ -68,6 +69,7 @@ function CityRow({ city }) {
 }
 
 export default function Overview() {
+  const { countryId: filterCountryId, cityId: filterCityId } = useFilterStore();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState(null);
@@ -92,14 +94,20 @@ export default function Overview() {
     if (!data?.cities) return {};
     const map = {};
     for (const city of data.cities) {
+      if (filterCityId && city.id !== filterCityId) continue;
+      if (filterCountryId && city.countryId !== filterCountryId) continue;
       const cid = city.countryId;
       if (!map[cid]) map[cid] = [];
       map[cid].push(city);
     }
     return map;
-  }, [data]);
+  }, [data, filterCountryId, filterCityId]);
 
-  const countries = data?.countries || [];
+  const countries = useMemo(() => {
+    const all = data?.countries || [];
+    if (filterCountryId) return all.filter(c => c.id === filterCountryId);
+    return all;
+  }, [data, filterCountryId]);
 
   if (loading) {
     return (

@@ -695,6 +695,8 @@ export class TransfersService {
     page?: number;
     limit?: number;
     direction?: 'sent' | 'received';
+    countryId?: string;
+    cityId?: string;
     userRole?: string;
     userId?: string;
     userCountryId?: string;
@@ -706,6 +708,8 @@ export class TransfersService {
       page = 1,
       limit = 20,
       direction,
+      countryId,
+      cityId,
       userRole,
       userId,
       userCountryId,
@@ -717,6 +721,27 @@ export class TransfersService {
     const where: Prisma.TransferWhereInput = {};
 
     if (status) where.status = status;
+
+    // Explicit country/city filter from global filters (takes priority over RBAC scope)
+    if (cityId) {
+      where.AND = [
+        ...(Array.isArray((where as any).AND) ? (where as any).AND : []),
+        { OR: [
+          { senderCityId: cityId },
+          { receiverCityId: cityId },
+        ]},
+      ];
+    } else if (countryId) {
+      where.AND = [
+        ...(Array.isArray((where as any).AND) ? (where as any).AND : []),
+        { OR: [
+          { senderCountryId: countryId },
+          { receiverCountryId: countryId },
+          { senderCity: { countryId } },
+          { receiverCity: { countryId } },
+        ]},
+      ];
+    }
 
     // Direction filter: 'sent' = user is sender, 'received' = user is receiver
     if (direction && userRole) {
@@ -962,12 +987,14 @@ export class TransfersService {
   async findProblematic(params: {
     page?: number;
     limit?: number;
+    countryId?: string;
+    cityId?: string;
     userRole?: string;
     userCountryId?: string;
     userCityId?: string;
     userOfficeId?: string;
   }) {
-    const { page = 1, limit = 20, userRole, userCountryId, userCityId, userOfficeId } = params;
+    const { page = 1, limit = 20, countryId, cityId, userRole, userCountryId, userCityId, userOfficeId } = params;
     const skip = (page - 1) * limit;
 
     this.logger.log(`=== findProblematic START ===`);
@@ -978,6 +1005,25 @@ export class TransfersService {
     };
 
     this.logger.log(`Base where: status = DISCREPANCY_FOUND`);
+
+    // Explicit country/city filter from global filters
+    if (cityId) {
+      where.AND = [
+        { OR: [
+          { senderCityId: cityId },
+          { receiverCityId: cityId },
+        ]},
+      ];
+    } else if (countryId) {
+      where.AND = [
+        { OR: [
+          { senderCountryId: countryId },
+          { receiverCountryId: countryId },
+          { senderCity: { countryId } },
+          { receiverCity: { countryId } },
+        ]},
+      ];
+    }
 
     // RBAC scope
     if (userRole === 'COUNTRY' && userCountryId) {

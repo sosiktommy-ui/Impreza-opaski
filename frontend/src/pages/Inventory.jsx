@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
 import { authApi } from '../api/auth';
@@ -24,6 +25,7 @@ const BRACELET_LABELS = { black: 'Чёрные', white: 'Белые', red: 'Кр
 
 export default function Inventory() {
   const { user } = useAuthStore();
+  const { countryId: globalCountryId, cityId: globalCityId } = useFilterStore();
   const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
   
   // Tab state: 'my' = Мой баланс (склад), 'system' = Баланс системы
@@ -62,7 +64,7 @@ export default function Inventory() {
 
   useEffect(() => {
     init();
-  }, []);
+  }, [globalCountryId, globalCityId]);
 
   // Load warehouse data when tab changes to 'my'
   useEffect(() => {
@@ -75,9 +77,13 @@ export default function Inventory() {
     if (isAdminOrOffice) {
       try {
         console.log('=== INVENTORY INIT DEBUG ===');
+        const filterParams = {};
+        if (globalCountryId) filterParams.countryId = globalCountryId;
+        if (globalCityId) filterParams.cityId = globalCityId;
+
         const [countriesRes, inventoryRes, officesRes] = await Promise.all([
           usersApi.getCountries(),
-          inventoryApi.getAll(),
+          inventoryApi.getAll(filterParams),
           usersApi.getOffices().catch((err) => {
             console.error('Failed to load offices:', err);
             return { data: [] };

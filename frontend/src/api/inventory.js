@@ -1,7 +1,7 @@
 import api from './axios';
 
 export const inventoryApi = {
-  getAll: () => api.get('/inventory'),
+  getAll: (params) => api.get('/inventory', { params }),
 
   getMy: () => api.get('/inventory/my'),
 
@@ -36,7 +36,7 @@ export const inventoryApi = {
   // ─────────────────────────────────────────────────────────────────
   // Company Losses - минус компании
   // ─────────────────────────────────────────────────────────────────
-  getCompanyLossesSummary: () => api.get('/inventory/company-losses/summary'),
+  getCompanyLossesSummary: (params) => api.get('/inventory/company-losses/summary', { params }),
 
   getCompanyLosses: (params) => api.get('/inventory/company-losses', { params }),
   // params: { skip, take, search }

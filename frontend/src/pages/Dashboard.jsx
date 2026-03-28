@@ -52,12 +52,12 @@ export default function Dashboard() {
         transfersApi.getAll({ limit: 200, ...filterParams }),
         transfersApi.getPending(),
         usersApi.getCountries(),
-        transfersApi.getProblematic({ page: 1, limit: 5 }),
+        transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
       ];
 
       if (isAdminOrOffice) {
-        promises.push(inventoryApi.getAll());
-        promises.push(inventoryApi.getCompanyLossesSummary());
+        promises.push(inventoryApi.getAll(filterParams));
+        promises.push(inventoryApi.getCompanyLossesSummary(filterParams));
       } else {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;

@@ -194,6 +194,8 @@ export default function ProblematicTransfers() {
     setFetchError(null);
     try {
       const params = { page: p, limit: 20 };
+      if (countryId) params.countryId = countryId;
+      if (cityId) params.cityId = cityId;
       
       console.log('=== ProblematicTransfers v12 FETCH START ===');
       const transfersRes = await transfersApi.getProblematic(params);
@@ -268,7 +270,7 @@ export default function ProblematicTransfers() {
 
   useEffect(() => {
     fetchData();
-  }, []); // Removed countryId, cityId dependencies - show all problematic
+  }, [countryId, cityId]);
 
   // Open resolution modal for a transfer
   const openResolveModal = (transfer) => {

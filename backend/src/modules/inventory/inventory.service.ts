@@ -44,12 +44,28 @@ export class InventoryService {
     return balance;
   }
 
-  async getAllBalances() {
-    const cacheKey = 'inventory:all';
-    const cached = await this.redis.get(cacheKey);
-    if (cached) return cached;
+  async getAllBalances(filters?: { countryId?: string; cityId?: string }) {
+    const where: any = {};
+    if (filters?.cityId) {
+      where.entityType = 'CITY';
+      where.cityId = filters.cityId;
+    } else if (filters?.countryId) {
+      // Get all cities in this country, plus the country itself
+      where.OR = [
+        { entityType: 'COUNTRY', countryId: filters.countryId },
+        { entityType: 'CITY', city: { countryId: filters.countryId } },
+      ];
+    }
+
+    const hasFilters = !!(filters?.countryId || filters?.cityId);
+    if (!hasFilters) {
+      const cacheKey = 'inventory:all';
+      const cached = await this.redis.get(cacheKey);
+      if (cached) return cached;
+    }
 
     const inventory = await this.prisma.inventory.findMany({
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         office: { select: { id: true, name: true, code: true } },
         country: { select: { id: true, name: true, code: true } },
@@ -58,7 +74,9 @@ export class InventoryService {
       orderBy: [{ entityType: 'asc' }, { itemType: 'asc' }],
     });
 
-    await this.redis.set(cacheKey, inventory, CACHE_TTL);
+    if (!hasFilters) {
+      await this.redis.set('inventory:all', inventory, CACHE_TTL);
+    }
     return inventory;
   }
 
@@ -814,7 +832,7 @@ export class InventoryService {
   // COMPANY LOSSES: Summary and list
   // ──────────────────────────────────────────────
 
-  async getCompanyLossesSummary() {
+  async getCompanyLossesSummary(filters?: { countryId?: string; cityId?: string }) {
     try {
       this.logger.log('getCompanyLossesSummary: starting...');
       
@@ -823,8 +841,27 @@ export class InventoryService {
         this.logger.error('companyLoss model not found on Prisma client - run prisma generate');
         return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
       }
+
+      const where: any = {};
+      if (filters?.cityId) {
+        where.transfer = {
+          OR: [
+            { senderCityId: filters.cityId },
+            { receiverCityId: filters.cityId },
+          ],
+        };
+      } else if (filters?.countryId) {
+        where.transfer = {
+          OR: [
+            { senderCountryId: filters.countryId },
+            { receiverCountryId: filters.countryId },
+            { senderCity: { countryId: filters.countryId } },
+            { receiverCity: { countryId: filters.countryId } },
+          ],
+        };
+      }
       
-      const losses = await (this.prisma as any).companyLoss.findMany();
+      const losses = await (this.prisma as any).companyLoss.findMany({ where });
       this.logger.log(`getCompanyLossesSummary: found ${losses?.length || 0} losses`);
 
       const summary = {
@@ -858,8 +895,9 @@ export class InventoryService {
     startDate?: string;
     endDate?: string;
     countryId?: string;
+    cityId?: string;
   }) {
-    const { page = 1, limit = 20, startDate, endDate } = params;
+    const { page = 1, limit = 20, startDate, endDate, countryId, cityId } = params;
     const skip = (page - 1) * limit;
 
     try {
@@ -877,6 +915,23 @@ export class InventoryService {
       }
       if (endDate) {
         where.resolvedAt = { ...where.resolvedAt, lte: new Date(endDate) };
+      }
+      if (cityId) {
+        where.transfer = {
+          OR: [
+            { senderCityId: cityId },
+            { receiverCityId: cityId },
+          ],
+        };
+      } else if (countryId) {
+        where.transfer = {
+          OR: [
+            { senderCountryId: countryId },
+            { receiverCountryId: countryId },
+            { senderCity: { countryId } },
+            { receiverCity: { countryId } },
+          ],
+        };
       }
 
       const [losses, total] = await Promise.all([

@@ -3,6 +3,7 @@ import { History as HistoryIcon, Send, PackageCheck, CalendarDays, ArrowRight, F
 import { transfersApi } from '../api/transfers';
 import { inventoryApi } from '../api/inventory';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Skeleton from '../components/ui/Skeleton';
@@ -92,6 +93,7 @@ function ExpenseRow({ e }) {
 
 export default function History() {
   const { user } = useAuthStore();
+  const { countryId, cityId, eventId } = useFilterStore();
   const [transfers, setTransfers] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,13 +104,18 @@ export default function History() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [countryId, cityId, eventId]);
 
   const loadData = async () => {
     try {
+      const filterParams = {};
+      if (countryId) filterParams.countryId = countryId;
+      if (cityId) filterParams.cityId = cityId;
+      if (eventId) filterParams.eventId = eventId;
+
       const [tRes, eRes] = await Promise.all([
-        transfersApi.getAll({ limit: 200 }),
-        inventoryApi.getExpenses({ limit: 200 }),
+        transfersApi.getAll({ limit: 200, ...filterParams }),
+        inventoryApi.getExpenses({ limit: 200, ...filterParams }),
       ]);
 
       const tList = tRes.data?.data || tRes.data || [];

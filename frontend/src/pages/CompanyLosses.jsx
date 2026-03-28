@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -26,6 +27,7 @@ const SHORTAGE_REASON_LABELS = {
 
 export default function CompanyLosses() {
   const { user } = useAuthStore();
+  const { countryId, cityId, eventId } = useFilterStore();
   const [mode, setMode] = useState('company'); // 'company' or 'system'
   const [summary, setSummary] = useState(null);
   const [losses, setLosses] = useState([]);
@@ -44,7 +46,7 @@ export default function CompanyLosses() {
     if (canAccess) {
       loadData();
     }
-  }, [canAccess, mode]);
+  }, [canAccess, mode, countryId, cityId, eventId]);
 
   const loadData = async () => {
     setLoading(true);
@@ -62,8 +64,12 @@ export default function CompanyLosses() {
 
   const loadSummary = async () => {
     try {
+      const filterParams = {};
+      if (countryId) filterParams.countryId = countryId;
+      if (cityId) filterParams.cityId = cityId;
+
       if (mode === 'company') {
-        const { data } = await inventoryApi.getCompanyLossesSummary();
+        const { data } = await inventoryApi.getCompanyLossesSummary(filterParams);
         setSummary(data);
       } else {
         const { data } = await inventoryApi.getSystemLossesSummary();
@@ -78,6 +84,8 @@ export default function CompanyLosses() {
     try {
       const currentPage = reset ? 1 : page;
       const params = { page: currentPage, limit: TAKE };
+      if (countryId) params.countryId = countryId;
+      if (cityId) params.cityId = cityId;
 
       let response;
       if (mode === 'company') {
