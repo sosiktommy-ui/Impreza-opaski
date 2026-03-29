@@ -254,13 +254,14 @@ export default function Acceptance() {
       {/* ── 3 Tabs ── */}
       <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
         {[
-          { key: 'pending', label: 'Ожидают' },
-          { key: 'accepted', label: 'Принятые' },
-          { key: 'problematic', label: 'Проблемные' },
+          { key: 'pending', label: 'Ожидают', tooltip: 'Трансферы ожидающие вашего подтверждения' },
+          { key: 'accepted', label: 'Принятые', tooltip: 'Успешно принятые трансферы' },
+          { key: 'problematic', label: 'Проблемные', tooltip: 'Трансферы с расхождением в количестве' },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => { setActiveTab(tab.key); setPage(1); setSearch(''); }}
+            title={tab.tooltip}
             className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
                 ? 'bg-surface-card text-content-primary'
@@ -347,7 +348,7 @@ export default function Acceptance() {
                     <div className="flex gap-2 flex-wrap">
                       {/* Receiver buttons: Accept & Reject */}
                       {canAccept && (
-                        <Button size="sm" variant="success" onClick={() => openAccept(t)} loading={processing}>
+                        <Button size="sm" variant="success" onClick={() => openAccept(t)} loading={processing} title="Подтвердить получение браслетов в указанном количестве">
                           <CheckCircle size={16} /> Принять
                         </Button>
                       )}
@@ -357,6 +358,7 @@ export default function Acceptance() {
                           variant="ghost"
                           className="text-orange-500 hover:text-orange-700 hover:bg-orange-50"
                           onClick={() => openDisagree(t)}
+                          title="Отклонить с указанием фактического количества"
                         >
                           <XCircle size={16} /> Отклонить
                         </Button>
@@ -368,6 +370,7 @@ export default function Acceptance() {
                           variant="danger"
                           onClick={() => handleCancel(t)}
                           loading={processing}
+                          title="Отменить отправку и вернуть браслеты на баланс"
                         >
                           <AlertTriangle size={16} /> Отменить
                         </Button>

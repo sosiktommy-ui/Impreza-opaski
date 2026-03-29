@@ -501,6 +501,7 @@ export default function Inventory() {
           <div className="flex items-center gap-2 bg-surface-secondary rounded-lg p-1">
             <button
               onClick={() => setActiveTab('my')}
+              title="Баланс вашего склада / офиса"
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'my'
                   ? 'bg-brand-500 text-white shadow-sm'
@@ -512,6 +513,7 @@ export default function Inventory() {
             </button>
             <button
               onClick={() => setActiveTab('system')}
+              title="Общий баланс всех аккаунтов в системе"
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'system'
                   ? 'bg-brand-500 text-white shadow-sm'
@@ -548,10 +550,10 @@ export default function Inventory() {
 
           {/* Actions */}
           <div className="flex justify-end gap-2">
-            <Button onClick={() => loadWarehouseData()} variant="outline" size="sm" disabled={warehouseLoading}>
+            <Button onClick={() => loadWarehouseData()} variant="outline" size="sm" disabled={warehouseLoading} title="Обновить данные баланса">
               <RefreshCw size={16} className={warehouseLoading ? 'animate-spin' : ''} />
             </Button>
-            <Button onClick={() => setShowCreate(true)} size="sm" className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white shadow-lg shadow-brand-500/25">
+            <Button onClick={() => setShowCreate(true)} size="sm" className="bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white shadow-lg shadow-brand-500/25" title="Добавить новые браслеты на склад">
               <Sparkles size={16} className="mr-1" /> Создать браслеты
             </Button>
           </div>
@@ -775,7 +777,7 @@ export default function Inventory() {
           {/* Action button for adjustments */}
           {isAdminOrOffice && viewEntity.type && viewEntity.id && (
             <div className="flex justify-end">
-              <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline">
+              <Button onClick={() => setShowAdjust(true)} size="sm" variant="outline" title="Ручная корректировка баланса выбранной сущности">
                 <Plus size={16} /> Корректировка
               </Button>
             </div>
@@ -852,6 +854,7 @@ export default function Inventory() {
                   {/* Country row */}
                   <div
                     onClick={() => setExpandedCountries(prev => ({ ...prev, [country.id]: !prev[country.id] }))}
+                    title={`Нажмите чтобы ${isExpanded ? 'свернуть' : 'развернуть'} города ${country.name}`}
                     className={`flex items-center justify-between p-4 rounded-xl cursor-pointer transition-all duration-200 ${
                       isExpanded 
                         ? 'bg-gradient-to-r from-brand-50 to-brand-100/50 dark:from-brand-900/30 dark:to-brand-800/20 border-2 border-brand-200 dark:border-brand-700 shadow-sm' 
@@ -887,6 +890,7 @@ export default function Inventory() {
                           <div
                             key={city.id}
                             className="flex items-center justify-between p-3 rounded-lg bg-surface-secondary/80 backdrop-blur border border-edge/50 hover:bg-surface-card hover:border-brand-200 dark:hover:border-brand-700 transition-all cursor-pointer"
+                            title={`Посмотреть баланс города ${city.name}`}
                             onClick={(e) => { e.stopPropagation(); setSelectedCountry(country.id); setSelectedCity(city.id); handleCitySelect({ target: { value: city.id } }); }}
                           >
                             <div className="flex items-center gap-2">

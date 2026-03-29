@@ -505,7 +505,7 @@ export default function ProblematicTransfers() {
                         {t.acceptanceRecords?.map((r) => {
                           const diff = (r.sentQuantity || 0) - (r.receivedQuantity || 0);
                           return (
-                            <div key={r.itemType} className="flex items-center gap-1">
+                            <div key={r.itemType} className="flex items-center gap-1" title={`${ITEM_COLORS[r.itemType]?.label}: отправлено ${r.sentQuantity}, получено ${r.receivedQuantity}${diff !== 0 ? `, разница ${diff > 0 ? '-' : '+'}${Math.abs(diff)}` : ''}`}>
                               <BraceletBadge type={r.itemType} count={r.sentQuantity} />
                               {diff !== 0 && (
                                 <span className={`text-xs font-bold ${diff > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
@@ -519,7 +519,7 @@ export default function ProblematicTransfers() {
 
                       {/* Total discrepancy indicator */}
                       {totalDiff !== 0 && (
-                        <div className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-sm" title={`Разница между отправленным и полученным количеством: ${totalDiff} шт`}>
                           <TrendingDown size={14} className="text-red-400" />
                           <span className="text-red-400 font-medium">
                             Недостача: {totalDiff} шт
@@ -647,6 +647,7 @@ export default function ProblematicTransfers() {
                       <button
                         key={res.key}
                         onClick={() => selectResolution(res.key)}
+                        title={`${res.label}: ${res.subtitle}`}
                         className={`text-left p-4 rounded-xl border-2 transition-all ${
                           isSelected 
                             ? 'border-brand-500 bg-brand-500/10' 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Bell, LogOut, Sun, Moon, MessageCircle } from 'lucide-react';
+import { Menu, Bell, LogOut, Sun, Moon, MessageCircle, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, useBadgeStore } from '../../store/useAppStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useChatStore } from '../../store/useChatStore';
 import { useThemeStore } from '../../store/useThemeStore';
@@ -17,8 +17,10 @@ export default function Header() {
   const { unreadCount, fetchUnreadCount } = useNotificationStore();
   const { unreadCount: chatUnread } = useChatStore();
   const { theme, toggleTheme } = useThemeStore();
+  const { problematicCount, companyLossCount } = useBadgeStore();
   const [showNotifications, setShowNotifications] = useState(false);
   const bellRef = useRef(null);
+  const hasCritical = (problematicCount || 0) > 0 || (companyLossCount || 0) > 5;
 
   useEffect(() => {
     fetchUnreadCount();
@@ -46,6 +48,16 @@ export default function Header() {
         >
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
+
+        {hasCritical && (user?.role === 'ADMIN' || user?.role === 'OFFICE') && (
+          <button
+            onClick={() => navigate('/problematic')}
+            className="p-1.5 rounded-[var(--radius-sm)] hover:bg-red-500/10 text-red-500 relative transition-colors animate-pulse"
+            title="Есть критические проблемы"
+          >
+            <AlertTriangle size={20} />
+          </button>
+        )}
 
         <button
           onClick={() => navigate('/chat')}

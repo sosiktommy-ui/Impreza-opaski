@@ -25,6 +25,23 @@ import { useEffect } from 'react';
 import { transfersApi } from '../../api/transfers';
 import { inventoryApi } from '../../api/inventory';
 
+const MENU_TOOLTIPS = {
+  '/': 'Общая сводка и статистика',
+  '/transfers': 'Исходящие трансферы браслетов',
+  '/acceptance': 'Входящие трансферы ожидающие подтверждения',
+  '/problematic': 'Трансферы с расхождением в количестве',
+  '/pending': 'Трансферы ожидающие ответа получателя',
+  '/expenses': 'Расход браслетов на мероприятиях',
+  '/company-losses': 'Потерянные браслеты и инциденты',
+  '/balance': 'Остатки браслетов по странам и городам',
+  '/map': 'Географическое распределение браслетов',
+  '/history': 'Все трансферы и операции',
+  '/statistics': 'Аналитика и отчётность',
+  '/chat': 'Сообщения между пользователями',
+  '/users': 'Управление пользователями и настройки',
+  '/profile': 'Ваш профиль и настройки аккаунта',
+};
+
 const allLinks = [
   { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/transfers', icon: Truck, label: 'Отправки', labelCity: 'Возврат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
@@ -95,7 +112,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             onClick={closeSidebar}
-            title={collapsed ? displayLabel : undefined}
+            title={MENU_TOOLTIPS[to] || displayLabel}
             className={({ isActive }) =>
               `group relative flex items-center ${collapsed ? 'justify-center' : ''} gap-3 ${collapsed ? 'px-2' : 'px-3'} py-2.5 rounded-lg text-sm font-medium transition-all duration-200
               ${isActive

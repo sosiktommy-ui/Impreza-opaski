@@ -528,13 +528,14 @@ export default function Transfers() {
           {user.role === 'ADMIN' && (
             <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
               {[
-                { key: 'location', label: 'Страна / Город' },
-                { key: 'office', label: 'Офис' },
+                { key: 'location', label: 'Страна / Город', tooltip: 'Отправить браслеты по стране или городу' },
+                { key: 'office', label: 'Офис', tooltip: 'Отправить браслеты напрямую в офис' },
               ].map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
                   onClick={() => { setReceiverMode(tab.key); setToCountryId(''); setToCityId(''); setToOfficeId(''); setCities([]); if (tab.key === 'office' && offices.length === 0) loadOffices(); }}
+                  title={tab.tooltip}
                   className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                     receiverMode === tab.key
                       ? 'bg-surface-card text-content-primary shadow-sm'
@@ -643,6 +644,7 @@ export default function Transfers() {
                   return (
                     <div
                       key={type}
+                      title={`Доступно для отправки: ${senderBalance[type]} шт`}
                       className={`px-3 py-1.5 rounded-full text-sm font-medium ${
                         exceeds
                           ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500'
@@ -682,6 +684,7 @@ export default function Transfers() {
                       setQuantities((p) => ({ ...p, [type]: e.target.value }))
                     }
                     placeholder="0"
+                    title={`Макс: ${senderBalance[type]} шт`}
                     className={exceeds ? 'ring-2 ring-red-500' : ''}
                   />
                 );

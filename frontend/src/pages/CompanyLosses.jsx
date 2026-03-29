@@ -265,7 +265,7 @@ export default function CompanyLosses() {
               const isShortage = lossType === 'SHORTAGE';
               
               return (
-                <div key={loss.id} className="p-4 hover:bg-surface-hover transition-colors">
+                <div key={loss.id} className="p-4 hover:bg-surface-hover transition-colors" title={`${loss.senderName || 'Unknown'} → ${loss.receiverName || 'Unknown'}: потеря ${loss.totalAmount} шт${loss.originalSent !== undefined ? ` (отпр. ${loss.originalSent}, получ. ${loss.originalReceived})` : ''}`}>
                   <div className="flex items-start justify-between gap-4">
                     {/* Left: Route info */}
                     <div className="flex-1 min-w-0">
@@ -338,7 +338,7 @@ export default function CompanyLosses() {
 
                     {/* Right: Loss amount */}
                     <div className="text-right flex-shrink-0">
-                      <div className="text-xl font-bold text-red-600">
+                      <div className="text-xl font-bold text-red-600" title={`Потеряно всего: ${loss.totalAmount} браслетов`}>
                         −{loss.totalAmount}
                       </div>
                       <BraceletRow items={{ BLACK: loss.black, WHITE: loss.white, RED: loss.red, BLUE: loss.blue }} size="sm" />
