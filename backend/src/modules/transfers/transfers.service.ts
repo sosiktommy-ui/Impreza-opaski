@@ -1267,9 +1267,25 @@ export class TransfersService {
     }
     const totalEvents = await this.prisma.expense.count({ where: eventWhere });
 
-    // Get company losses
+    // Get company losses (scoped by role)
+    const lossWhere: any = { resolvedAt: { gte: startDate } };
+    if (cityId) {
+      lossWhere.transfer = { OR: [{ senderCityId: cityId }, { receiverCityId: cityId }] };
+    } else if (countryId) {
+      lossWhere.transfer = { OR: [
+        { senderCountryId: countryId }, { receiverCountryId: countryId },
+        { senderCity: { countryId } }, { receiverCity: { countryId } },
+      ] };
+    } else if (userCityId) {
+      lossWhere.transfer = { OR: [{ senderCityId: userCityId }, { receiverCityId: userCityId }] };
+    } else if (userCountryId) {
+      lossWhere.transfer = { OR: [
+        { senderCountryId: userCountryId }, { receiverCountryId: userCountryId },
+        { senderCity: { countryId: userCountryId } }, { receiverCity: { countryId: userCountryId } },
+      ] };
+    }
     const companyLosses = await (this.prisma as any).companyLoss.findMany({
-      where: { resolvedAt: { gte: startDate } },
+      where: lossWhere,
     }) as Array<{ totalAmount: number }>;
     const totalLoss = companyLosses.reduce((sum: number, l) => sum + l.totalAmount, 0);
 

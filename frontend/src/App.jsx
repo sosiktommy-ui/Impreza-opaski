@@ -1308,7 +1308,7 @@ export default function App() {
         <Route
           path="problematic"
           element={
-            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
               <ProblematicTransfers />
             </PrivateRoute>
           }
@@ -1344,7 +1344,7 @@ export default function App() {
         <Route
           path="company-losses"
           element={
-            <PrivateRoute roles={['ADMIN', 'OFFICE']}>
+            <PrivateRoute roles={['ADMIN', 'OFFICE', 'COUNTRY', 'CITY']}>
               <CompanyLosses />
             </PrivateRoute>
           }

@@ -215,7 +215,7 @@ export class InventoryController {
 
   @Post('expense')
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
-  createExpense(
+  async createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -227,6 +227,13 @@ export class InventoryController {
     }
     if (!targetCityId) {
       throw new BadRequestException('cityId is required');
+    }
+    // COUNTRY can only create expenses for cities in their own country
+    if (user.role === Role.COUNTRY && user.countryId) {
+      const cityCountryId = await this.inventoryService.getCityCountryId(targetCityId);
+      if (cityCountryId !== user.countryId) {
+        throw new ForbiddenException('Вы можете добавлять расходы только для своих городов');
+      }
     }
     return this.inventoryService.createExpense({
       ...dto,

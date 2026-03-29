@@ -14,7 +14,7 @@ import BraceletCard from '../components/ui/BraceletCard';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity } from '../utils/transferHelpers';
 import {
-  Send, PackageCheck, Globe, MapPin,
+  Send, PackageCheck, Globe,
   ArrowRight, Clock,
   CalendarDays, Boxes, AlertTriangle,
   TrendingDown, ShieldAlert,
@@ -93,6 +93,7 @@ export default function Dashboard() {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
         promises.push(inventoryApi.getBalance(entityType, entityId));
+        promises.push(inventoryApi.getCompanyLossesSummary()); // scoped on backend
       }
 
       const results = await Promise.all(promises);
@@ -151,8 +152,8 @@ export default function Dashboard() {
         }
       }
 
-      // Company losses summary (index 6, ADMIN/OFFICE only)
-      if (isAdminOrOffice && results[6]) {
+      // Company losses summary (index 6, all roles — backend scopes by role)
+      if (results[6]) {
         const lossPayload = results[6].data?.data || results[6].data;
         setLossSummary(lossPayload);
       }
@@ -192,7 +193,7 @@ export default function Dashboard() {
     { label: 'Вернуть опаски', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['CITY'], tooltip: 'Вернуть браслеты в страну' },
     { label: 'Добавить расход', icon: CalendarDays, path: '/expenses', color: 'bg-pink-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], tooltip: 'Зарегистрировать расход браслетов на мероприятии' },
     { label: 'Получение', icon: PackageCheck, path: '/acceptance', color: 'bg-green-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badge: incomingCount, tooltip: 'Входящие трансферы ожидающие вашего подтверждения' },
-    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE'], badge: badgeProblematic, tooltip: 'Трансферы с расхождением, требующие решения' },
+    { label: 'Проблемные', icon: AlertTriangle, path: '/problematic', color: 'bg-orange-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badge: badgeProblematic, tooltip: 'Трансферы с расхождением, требующие решения' },
     { label: 'Зависшие', icon: Clock, path: '/pending', color: 'bg-amber-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badge: pendingCount, tooltip: 'Трансферы ожидающие ответа получателя' },
     { label: 'Создать браслеты', icon: PlusCircle, path: '/warehouse', color: 'bg-emerald-600', roles: ['ADMIN', 'OFFICE'], tooltip: 'Добавить новые браслеты в систему' },
     { label: 'Корректировка баланса', icon: SlidersHorizontal, path: '/balance', color: 'bg-indigo-500', roles: ['ADMIN'], tooltip: 'Ручная корректировка остатков браслетов' },
@@ -212,7 +213,7 @@ export default function Dashboard() {
       label: 'Проблемные', value: badgeProblematic || 0, icon: AlertTriangle,
       iconBg: 'bg-orange-500/10', iconColor: 'text-orange-400',
       borderHover: 'hover:border-orange-500/50',
-      path: isAdminOrOffice ? '/problematic' : null,
+      path: '/problematic',
       tooltip: 'Трансферы с расхождением в количестве, ожидают решения администратора',
     },
     {
@@ -222,8 +223,7 @@ export default function Dashboard() {
       iconBg: 'bg-red-500/10', iconColor: 'text-red-400',
       valueColor: (lossSummary?.total || 0) > 0 ? 'text-red-400' : undefined,
       borderHover: 'hover:border-red-500/50',
-      path: isAdminOrOffice ? '/company-losses' : null,
-      roles: ['ADMIN', 'OFFICE'],
+      path: '/company-losses',
       tooltip: 'Общее количество потерянных браслетов по всем инцидентам',
     },
     {
@@ -237,20 +237,10 @@ export default function Dashboard() {
       label: 'Активных стран', value: stats.countries, icon: Globe,
       iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-400',
       borderHover: 'hover:border-emerald-500/50',
-      path: isAdminOrOffice ? '/overview' : null,
+      path: '/balance',
       tooltip: 'Количество стран с активными менеджерами в системе',
     },
   ].filter((c) => !c.roles || c.roles.includes(user.role));
-
-  // For CITY/COUNTRY — add cities count instead of company losses
-  if (user.role === 'CITY' || user.role === 'COUNTRY') {
-    metricCards.splice(2, 0, {
-      label: 'Городов', value: stats.cities, icon: MapPin,
-      iconBg: 'bg-violet-500/10', iconColor: 'text-violet-400',
-      borderHover: 'hover:border-violet-500/50',
-      tooltip: 'Количество городов в системе',
-    });
-  }
 
   return (
     <div className="space-y-5">
@@ -309,7 +299,7 @@ export default function Dashboard() {
         )}
 
         {/* Company losses by color */}
-        {isAdminOrOffice && lossSummary && (
+        {lossSummary && (
           <Card
             title="Минус компании по цветам"
             action={
@@ -421,7 +411,7 @@ export default function Dashboard() {
         <Card
           title="Топ стран по браслетам"
           action={
-            <button onClick={() => navigate('/overview')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
+            <button onClick={() => navigate('/map')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
               Карта <ArrowRight size={12} />
             </button>
           }

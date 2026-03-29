@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { TransfersService } from './transfers.service';
 import { AuthService } from '../auth/auth.service';
@@ -144,10 +145,19 @@ export class TransfersController {
 
   @Patch(':id/cancel')
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
-  cancelTransfer(
+  async cancelTransfer(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    // COUNTRY can only cancel transfers where they are the sender
+    if (user.role === Role.COUNTRY && user.countryId) {
+      const transfer = await this.transfersService.findById(id);
+      const isSender = transfer.senderType === 'COUNTRY' && transfer.senderCountryId === user.countryId;
+      const isSenderCity = transfer.senderType === 'CITY' && (transfer.senderCity as any)?.country?.id === user.countryId;
+      if (!isSender && !isSenderCity) {
+        throw new ForbiddenException('Вы можете отменить только свои отправки');
+      }
+    }
     return this.transfersService.cancelTransfer(id, user.id);
   }
 
