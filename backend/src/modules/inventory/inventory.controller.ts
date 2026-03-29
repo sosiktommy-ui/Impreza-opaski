@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
@@ -151,7 +152,14 @@ export class InventoryController {
 
   @Get('country/:countryId')
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
-  getByCountry(@Param('countryId') countryId: string) {
+  getByCountry(
+    @Param('countryId') countryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    // COUNTRY can only view their own country
+    if (user.role === Role.COUNTRY && user.countryId !== countryId) {
+      throw new ForbiddenException('Access denied to this country');
+    }
     return this.inventoryService.getBalancesByCountry(countryId);
   }
 
@@ -353,22 +361,30 @@ export class InventoryController {
   // ──────────────────────────────────────────────
 
   @Get('company-losses/summary')
-  @Roles(Role.ADMIN, Role.OFFICE)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   async getCompanyLossesSummary(
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
+    @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
-      return await this.inventoryService.getCompanyLossesSummary({ countryId, cityId });
+      // Force scope for COUNTRY/CITY roles
+      let scopedCountryId = countryId;
+      let scopedCityId = cityId;
+      if (user?.role === Role.CITY && user.cityId) {
+        scopedCityId = user.cityId;
+      } else if (user?.role === Role.COUNTRY && user.countryId) {
+        scopedCountryId = user.countryId;
+      }
+      return await this.inventoryService.getCompanyLossesSummary({ countryId: scopedCountryId, cityId: scopedCityId });
     } catch (error: any) {
       this.logger.error(`getCompanyLossesSummary error: ${error?.message}`, error?.stack);
-      // Return empty summary instead of 500 to avoid CORS blocking
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
     }
   }
 
   @Get('company-losses')
-  @Roles(Role.ADMIN, Role.OFFICE)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   async getCompanyLosses(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -376,19 +392,27 @@ export class InventoryController {
     @Query('endDate') endDate?: string,
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
+    @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
+      // Force scope for COUNTRY/CITY roles
+      let scopedCountryId = countryId;
+      let scopedCityId = cityId;
+      if (user?.role === Role.CITY && user.cityId) {
+        scopedCityId = user.cityId;
+      } else if (user?.role === Role.COUNTRY && user.countryId) {
+        scopedCountryId = user.countryId;
+      }
       return await this.inventoryService.getCompanyLosses({
         page,
         limit,
         startDate,
         endDate,
-        countryId,
-        cityId,
+        countryId: scopedCountryId,
+        cityId: scopedCityId,
       });
     } catch (error: any) {
       this.logger.error(`getCompanyLosses error: ${error?.message}`, error?.stack);
-      // Return empty list instead of 500 to avoid CORS blocking
       return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
   }
@@ -445,10 +469,29 @@ export class InventoryController {
 
   @Get(':entityType/:entityId')
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
-  getBalance(
+  async getBalance(
     @Param('entityType') entityType: EntityType,
     @Param('entityId') entityId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
+    // Scope check: COUNTRY can only view own country or own cities
+    if (user.role === Role.COUNTRY && user.countryId) {
+      if (entityType === EntityType.COUNTRY && entityId !== user.countryId) {
+        throw new ForbiddenException('Access denied');
+      }
+      if (entityType === EntityType.CITY) {
+        const city = await this.inventoryService.getCityCountryId(entityId);
+        if (city !== user.countryId) {
+          throw new ForbiddenException('Access denied');
+        }
+      }
+    }
+    // Scope check: CITY can only view own city
+    if (user.role === Role.CITY && user.cityId) {
+      if (entityType !== EntityType.CITY || entityId !== user.cityId) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
     return this.inventoryService.getBalance(entityType, entityId);
   }
 }

@@ -22,6 +22,18 @@ export class InventoryService {
   ) {}
 
   // ──────────────────────────────────────────────
+  // HELPER: Get city's country ID for scope checks
+  // ──────────────────────────────────────────────
+
+  async getCityCountryId(cityId: string): Promise<string | null> {
+    const city = await this.prisma.city.findUnique({
+      where: { id: cityId },
+      select: { countryId: true },
+    });
+    return city?.countryId || null;
+  }
+
+  // ──────────────────────────────────────────────
   // GET BALANCE
   // ──────────────────────────────────────────────
 

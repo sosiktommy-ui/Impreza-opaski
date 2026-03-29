@@ -169,7 +169,7 @@ export default function ProblematicTransfers() {
   const { user } = useAuthStore();
   const { countryId, cityId } = useFilterStore();
   const navigate = useNavigate();
-  const canResolve = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  const canResolve = user?.role === 'ADMIN';
   
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -152,7 +152,7 @@ export class TransfersController {
   }
 
   @Patch(':id/resolve-discrepancy')
-  @Roles(Role.ADMIN, Role.OFFICE)
+  @Roles(Role.ADMIN)
   async resolveDiscrepancy(
     @Param('id') id: string,
     @Body() dto: ResolveDiscrepancyDto,

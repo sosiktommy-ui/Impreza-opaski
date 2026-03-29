@@ -39,14 +39,11 @@ export default function CompanyLosses() {
 
   const TAKE = 20;
 
-  // Only ADMIN/OFFICE can view
-  const canAccess = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  const isAdminOrOffice = user?.role === 'ADMIN' || user?.role === 'OFFICE';
 
   useEffect(() => {
-    if (canAccess) {
-      loadData();
-    }
-  }, [canAccess, mode, countryId, cityId, eventId]);
+    loadData();
+  }, [mode, countryId, cityId, eventId]);
 
   const loadData = async () => {
     setLoading(true);
@@ -138,17 +135,6 @@ export default function CompanyLosses() {
     };
   }, [summary]);
 
-  if (!canAccess) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center text-content-muted">
-          <AlertTriangle size={48} className="mx-auto mb-4 text-red-400" />
-          <p>Доступ только для ADMIN и OFFICE</p>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -177,7 +163,8 @@ export default function CompanyLosses() {
         </Button>
       </div>
 
-      {/* ── Mode Toggle ───────────────────────────────── */}
+      {/* ── Mode Toggle (ADMIN/OFFICE only) ───────── */}
+      {isAdminOrOffice && (
       <div className="flex gap-2">
         <Button
           variant={mode === 'company' ? 'primary' : 'outline'}
@@ -198,6 +185,7 @@ export default function CompanyLosses() {
           Минус системы
         </Button>
       </div>
+      )}
 
       {/* ── Summary Stats ─────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
