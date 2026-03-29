@@ -59,6 +59,10 @@ export default function Inventory() {
   const [show2FA, setShow2FA] = useState(false);
   const [pendingCreateData, setPendingCreateData] = useState(null);
   
+  // 2FA state for balance adjustment
+  const [showAdjust2FA, setShowAdjust2FA] = useState(false);
+  const [pendingAdjustData, setPendingAdjustData] = useState(null);
+  
   // Accordion state for countries
   const [expandedCountries, setExpandedCountries] = useState({});
 
@@ -306,28 +310,42 @@ export default function Inventory() {
     }
   };
 
-  const handleAdjust = async () => {
+  const handleAdjust = (deltaSign) => {
     if (!viewEntity.type || !viewEntity.id) return;
+    const absDelta = Math.abs(parseInt(adjustForm.delta, 10) || 0);
+    if (absDelta === 0) return;
+    const finalDelta = deltaSign === 'minus' ? -absDelta : absDelta;
+    setPendingAdjustData({
+      entityType: viewEntity.type,
+      entityId: viewEntity.id,
+      itemType: adjustForm.itemType,
+      delta: finalDelta,
+      reason: adjustForm.reason || '',
+    });
+    setShowAdjust(false);
+    setShowAdjust2FA(true);
+  };
+
+  const handleAdjust2FAConfirm = async (password) => {
+    if (!pendingAdjustData) throw new Error('Нет данных для корректировки');
     setAdjusting(true);
     try {
       await inventoryApi.adjust({
-        entityType: viewEntity.type,
-        entityId: viewEntity.id,
-        itemType: adjustForm.itemType,
-        delta: parseInt(adjustForm.delta, 10),
-        reason: adjustForm.reason || undefined,
+        ...pendingAdjustData,
+        password,
       });
-      setShowAdjust(false);
+      setShowAdjust2FA(false);
+      setPendingAdjustData(null);
       setAdjustForm({ itemType: 'BLACK', delta: 0, reason: '' });
-      await loadBalance(viewEntity.type, viewEntity.id);
-      // Refresh system totals
+      await loadBalance(pendingAdjustData.entityType, pendingAdjustData.entityId);
       if (isAdminOrOffice) {
         const { data } = await inventoryApi.getAll();
         const iPayload = data?.data || data;
         setAllInventory(Array.isArray(iPayload) ? iPayload : []);
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Ошибка корректировки');
+      const msg = err.response?.data?.message || err.message || 'Ошибка корректировки';
+      throw new Error(msg);
     } finally {
       setAdjusting(false);
     }
@@ -1264,15 +1282,13 @@ export default function Inventory() {
           />
           <div className="flex gap-2">
             <Button
-              onClick={() => { setAdjustForm((p) => ({ ...p, delta: Math.abs(p.delta || 0) })); handleAdjust(); }}
-              loading={adjusting}
+              onClick={() => handleAdjust('plus')}
               className="flex-1"
             >
               <Plus size={16} /> Добавить
             </Button>
             <Button
-              onClick={() => { setAdjustForm((p) => ({ ...p, delta: -Math.abs(p.delta || 0) })); handleAdjust(); }}
-              loading={adjusting}
+              onClick={() => handleAdjust('minus')}
               variant="outline"
               className="flex-1"
             >
@@ -1292,6 +1308,18 @@ export default function Inventory() {
         confirmButtonText="Создать"
         confirmButtonVariant="primary"
         isLoading={creating}
+      />
+
+      {/* 2FA Modal for balance adjustment */}
+      <TwoFactorModal
+        isOpen={showAdjust2FA}
+        onClose={() => { setShowAdjust2FA(false); setPendingAdjustData(null); }}
+        onConfirm={handleAdjust2FAConfirm}
+        title="Подтвердите корректировку баланса"
+        description={pendingAdjustData ? `${pendingAdjustData.delta > 0 ? '+' : ''}${pendingAdjustData.delta} ${COLOR_LABELS[pendingAdjustData.itemType] || pendingAdjustData.itemType}${pendingAdjustData.reason ? ` — ${pendingAdjustData.reason}` : ''}` : ''}
+        confirmButtonText="Подтвердить"
+        confirmButtonVariant="primary"
+        isLoading={adjusting}
       />
     </div>
   );

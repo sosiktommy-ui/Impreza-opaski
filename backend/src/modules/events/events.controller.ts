@@ -21,6 +21,7 @@ export class EventsController {
   async getEvents(
     @Query('city') city?: string,
     @Query('country') country?: string,
+    @Query('active') active?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     // Auto-filter for CITY role: only show events in their city
@@ -41,6 +42,6 @@ export class EventsController {
       if (countryEntity) country = countryEntity.code;
     }
 
-    return this.eventsService.getEvents({ city, country });
+    return this.eventsService.getEvents({ city, country, active: active === 'true' });
   }
 }

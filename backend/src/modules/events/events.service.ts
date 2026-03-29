@@ -46,6 +46,7 @@ export class EventsService {
   async getEvents(filters?: {
     city?: string;
     country?: string;
+    active?: boolean;
   }): Promise<EventInfo[]> {
     let events = await this.getCachedEvents();
 
@@ -64,6 +65,19 @@ export class EventsService {
     if (filters?.country) {
       const q = filters.country.toLowerCase();
       events = events.filter((e) => e.country.toLowerCase().includes(q));
+    }
+
+    // Filter out past events when active=true
+    if (filters?.active) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      events = events.filter((e) => {
+        if (!e.date) return true; // keep events with no date
+        const eventDate = new Date(e.date);
+        if (isNaN(eventDate.getTime())) return true; // keep events with unparseable dates
+        eventDate.setHours(0, 0, 0, 0);
+        return eventDate >= today;
+      });
     }
 
     // Sort by date descending (newest first)

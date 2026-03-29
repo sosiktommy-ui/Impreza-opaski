@@ -11,6 +11,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
+import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -36,6 +37,10 @@ class AdjustBalanceDto {
   @IsString()
   @IsNotEmpty()
   reason!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  password!: string;
 }
 
 class CreateExpenseDto {
@@ -111,7 +116,10 @@ class CreateBraceletsDto {
 export class InventoryController {
   private readonly logger = new Logger('InventoryController');
   
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get('map')
   getMapData(@CurrentUser() user: AuthenticatedUser) {
@@ -178,12 +186,21 @@ export class InventoryController {
 
   @Post('adjust')
   @Roles(Role.ADMIN, Role.OFFICE)
-  adjustBalance(
+  async adjustBalance(
     @Body() dto: AdjustBalanceDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    // Verify password for 2FA
+    const isValid = await this.authService.verifyPassword(user.id, dto.password);
+    if (!isValid) {
+      throw new BadRequestException('Неверный пароль');
+    }
     return this.inventoryService.adjustBalance({
-      ...dto,
+      entityType: dto.entityType,
+      entityId: dto.entityId,
+      itemType: dto.itemType,
+      delta: dto.delta,
+      reason: dto.reason,
       actorId: user.id,
     });
   }
