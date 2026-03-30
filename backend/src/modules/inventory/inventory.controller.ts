@@ -425,6 +425,21 @@ export class InventoryController {
   }
 
   // ──────────────────────────────────────────────
+  // SYSTEM MINUS: Total Created - All Balances
+  // ──────────────────────────────────────────────
+
+  @Get('system-minus/summary')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getSystemMinusSummary() {
+    try {
+      return await this.inventoryService.getSystemMinusSummary();
+    } catch (error: any) {
+      this.logger.error(`getSystemMinusSummary error: ${error?.message}`, error?.stack);
+      return { black: 0, white: 0, red: 0, blue: 0, total: 0, totalCreated: 0, totalBalances: 0 };
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // SYSTEM LOSSES ENDPOINTS (Company + Account Shortages)
   // ──────────────────────────────────────────────
 

@@ -984,6 +984,60 @@ export class InventoryService {
   }
 
   // ──────────────────────────────────────────────
+  // SYSTEM MINUS: Total Created - Sum of All Balances
+  // ──────────────────────────────────────────────
+
+  async getSystemMinusSummary() {
+    try {
+      this.logger.log('getSystemMinusSummary: starting...');
+
+      // 1. Total created (from WarehouseCreation)
+      const created = { black: 0, white: 0, red: 0, blue: 0 };
+      if ((this.prisma as any).warehouseCreation) {
+        const creations = await (this.prisma as any).warehouseCreation.findMany({
+          select: { black: true, white: true, red: true, blue: true },
+        });
+        for (const c of creations) {
+          created.black += c.black || 0;
+          created.white += c.white || 0;
+          created.red += c.red || 0;
+          created.blue += c.blue || 0;
+        }
+      }
+
+      // 2. Sum of all account balances (excluding ADMIN entity)
+      const allInventory = await this.prisma.inventory.findMany({
+        where: { entityType: { not: EntityType.ADMIN } },
+        select: { itemType: true, quantity: true },
+      });
+      const balances = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+      for (const inv of allInventory) {
+        if (balances[inv.itemType] !== undefined) {
+          balances[inv.itemType] += inv.quantity || 0;
+        }
+      }
+
+      // 3. System minus = created - distributed balances
+      const result = {
+        black: created.black - balances.BLACK,
+        white: created.white - balances.WHITE,
+        red: created.red - balances.RED,
+        blue: created.blue - balances.BLUE,
+        total: 0,
+        totalCreated: created.black + created.white + created.red + created.blue,
+        totalBalances: balances.BLACK + balances.WHITE + balances.RED + balances.BLUE,
+      };
+      result.total = result.black + result.white + result.red + result.blue;
+
+      this.logger.log(`getSystemMinusSummary: created=${result.totalCreated}, balances=${result.totalBalances}, minus=${result.total}`);
+      return result;
+    } catch (error: any) {
+      this.logger.error(`getSystemMinusSummary ERROR: ${error?.message}`, error?.stack);
+      return { black: 0, white: 0, red: 0, blue: 0, total: 0, totalCreated: 0, totalBalances: 0 };
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // SYSTEM LOSSES (Company + Account Shortages)
   // ──────────────────────────────────────────────
 

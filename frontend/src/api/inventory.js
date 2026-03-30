@@ -46,6 +46,8 @@ export const inventoryApi = {
   // ─────────────────────────────────────────────────────────────────
   getSystemLossesSummary: () => api.get('/inventory/system-losses/summary'),
 
+  getSystemMinusSummary: () => api.get('/inventory/system-minus/summary'),
+
   getSystemLosses: (params) => api.get('/inventory/system-losses', { params }),
   // params: { page, limit }
 

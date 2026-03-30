@@ -19,7 +19,7 @@ import {
   CalendarDays, Boxes, AlertTriangle,
   TrendingDown, ShieldAlert,
   BarChart3, MinusCircle, Users,
-  Bell, PlusCircle, SlidersHorizontal
+  Bell, PlusCircle, SlidersHorizontal, Gauge
 } from 'lucide-react';
 
 /* ── helpers ─────────────────────────────── */
@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [problematicCount, setProblematicCount] = useState(0);
   const [stats, setStats] = useState({ countries: 0, cities: 0 });
   const [lossSummary, setLossSummary] = useState(null);
+  const [systemMinus, setSystemMinus] = useState(null);
   const [totalUsers, setTotalUsers] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [mapData, setMapData] = useState([]);
@@ -89,6 +90,8 @@ export default function Dashboard() {
         promises.push(inventoryApi.getAll(filterParams));
         promises.push(inventoryApi.getCompanyLossesSummary(filterParams));
         if (user.role === 'ADMIN') promises.push(inventoryApi.getMapData());
+        else promises.push(Promise.resolve(null));
+        promises.push(inventoryApi.getSystemMinusSummary());
       } else {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
@@ -163,6 +166,12 @@ export default function Dashboard() {
         const mapPayload = results[7].data?.data || results[7].data;
         setMapData(Array.isArray(mapPayload) ? mapPayload : []);
       }
+
+      // System minus (index 8, ADMIN/OFFICE only)
+      if (isAdminOrOffice && results[8]) {
+        const minusPayload = results[8].data?.data || results[8].data;
+        setSystemMinus(minusPayload);
+      }
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
@@ -225,6 +234,16 @@ export default function Dashboard() {
       borderHover: 'hover:border-red-500/50',
       path: '/company-losses',
       tooltip: 'Общее количество потерянных браслетов по всем инцидентам',
+    },
+    {
+      label: 'Минус системы',
+      value: (systemMinus?.total || 0) > 0 ? `-${systemMinus.total}` : '0',
+      icon: Gauge,
+      iconBg: 'bg-purple-500/10', iconColor: 'text-purple-400',
+      valueColor: (systemMinus?.total || 0) > 0 ? 'text-purple-400' : undefined,
+      borderHover: 'hover:border-purple-500/50',
+      roles: ['ADMIN', 'OFFICE'],
+      tooltip: 'Общая разница между созданными и распределёнными браслетами',
     },
     {
       label: 'Всего пользователей', value: totalUsers, icon: Users,
@@ -327,6 +346,44 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
+
+      {/* ── ROW 2b: System Minus (ADMIN/OFFICE) ──── */}
+      {systemMinus && (
+        <Card
+          title={`Минус системы — ${systemMinus.total > 0 ? '-' : ''}${systemMinus.total} шт`}
+          action={
+            <span className="text-xs text-content-muted">
+              Создано: {systemMinus.totalCreated} · На балансах: {systemMinus.totalBalances}
+            </span>
+          }
+        >
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
+              const val = systemMinus?.[type.toLowerCase()] || 0;
+              const label = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' }[type];
+              const styles = {
+                BLACK: { bg: 'bg-gray-900 dark:bg-gray-800', text: 'text-gray-300', ring: 'ring-gray-700' },
+                WHITE: { bg: 'bg-gray-100 dark:bg-gray-400', text: 'text-gray-700 dark:text-gray-900', ring: 'ring-gray-300 dark:ring-gray-500' },
+                RED: { bg: 'bg-red-900/60 dark:bg-red-900/50', text: 'text-red-200', ring: 'ring-red-700/50' },
+                BLUE: { bg: 'bg-blue-900/60 dark:bg-blue-900/50', text: 'text-blue-200', ring: 'ring-blue-700/50' },
+              }[type];
+              return (
+                <div key={type} className={`${styles.bg} rounded-[var(--radius-md)] p-3 ring-1 ${styles.ring} ring-inset`}>
+                  <div className={`text-xl font-bold ${styles.text} tabular-nums`}>{val > 0 ? `-${val}` : val}</div>
+                  <div className={`text-xs ${styles.text} opacity-60`}>{label}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-center gap-2 p-2 bg-purple-500/10 rounded-lg border border-purple-500/30">
+            <Gauge size={16} className="text-purple-400" />
+            <span className="text-sm font-bold text-purple-400">
+              Итого: {systemMinus.total > 0 ? `-${systemMinus.total}` : systemMinus.total}
+            </span>
+            <span className="text-xs text-content-muted ml-auto">вкл. минус компании + расхождения</span>
+          </div>
+        </Card>
+      )}
 
       {/* ── ROW 3: Recent Transfers + Notifications ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
