@@ -220,12 +220,12 @@ async function main() {
     data: {
       email: 'admin@impreza.io',
       username: 'dmitryganj',
-      passwordHash: hashPw('dmitryganj1995'),
+      passwordHash: hashPw('Impreza@Admin2026!'),
       role: Role.ADMIN,
       displayName: 'Администратор',
     },
   });
-  console.log(`   ✅ dmitryganj / dmitryganj1995 (ADMIN)\n`);
+  console.log(`   ✅ dmitryganj / Impreza@Admin2026! (ADMIN)\n`);
 
   // ───── 4b. Create Office ─────
   console.log('🏢 Creating office...');

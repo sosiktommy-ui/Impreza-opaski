@@ -4,7 +4,7 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  const newPassword = 'dmitryganj1995';
+  const newPassword = 'Impreza@Admin2026!';
   const passwordHash = bcrypt.hashSync(newPassword, 12);
 
   // Найдём всех админов
@@ -23,7 +23,7 @@ async function main() {
 
   if (updated.count > 0) {
     console.log('\n✅ Пароль обновлён для', updated.count, 'админов!');
-    console.log('   Новый пароль: dmitryganj1995');
+    console.log('   Новый пароль: Impreza@Admin2026!');
   } else {
     // Попробуем найти любого пользователя и обновить
     const anyUser = await prisma.user.findFirst();
@@ -35,7 +35,7 @@ async function main() {
       });
       console.log('✅ Пароль обновлён!');
       console.log('   Логин:', anyUser.username);
-      console.log('   Пароль: dmitryganj1995');
+      console.log('   Пароль: Impreza@Admin2026!');
     } else {
       console.log('❌ Пользователей в базе нет');
     }
