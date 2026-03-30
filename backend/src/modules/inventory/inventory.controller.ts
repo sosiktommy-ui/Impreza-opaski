@@ -372,6 +372,7 @@ export class InventoryController {
   async getCompanyLossesSummary(
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
+    @Query('scope') scope?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
@@ -383,7 +384,7 @@ export class InventoryController {
       } else if (user?.role === Role.COUNTRY && user.countryId) {
         scopedCountryId = user.countryId;
       }
-      return await this.inventoryService.getCompanyLossesSummary({ countryId: scopedCountryId, cityId: scopedCityId });
+      return await this.inventoryService.getCompanyLossesSummary({ countryId: scopedCountryId, cityId: scopedCityId, scope });
     } catch (error: any) {
       this.logger.error(`getCompanyLossesSummary error: ${error?.message}`, error?.stack);
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
@@ -399,6 +400,7 @@ export class InventoryController {
     @Query('endDate') endDate?: string,
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
+    @Query('scope') scope?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
@@ -417,6 +419,7 @@ export class InventoryController {
         endDate,
         countryId: scopedCountryId,
         cityId: scopedCityId,
+        scope,
       });
     } catch (error: any) {
       this.logger.error(`getCompanyLosses error: ${error?.message}`, error?.stack);

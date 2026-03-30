@@ -49,7 +49,7 @@ const allLinks = [
   { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'problematic' },
   { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
   { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/company-losses', icon: TrendingDown, label: 'Минус компании', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'companyLoss' },
+  { to: '/company-losses', icon: TrendingDown, label: 'Минус компании', labelCountry: 'Потери страны', labelCity: 'Мои потери', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'companyLoss' },
   { to: '/balance', icon: Warehouse, label: 'Баланс', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
   { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
@@ -103,10 +103,12 @@ export default function Sidebar() {
 
   const navContent = (collapsed) => (
     <nav className="flex flex-col gap-1 p-2">
-      {links.map(({ to, icon: Icon, label, labelCity, badgeKey }) => {
+      {links.map(({ to, icon: Icon, label, labelCity, labelCountry, badgeKey }) => {
         const badge = getBadge(badgeKey);
         const badgeColor = getBadgeColor(badgeKey);
-        const displayLabel = (user?.role === 'CITY' && labelCity) ? labelCity : label;
+        const displayLabel = user?.role === 'CITY' && labelCity ? labelCity
+          : user?.role === 'COUNTRY' && labelCountry ? labelCountry
+          : label;
         return (
           <NavLink
             key={to}

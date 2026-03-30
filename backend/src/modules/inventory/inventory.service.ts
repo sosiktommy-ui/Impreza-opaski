@@ -844,7 +844,7 @@ export class InventoryService {
   // COMPANY LOSSES: Summary and list
   // ──────────────────────────────────────────────
 
-  async getCompanyLossesSummary(filters?: { countryId?: string; cityId?: string }) {
+  async getCompanyLossesSummary(filters?: { countryId?: string; cityId?: string; scope?: string }) {
     try {
       this.logger.log('getCompanyLossesSummary: starting...');
       
@@ -863,14 +863,33 @@ export class InventoryService {
           ],
         };
       } else if (filters?.countryId) {
-        where.transfer = {
-          OR: [
-            { senderCountryId: filters.countryId },
-            { receiverCountryId: filters.countryId },
-            { senderCity: { countryId: filters.countryId } },
-            { receiverCity: { countryId: filters.countryId } },
-          ],
-        };
+        if (filters.scope === 'own') {
+          // Only losses from transfers where the COUNTRY account is a direct party
+          where.transfer = {
+            OR: [
+              { senderCountryId: filters.countryId, senderType: 'COUNTRY' },
+              { receiverCountryId: filters.countryId, receiverType: 'COUNTRY' },
+            ],
+          };
+        } else if (filters.scope === 'cities') {
+          // Only losses from transfers where subordinate cities are involved
+          where.transfer = {
+            OR: [
+              { senderCity: { countryId: filters.countryId }, senderType: 'CITY' },
+              { receiverCity: { countryId: filters.countryId }, receiverType: 'CITY' },
+            ],
+          };
+        } else {
+          // Default: all losses involving the country (own + cities)
+          where.transfer = {
+            OR: [
+              { senderCountryId: filters.countryId },
+              { receiverCountryId: filters.countryId },
+              { senderCity: { countryId: filters.countryId } },
+              { receiverCity: { countryId: filters.countryId } },
+            ],
+          };
+        }
       }
       
       const losses = await (this.prisma as any).companyLoss.findMany({ where });
@@ -908,8 +927,9 @@ export class InventoryService {
     endDate?: string;
     countryId?: string;
     cityId?: string;
+    scope?: string;
   }) {
-    const { page = 1, limit = 20, startDate, endDate, countryId, cityId } = params;
+    const { page = 1, limit = 20, startDate, endDate, countryId, cityId, scope } = params;
     const skip = (page - 1) * limit;
 
     try {
@@ -936,14 +956,30 @@ export class InventoryService {
           ],
         };
       } else if (countryId) {
-        where.transfer = {
-          OR: [
-            { senderCountryId: countryId },
-            { receiverCountryId: countryId },
-            { senderCity: { countryId } },
-            { receiverCity: { countryId } },
-          ],
-        };
+        if (scope === 'own') {
+          where.transfer = {
+            OR: [
+              { senderCountryId: countryId, senderType: 'COUNTRY' },
+              { receiverCountryId: countryId, receiverType: 'COUNTRY' },
+            ],
+          };
+        } else if (scope === 'cities') {
+          where.transfer = {
+            OR: [
+              { senderCity: { countryId }, senderType: 'CITY' },
+              { receiverCity: { countryId }, receiverType: 'CITY' },
+            ],
+          };
+        } else {
+          where.transfer = {
+            OR: [
+              { senderCountryId: countryId },
+              { receiverCountryId: countryId },
+              { senderCity: { countryId } },
+              { receiverCity: { countryId } },
+            ],
+          };
+        }
       }
 
       const [losses, total] = await Promise.all([

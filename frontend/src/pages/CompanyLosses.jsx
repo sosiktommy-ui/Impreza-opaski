@@ -8,7 +8,7 @@ import Input from '../components/ui/Input';
 import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   TrendingDown, Search, RefreshCw, AlertTriangle,
-  ArrowRight, Calendar, User, Building2, Users,
+  ArrowRight, Calendar, User, Building2, Users, Globe,
 } from 'lucide-react';
 
 const RESOLUTION_LABELS = {
@@ -28,7 +28,16 @@ const SHORTAGE_REASON_LABELS = {
 export default function CompanyLosses() {
   const { user } = useAuthStore();
   const { countryId, cityId, eventId } = useFilterStore();
-  const [mode, setMode] = useState('company'); // 'company' or 'system'
+
+  const isAdminOrOffice = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  const isCountry = user?.role === 'COUNTRY';
+  const isCity = user?.role === 'CITY';
+
+  // ADMIN/OFFICE: 'company' | 'system'
+  // COUNTRY: 'all' | 'own' | 'cities'
+  // CITY: always 'company' (backend scopes to their city)
+  const [mode, setMode] = useState(isCountry ? 'all' : 'company');
+
   const [summary, setSummary] = useState(null);
   const [losses, setLosses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,8 +47,6 @@ export default function CompanyLosses() {
   const [hasMore, setHasMore] = useState(true);
 
   const TAKE = 20;
-
-  const isAdminOrOffice = user?.role === 'ADMIN' || user?.role === 'OFFICE';
 
   useEffect(() => {
     loadData();
@@ -65,11 +72,15 @@ export default function CompanyLosses() {
       if (countryId) filterParams.countryId = countryId;
       if (cityId) filterParams.cityId = cityId;
 
-      if (mode === 'company') {
-        const { data } = await inventoryApi.getCompanyLossesSummary(filterParams);
+      if (isAdminOrOffice && mode === 'system') {
+        const { data } = await inventoryApi.getSystemLossesSummary();
         setSummary(data);
       } else {
-        const { data } = await inventoryApi.getSystemLossesSummary();
+        // For COUNTRY sub-tabs, pass scope
+        if (isCountry && (mode === 'own' || mode === 'cities')) {
+          filterParams.scope = mode;
+        }
+        const { data } = await inventoryApi.getCompanyLossesSummary(filterParams);
         setSummary(data);
       }
     } catch (err) {
@@ -85,12 +96,15 @@ export default function CompanyLosses() {
       if (cityId) params.cityId = cityId;
 
       let response;
-      if (mode === 'company') {
-        response = await inventoryApi.getCompanyLosses(params);
-      } else {
+      if (isAdminOrOffice && mode === 'system') {
         response = await inventoryApi.getSystemLosses(params);
+      } else {
+        if (isCountry && (mode === 'own' || mode === 'cities')) {
+          params.scope = mode;
+        }
+        response = await inventoryApi.getCompanyLosses(params);
       }
-      
+
       const data = response?.data?.data || response?.data;
       const items = Array.isArray(data) ? data : [];
       const meta = response?.data?.meta;
@@ -135,6 +149,25 @@ export default function CompanyLosses() {
     };
   }, [summary]);
 
+  // ── Header text by role ──
+  const getHeaderTitle = () => {
+    if (isCity) return `Потери — ${user?.displayName || 'Мой город'}`;
+    if (isCountry) return `Потери — ${user?.displayName || 'Моя страна'}`;
+    if (mode === 'system') return 'Минус системы';
+    return 'Минус компании';
+  };
+
+  const getHeaderSubtitle = () => {
+    if (isCity) return 'Потери браслетов записанные на ваш город';
+    if (isCountry) {
+      if (mode === 'own') return 'Потери только вашего аккаунта страны (без городов)';
+      if (mode === 'cities') return 'Потери подконтрольных городов вашей страны';
+      return 'Потери браслетов вашей страны и подконтрольных городов';
+    }
+    if (mode === 'system') return 'Все потери: компания + аккаунты (страны, города)';
+    return 'Потери браслетов записанные на компанию (ACCEPT_AS_IS)';
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -149,13 +182,11 @@ export default function CompanyLosses() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-content-primary flex items-center gap-2">
-            <TrendingDown size={22} className="text-red-500" /> 
-            {mode === 'company' ? 'Минус компании' : 'Минус системы'}
+            <TrendingDown size={22} className="text-red-500" />
+            {getHeaderTitle()}
           </h2>
           <p className="text-xs text-content-muted mt-0.5">
-            {mode === 'company' 
-              ? 'Потери браслетов записанные на компанию (ACCEPT_AS_IS)'
-              : 'Все потери: компания + аккаунты (страны, города)'}
+            {getHeaderSubtitle()}
           </p>
         </div>
         <Button onClick={handleRefresh} variant="outline" size="sm">
@@ -163,7 +194,7 @@ export default function CompanyLosses() {
         </Button>
       </div>
 
-      {/* ── Mode Toggle (ADMIN/OFFICE only) ───────── */}
+      {/* ── Mode Toggle (ADMIN/OFFICE: company/system) ── */}
       {isAdminOrOffice && (
       <div className="flex gap-2">
         <Button
@@ -184,6 +215,36 @@ export default function CompanyLosses() {
           <Users size={16} />
           Минус системы
         </Button>
+      </div>
+      )}
+
+      {/* ── Sub-tabs (COUNTRY: own / cities / all) ───── */}
+      {isCountry && (
+      <div className="flex gap-2 bg-surface-card rounded-xl p-1 border border-edge w-fit">
+        <button
+          onClick={() => setMode('all')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            mode === 'all' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20' : 'hover:bg-surface-card-hover text-content-secondary'
+          }`}
+        >
+          <span className="flex items-center gap-1.5"><Globe size={14} /> Общие потери</span>
+        </button>
+        <button
+          onClick={() => setMode('own')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            mode === 'own' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20' : 'hover:bg-surface-card-hover text-content-secondary'
+          }`}
+        >
+          <span className="flex items-center gap-1.5"><User size={14} /> Мои потери</span>
+        </button>
+        <button
+          onClick={() => setMode('cities')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            mode === 'cities' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20' : 'hover:bg-surface-card-hover text-content-secondary'
+          }`}
+        >
+          <span className="flex items-center gap-1.5"><Building2 size={14} /> Потери городов</span>
+        </button>
       </div>
       )}
 
@@ -247,11 +308,10 @@ export default function CompanyLosses() {
             </div>
           ) : (
             losses.map((loss) => {
-              // System losses have 'type' field ('COMPANY' or 'SHORTAGE')
-              const isSystemMode = mode === 'system';
+              const isSystemMode = isAdminOrOffice && mode === 'system';
               const lossType = loss.type || 'COMPANY';
               const isShortage = lossType === 'SHORTAGE';
-              
+
               return (
                 <div key={loss.id} className="p-4 hover:bg-surface-hover transition-colors" title={`${loss.senderName || 'Unknown'} → ${loss.receiverName || 'Unknown'}: потеря ${loss.totalAmount} шт${loss.originalSent !== undefined ? ` (отпр. ${loss.originalSent}, получ. ${loss.originalReceived})` : ''}`}>
                   <div className="flex items-start justify-between gap-4">
@@ -274,7 +334,7 @@ export default function CompanyLosses() {
                       {isSystemMode && (
                         <div className="flex items-center gap-2 mt-2">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                            isShortage 
+                            isShortage
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
                               : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
                           }`}>
@@ -282,6 +342,16 @@ export default function CompanyLosses() {
                           </span>
                           <span className="text-sm font-medium text-content-secondary">
                             → {loss.entityName || 'Компания (IMPREZA)'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* City tag for COUNTRY "cities" sub-tab */}
+                      {isCountry && mode === 'cities' && (loss.senderCity || loss.receiverCity) && (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <Building2 size={12} className="text-content-muted" />
+                          <span className="text-xs font-medium text-content-secondary">
+                            {loss.senderCity || loss.receiverCity}
                           </span>
                         </div>
                       )}
