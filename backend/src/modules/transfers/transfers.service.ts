@@ -1125,80 +1125,79 @@ export class TransfersService {
   }) {
     const { period, countryId, cityId, userRole, userCountryId, userCityId, userOfficeId } = params;
 
-    // Calculate date range
+    // Calculate date range for current and previous periods
     const now = new Date();
     let startDate: Date;
+    let prevStartDate: Date;
     switch (period) {
-      case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      case 'week': {
+        const ms = 7 * 24 * 60 * 60 * 1000;
+        startDate = new Date(now.getTime() - ms);
+        prevStartDate = new Date(now.getTime() - ms * 2);
         break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-        break;
-      case 'quarter':
+      }
+      case 'quarter': {
         startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
         break;
-      case 'year':
+      }
+      case 'year': {
         startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        prevStartDate = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
         break;
-      default:
+      }
+      default: {
         startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-    }
-
-    // Build base filter
-    const baseWhere: Prisma.TransferWhereInput = {
-      createdAt: { gte: startDate },
-    };
-
-    // Apply scope filters
-    if (cityId) {
-      baseWhere.OR = [
-        { senderCityId: cityId },
-        { receiverCityId: cityId },
-      ];
-    } else if (countryId) {
-      baseWhere.OR = [
-        { senderCountryId: countryId },
-        { receiverCountryId: countryId },
-        { senderCity: { countryId } },
-        { receiverCity: { countryId } },
-      ];
-    } else if (userRole === 'CITY' && userCityId) {
-      baseWhere.OR = [
-        { senderCityId: userCityId },
-        { receiverCityId: userCityId },
-      ];
-    } else if (userRole === 'COUNTRY' && userCountryId) {
-      baseWhere.OR = [
-        { senderCountryId: userCountryId },
-        { receiverCountryId: userCountryId },
-        { senderCity: { countryId: userCountryId } },
-        { receiverCity: { countryId: userCountryId } },
-      ];
-    } else if (userRole === 'OFFICE' && userOfficeId) {
-      // OFFICE: filter by office's countries
-      const officeCountries = await this.prisma.country.findMany({
-        where: { officeId: userOfficeId },
-        select: { id: true },
-      });
-      const countryIds = officeCountries.map((c) => c.id);
-      if (countryIds.length > 0) {
-        baseWhere.OR = [
-          { senderCountryId: { in: countryIds } },
-          { receiverCountryId: { in: countryIds } },
-          { senderCity: { countryId: { in: countryIds } } },
-          { receiverCity: { countryId: { in: countryIds } } },
-        ];
+        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 2, now.getDate());
       }
     }
 
-    // Get transfer statistics
+    // Build scope filter helper (reusable)
+    const buildScopeOR = async (): Promise<Prisma.TransferWhereInput['OR'] | undefined> => {
+      if (cityId) {
+        return [{ senderCityId: cityId }, { receiverCityId: cityId }];
+      } else if (countryId) {
+        return [
+          { senderCountryId: countryId }, { receiverCountryId: countryId },
+          { senderCity: { countryId } }, { receiverCity: { countryId } },
+        ];
+      } else if (userRole === 'CITY' && userCityId) {
+        return [{ senderCityId: userCityId }, { receiverCityId: userCityId }];
+      } else if (userRole === 'COUNTRY' && userCountryId) {
+        return [
+          { senderCountryId: userCountryId }, { receiverCountryId: userCountryId },
+          { senderCity: { countryId: userCountryId } }, { receiverCity: { countryId: userCountryId } },
+        ];
+      } else if (userRole === 'OFFICE' && userOfficeId) {
+        const officeCountries = await this.prisma.country.findMany({
+          where: { officeId: userOfficeId }, select: { id: true },
+        });
+        const ids = officeCountries.map((c) => c.id);
+        if (ids.length > 0) {
+          return [
+            { senderCountryId: { in: ids } }, { receiverCountryId: { in: ids } },
+            { senderCity: { countryId: { in: ids } } }, { receiverCity: { countryId: { in: ids } } },
+          ];
+        }
+      }
+      return undefined;
+    };
+
+    const scopeOR = await buildScopeOR();
+    const baseWhere: Prisma.TransferWhereInput = { createdAt: { gte: startDate } };
+    if (scopeOR) baseWhere.OR = scopeOR;
+
+    const prevWhere: Prisma.TransferWhereInput = { createdAt: { gte: prevStartDate, lt: startDate } };
+    if (scopeOR) prevWhere.OR = scopeOR;
+
+    // ── Parallel fetch: counts + all transfers + prev period count ──
     const [
       totalTransfers,
       acceptedTransfers,
       discrepancyTransfers,
       cancelledTransfers,
       allTransfers,
+      prevTransferCount,
     ] = await Promise.all([
       this.prisma.transfer.count({ where: baseWhere }),
       this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.ACCEPTED } }),
@@ -1206,14 +1205,21 @@ export class TransfersService {
       this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.CANCELLED } }),
       this.prisma.transfer.findMany({
         where: baseWhere,
-        include: { items: true },
+        include: {
+          items: true,
+          senderCountry: { select: { name: true } },
+          senderCity: { select: { name: true, country: { select: { name: true, id: true } } } },
+          receiverCountry: { select: { name: true } },
+          receiverCity: { select: { name: true, country: { select: { name: true, id: true } } } },
+        },
       }),
+      this.prisma.transfer.count({ where: prevWhere }),
     ]);
 
-    // Calculate bracelet totals
+    // ── Bracelet totals ──
     let totalBlack = 0, totalWhite = 0, totalRed = 0, totalBlue = 0;
-    for (const transfer of allTransfers) {
-      for (const item of transfer.items) {
+    for (const t of allTransfers) {
+      for (const item of t.items) {
         switch (item.itemType) {
           case 'BLACK': totalBlack += item.quantity; break;
           case 'WHITE': totalWhite += item.quantity; break;
@@ -1223,51 +1229,66 @@ export class TransfersService {
       }
     }
 
-    // Get transfer trend by date
-    const transfersByDate = new Map<string, number>();
-    for (const transfer of allTransfers) {
-      const dateKey = transfer.createdAt.toISOString().split('T')[0];
-      transfersByDate.set(dateKey, (transfersByDate.get(dateKey) || 0) + 1);
+    // ── Transfer trend by date with status breakdown ──
+    const trendMap = new Map<string, { sent: number; accepted: number; problematic: number; black: number; white: number; red: number; blue: number }>();
+    for (const t of allTransfers) {
+      const dateKey = t.createdAt.toISOString().split('T')[0];
+      if (!trendMap.has(dateKey)) trendMap.set(dateKey, { sent: 0, accepted: 0, problematic: 0, black: 0, white: 0, red: 0, blue: 0 });
+      const day = trendMap.get(dateKey)!;
+      day.sent++;
+      if (t.status === TransferStatus.ACCEPTED) day.accepted++;
+      if (t.status === TransferStatus.DISCREPANCY_FOUND) day.problematic++;
+      for (const item of t.items) {
+        const key = item.itemType.toLowerCase() as 'black' | 'white' | 'red' | 'blue';
+        day[key] += item.quantity;
+      }
     }
-    const trend = Array.from(transfersByDate.entries())
-      .map(([date, count]) => ({ date, count }))
+    const transfersByDay = Array.from(trendMap.entries())
+      .map(([date, d]) => ({ date, ...d }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Get user count in scope
+    // ── Users stats ──
     const userWhere: Prisma.UserWhereInput = { isActive: true };
-    if (cityId) {
-      userWhere.cityId = cityId;
-    } else if (countryId) {
-      userWhere.OR = [
-        { countryId },
-        { city: { countryId } },
-      ];
-    } else if (userCityId) {
-      userWhere.cityId = userCityId;
-    } else if (userCountryId) {
-      userWhere.OR = [
-        { countryId: userCountryId },
-        { city: { countryId: userCountryId } },
-      ];
-    }
+    if (cityId) userWhere.cityId = cityId;
+    else if (countryId) userWhere.OR = [{ countryId }, { city: { countryId } }];
+    else if (userCityId) userWhere.cityId = userCityId;
+    else if (userCountryId) userWhere.OR = [{ countryId: userCountryId }, { city: { countryId: userCountryId } }];
     const totalUsers = await this.prisma.user.count({ where: userWhere });
 
-    // Get event count
-    const eventWhere: Prisma.ExpenseWhereInput = {
-      createdAt: { gte: startDate },
-    };
-    if (cityId) {
-      eventWhere.cityId = cityId;
-    } else if (countryId) {
-      eventWhere.city = { countryId };
-    } else if (userCityId) {
-      eventWhere.cityId = userCityId;
-    } else if (userCountryId) {
-      eventWhere.city = { countryId: userCountryId };
-    }
+    // Active users = distinct createdBy in this period
+    const activeUserIds = new Set(allTransfers.map((t) => t.createdBy));
+
+    // ── Events count ──
+    const eventWhere: Prisma.ExpenseWhereInput = { createdAt: { gte: startDate } };
+    if (cityId) eventWhere.cityId = cityId;
+    else if (countryId) eventWhere.city = { countryId };
+    else if (userCityId) eventWhere.cityId = userCityId;
+    else if (userCountryId) eventWhere.city = { countryId: userCountryId };
     const totalEvents = await this.prisma.expense.count({ where: eventWhere });
 
-    // Get company losses (scoped by role)
+    // ── Country/city balance counts ──
+    const inventoryAll = await this.prisma.inventory.findMany({
+      where: { quantity: { gt: 0 } },
+      select: { entityType: true, countryId: true, cityId: true },
+    });
+    const activeCountryIds = new Set<string>();
+    const activeCityIds = new Set<string>();
+    for (const inv of inventoryAll) {
+      if (inv.entityType === 'COUNTRY' && inv.countryId) activeCountryIds.add(inv.countryId);
+      if (inv.entityType === 'CITY' && inv.cityId) activeCityIds.add(inv.cityId);
+    }
+
+    // ── Warehouse creation totals ──
+    let totalCreated = 0;
+    if ((this.prisma as any).warehouseCreation) {
+      const creations = await (this.prisma as any).warehouseCreation.findMany({
+        where: { createdAt: { gte: startDate } },
+        select: { totalAmount: true },
+      });
+      totalCreated = creations.reduce((s: number, c: any) => s + (c.totalAmount || 0), 0);
+    }
+
+    // ── Company losses (scoped) ──
     const lossWhere: any = { resolvedAt: { gte: startDate } };
     if (cityId) {
       lossWhere.transfer = { OR: [{ senderCityId: cityId }, { receiverCityId: cityId }] };
@@ -1286,16 +1307,152 @@ export class TransfersService {
     }
     const companyLosses = await (this.prisma as any).companyLoss.findMany({
       where: lossWhere,
-    }) as Array<{ totalAmount: number }>;
-    const totalLoss = companyLosses.reduce((sum: number, l) => sum + l.totalAmount, 0);
+      include: { transfer: { select: {
+        senderCountryId: true, receiverCountryId: true,
+        senderCity: { select: { countryId: true, country: { select: { name: true } } } },
+        receiverCity: { select: { countryId: true, country: { select: { name: true } } } },
+        senderCountry: { select: { name: true } },
+        receiverCountry: { select: { name: true } },
+      } } },
+    });
+    const totalLoss = companyLosses.reduce((s: number, l: any) => s + (l.totalAmount || 0), 0);
+
+    // ── Loss by day ──
+    const lossDayMap = new Map<string, { black: number; white: number; red: number; blue: number }>();
+    for (const l of companyLosses as any[]) {
+      const dateKey = (l.resolvedAt || l.createdAt)?.toISOString?.()?.split('T')[0];
+      if (!dateKey) continue;
+      if (!lossDayMap.has(dateKey)) lossDayMap.set(dateKey, { black: 0, white: 0, red: 0, blue: 0 });
+      const d = lossDayMap.get(dateKey)!;
+      d.black += l.black || 0;
+      d.white += l.white || 0;
+      d.red += l.red || 0;
+      d.blue += l.blue || 0;
+    }
+    const lossByDay = Array.from(lossDayMap.entries())
+      .map(([date, d]) => ({ date, ...d }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // ── Loss by country ──
+    const lossCountryMap = new Map<string, { country: string; black: number; white: number; red: number; blue: number; total: number }>();
+    for (const l of companyLosses as any[]) {
+      const transfer = l.transfer;
+      const cName = transfer?.senderCountry?.name || transfer?.senderCity?.country?.name
+                  || transfer?.receiverCountry?.name || transfer?.receiverCity?.country?.name || 'Неизвестно';
+      if (!lossCountryMap.has(cName)) lossCountryMap.set(cName, { country: cName, black: 0, white: 0, red: 0, blue: 0, total: 0 });
+      const c = lossCountryMap.get(cName)!;
+      c.black += l.black || 0;
+      c.white += l.white || 0;
+      c.red += l.red || 0;
+      c.blue += l.blue || 0;
+      c.total += l.totalAmount || 0;
+    }
+    const lossByCountry = Array.from(lossCountryMap.values()).sort((a, b) => b.total - a.total);
+
+    // ── Top countries by balance ──
+    const countryBalances = await this.prisma.inventory.groupBy({
+      by: ['countryId'],
+      where: { entityType: 'COUNTRY', countryId: { not: null } },
+      _sum: { quantity: true },
+    });
+    const countryNames = await this.prisma.country.findMany({ select: { id: true, name: true } });
+    const countryNameMap = new Map(countryNames.map((c) => [c.id, c.name]));
+    const topCountries = countryBalances
+      .map((c) => ({ name: countryNameMap.get(c.countryId!) || 'N/A', balance: c._sum.quantity || 0 }))
+      .sort((a, b) => b.balance - a.balance)
+      .slice(0, 10);
+
+    // ── Top cities by balance ──
+    const cityBalances = await this.prisma.inventory.groupBy({
+      by: ['cityId'],
+      where: { entityType: 'CITY', cityId: { not: null } },
+      _sum: { quantity: true },
+    });
+    const cityDetails = await this.prisma.city.findMany({
+      select: { id: true, name: true, country: { select: { name: true } } },
+    });
+    const cityMap = new Map(cityDetails.map((c) => [c.id, { name: c.name, country: c.country.name }]));
+    const topCities = cityBalances
+      .map((c) => {
+        const info = cityMap.get(c.cityId!) || { name: 'N/A', country: 'N/A' };
+        return { name: info.name, country: info.country, balance: c._sum.quantity || 0 };
+      })
+      .sort((a, b) => b.balance - a.balance)
+      .slice(0, 10);
+
+    // ── Color distribution (current inventory totals) ──
+    const colorDist = await this.prisma.inventory.groupBy({
+      by: ['itemType'],
+      where: { entityType: { not: 'ADMIN' } },
+      _sum: { quantity: true },
+    });
+    const colorDistribution: Record<string, number> = { black: 0, white: 0, red: 0, blue: 0 };
+    for (const c of colorDist) {
+      colorDistribution[c.itemType.toLowerCase()] = c._sum.quantity || 0;
+    }
+
+    // ── Top users by activity ──
+    const userActivityMap = new Map<string, { sent: number; received: number; problematic: number }>();
+    for (const t of allTransfers) {
+      const uid = t.createdBy;
+      if (!userActivityMap.has(uid)) userActivityMap.set(uid, { sent: 0, received: 0, problematic: 0 });
+      const u = userActivityMap.get(uid)!;
+      u.sent++;
+      if (t.status === TransferStatus.DISCREPANCY_FOUND) u.problematic++;
+    }
+    // Count received (acceptedAt means someone accepted)
+    const acceptedInPeriod = allTransfers.filter((t) => t.status === TransferStatus.ACCEPTED && t.acceptedAt);
+    // We don't have acceptedBy on Transfer, so count by receiver entity
+    const topUserIds = Array.from(userActivityMap.entries())
+      .sort((a, b) => b[1].sent - a[1].sent)
+      .slice(0, 10)
+      .map(([id]) => id);
+    const topUserDetails = topUserIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: topUserIds } },
+          select: { id: true, displayName: true, username: true, role: true },
+        })
+      : [];
+    const userDetailMap = new Map(topUserDetails.map((u) => [u.id, u]));
+    const topUsers = topUserIds.map((id) => {
+      const info = userDetailMap.get(id);
+      const act = userActivityMap.get(id)!;
+      return {
+        name: info?.displayName || info?.username || 'N/A',
+        role: info?.role || 'N/A',
+        sent: act.sent,
+        received: 0,
+        problematic: act.problematic,
+      };
+    });
+
+    // ── Average accept time (hours) ──
+    const acceptedWithTime = allTransfers.filter((t) => t.acceptedAt && t.createdAt);
+    let avgAcceptTime = 0;
+    if (acceptedWithTime.length > 0) {
+      const totalHours = acceptedWithTime.reduce((sum, t) => {
+        return sum + (new Date(t.acceptedAt!).getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60);
+      }, 0);
+      avgAcceptTime = Math.round((totalHours / acceptedWithTime.length) * 10) / 10;
+    }
+
+    // ── Previous period comparison ──
+    const transferChange = prevTransferCount > 0
+      ? Math.round(((totalTransfers - prevTransferCount) / prevTransferCount) * 100)
+      : totalTransfers > 0 ? 100 : 0;
 
     return {
       summary: {
         totalTransfers,
         totalBracelets: totalBlack + totalWhite + totalRed + totalBlue,
+        activeUsers: activeUserIds.size,
         totalUsers,
-        totalEvents,
+        activeCountries: activeCountryIds.size,
+        activeCities: activeCityIds.size,
+        totalCreated,
         totalLoss,
+        totalEvents,
+        transferChange,
       },
       statusBreakdown: {
         accepted: acceptedTransfers,
@@ -1309,7 +1466,14 @@ export class TransfersService {
         red: totalRed,
         blue: totalBlue,
       },
-      trend,
+      colorDistribution,
+      transfersByDay,
+      lossByDay,
+      lossByCountry,
+      topCountries,
+      topCities,
+      topUsers,
+      avgAcceptTime,
       period,
       startDate: startDate.toISOString(),
       endDate: now.toISOString(),

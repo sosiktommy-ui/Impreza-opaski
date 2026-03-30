@@ -18,14 +18,14 @@ import Chat from './pages/Chat';
 import Map from './pages/Map';
 import CompanyLosses from './pages/CompanyLosses';
 import { transfersApi } from './api/transfers';
-import { eventsApi } from './api/events';
 import { usersApi } from './api/users';
 import { inventoryApi } from './api/inventory';
 import {
   Clock, AlertTriangle, Package, TrendingDown, TrendingUp,
   ArrowRight, ArrowRightLeft, Calendar, Filter, RefreshCw, Download,
   BarChart3, PieChart, Activity, Users as UsersIcon, MapPin, Search,
-  Check, X, Ban, Loader2, Send, CheckCircle, XCircle
+  Check, X, Ban, Loader2, Send, CheckCircle, XCircle,
+  Globe, Building2, Timer, Gauge, Trophy
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -619,11 +619,8 @@ const BRACELET_COLORS = {
 function Statistics() {
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('month');
-  const [transferStats, setTransferStats] = useState(null);
+  const [stats, setStats] = useState(null);
   const [userStats, setUserStats] = useState(null);
-  const [eventStats, setEventStats] = useState(null);
-  const [topSenders, setTopSenders] = useState([]);
-  const [topReceivers, setTopReceivers] = useState([]);
   const { countryId, cityId, eventId } = useFilterStore();
 
   useEffect(() => {
@@ -638,100 +635,23 @@ function Statistics() {
       if (cityId) params.cityId = cityId;
       if (eventId) params.eventId = eventId;
 
-      // Fetch backend stats (primary) + users + events in parallel
-      const [statsRes, usersRes, eventsRes] = await Promise.all([
+      const [statsRes, usersRes] = await Promise.all([
         transfersApi.getStats(params).catch((e) => { console.error('Stats API error:', e); return { data: null }; }),
         usersApi.getAll({ limit: 500 }).catch(() => ({ data: [] })),
-        eventsApi.getAll().catch(() => ({ data: [] })),
       ]);
 
-      // --- Parse backend stats response ---
-      // Axios interceptor unwraps { success, data } → res.data = inner data
-      const stats = statsRes?.data?.data || statsRes?.data || null;
+      const data = statsRes?.data?.data || statsRes?.data || null;
+      setStats(data);
 
-      if (stats && stats.summary) {
-        // Backend returned full stats — use them directly
-        const { summary, statusBreakdown, braceletBreakdown, trend } = stats;
-
-        const byStatus = {
-          SENT: statusBreakdown?.pending || 0,
-          ACCEPTED: statusBreakdown?.accepted || 0,
-          DISCREPANCY_FOUND: statusBreakdown?.discrepancy || 0,
-          CANCELLED: statusBreakdown?.cancelled || 0,
-        };
-
-        const byType = {
-          BLACK: braceletBreakdown?.black || 0,
-          WHITE: braceletBreakdown?.white || 0,
-          RED: braceletBreakdown?.red || 0,
-          BLUE: braceletBreakdown?.blue || 0,
-        };
-
-        const dailyTrend = (trend || []).slice(-14).map((t) => ({
-          date: new Date(t.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
-          sent: t.count || 0,
-          received: 0,
-          problematic: 0,
-        }));
-
-        setTransferStats({
-          total: summary.totalTransfers || 0,
-          byStatus,
-          byType,
-          dailyTrend,
-          totalBracelets: summary.totalBracelets || 0,
-          totalLoss: summary.totalLoss || 0,
-          prevPeriodChange: 0,
-        });
-      } else {
-        // Fallback: no backend stats available
-        setTransferStats({
-          total: 0, byStatus: { SENT: 0, ACCEPTED: 0, DISCREPANCY_FOUND: 0, CANCELLED: 0 },
-          byType: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
-          dailyTrend: [], totalBracelets: 0, totalLoss: 0, prevPeriodChange: 0,
-        });
-      }
-
-      setTopSenders([]);
-      setTopReceivers([]);
-
-      // --- Process user statistics ---
       const usersRaw = usersRes?.data;
       const users = usersRaw?.data || (Array.isArray(usersRaw) ? usersRaw : []);
       const userList = Array.isArray(users) ? users : [];
-      const byRole = userList.reduce((acc, u) => {
-        acc[u.role] = (acc[u.role] || 0) + 1;
-        return acc;
-      }, {});
-
-      // Use backend stats totalUsers as fallback when users endpoint is restricted
-      const totalUsersFromStats = stats?.summary?.totalUsers || 0;
-      
+      const byRole = userList.reduce((acc, u) => { acc[u.role] = (acc[u.role] || 0) + 1; return acc; }, {});
       setUserStats({
-        total: userList.length || totalUsersFromStats,
+        total: userList.length || data?.summary?.totalUsers || 0,
         byRole,
-        active: userList.length > 0 ? userList.filter(u => u.isActive !== false).length : totalUsersFromStats,
+        active: userList.length > 0 ? userList.filter(u => u.isActive !== false).length : data?.summary?.activeUsers || 0,
       });
-
-      // --- Process event statistics ---
-      const eventsRaw = eventsRes?.data;
-      const events = eventsRaw?.data || (Array.isArray(eventsRaw) ? eventsRaw : []);
-      const eventList = Array.isArray(events) ? events : [];
-      const activeEvents = eventList.filter(e => e.active !== false && e.isActive !== false);
-
-      // Use backend stats totalEvents as fallback
-      const totalEventsFromStats = stats?.summary?.totalEvents || 0;
-      
-      setEventStats({
-        total: eventList.length || totalEventsFromStats,
-        active: activeEvents.length,
-        byCountry: eventList.reduce((acc, e) => {
-          const country = e.country?.name || 'Неизвестно';
-          acc[country] = (acc[country] || 0) + 1;
-          return acc;
-        }, {}),
-      });
-
     } catch (err) {
       console.error('Failed to load statistics:', err);
     } finally {
@@ -739,49 +659,73 @@ function Statistics() {
     }
   };
 
-  const statusPieData = useMemo(() => {
-    if (!transferStats?.byStatus) return [];
-    const statusLabels = {
-      SENT: 'Ожидание',
-      ACCEPTED: 'Принято',
-      DISCREPANCY_FOUND: 'Расхождение',
-      CANCELLED: 'Отменено',
-    };
-    const statusColors = {
-      SENT: '#f59e0b',
-      ACCEPTED: '#10b981',
-      DISCREPANCY_FOUND: '#ef4444',
-      CANCELLED: '#6b7280',
-    };
-    return Object.entries(transferStats.byStatus)
-      .filter(([_, count]) => count > 0)
-      .map(([status, count]) => ({
-        name: statusLabels[status] || status,
-        value: count,
-        color: statusColors[status] || '#6b7280',
-      }));
-  }, [transferStats]);
+  const s = stats?.summary || {};
+  const sb = stats?.statusBreakdown || {};
+  const bb = stats?.braceletBreakdown || {};
 
-  const braceletBarData = useMemo(() => {
-    if (!transferStats?.byType) return [];
+  const dailyTrend = useMemo(() => {
+    return (stats?.transfersByDay || []).map((t) => ({
+      date: new Date(t.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+      sent: t.sent || 0,
+      accepted: t.accepted || 0,
+      problematic: t.problematic || 0,
+    }));
+  }, [stats]);
+
+  const braceletDayData = useMemo(() => {
+    return (stats?.transfersByDay || []).map((t) => ({
+      date: new Date(t.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+      black: t.black || 0,
+      white: t.white || 0,
+      red: t.red || 0,
+      blue: t.blue || 0,
+    }));
+  }, [stats]);
+
+  const statusPieData = useMemo(() => {
+    const map = { pending: { name: 'Ожидание', color: '#f59e0b' }, accepted: { name: 'Принято', color: '#10b981' },
+      discrepancy: { name: 'Расхождение', color: '#ef4444' }, cancelled: { name: 'Отменено', color: '#6b7280' } };
+    return Object.entries(sb).filter(([_, v]) => v > 0).map(([k, v]) => ({ ...map[k], value: v }));
+  }, [sb]);
+
+  const colorPieData = useMemo(() => {
+    const cd = stats?.colorDistribution || {};
     return [
-      { name: 'Чёрный', value: transferStats.byType.BLACK, fill: '#1f2937' },
-      { name: 'Белый', value: transferStats.byType.WHITE, fill: '#e5e7eb' },
-      { name: 'Красный', value: transferStats.byType.RED, fill: '#ef4444' },
-      { name: 'Синий', value: transferStats.byType.BLUE, fill: '#3b82f6' },
-    ];
-  }, [transferStats]);
+      { name: 'Чёрный', value: cd.black || 0, color: '#1f2937' },
+      { name: 'Белый', value: cd.white || 0, color: '#9ca3af' },
+      { name: 'Красный', value: cd.red || 0, color: '#ef4444' },
+      { name: 'Синий', value: cd.blue || 0, color: '#3b82f6' },
+    ].filter((c) => c.value > 0);
+  }, [stats]);
 
   const rolePieData = useMemo(() => {
     if (!userStats?.byRole) return [];
-    const roleLabels = { ADMIN: 'Админы', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
-    const roleColors = { ADMIN: '#8b5cf6', OFFICE: '#3b82f6', COUNTRY: '#10b981', CITY: '#f59e0b' };
-    return Object.entries(userStats.byRole).map(([role, count]) => ({
-      name: roleLabels[role] || role,
-      value: count,
-      color: roleColors[role] || '#6b7280',
-    }));
+    const m = { ADMIN: { name: 'Админы', color: '#8b5cf6' }, OFFICE: { name: 'Офис', color: '#3b82f6' },
+      COUNTRY: { name: 'Страна', color: '#10b981' }, CITY: { name: 'Город', color: '#f59e0b' } };
+    return Object.entries(userStats.byRole).map(([r, v]) => ({ ...(m[r] || { name: r, color: '#6b7280' }), value: v }));
   }, [userStats]);
+
+  const lossDayData = useMemo(() => {
+    return (stats?.lossByDay || []).map((t) => ({
+      date: new Date(t.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+      black: t.black || 0, white: t.white || 0, red: t.red || 0, blue: t.blue || 0,
+    }));
+  }, [stats]);
+
+  const braceletBarData = useMemo(() => [
+    { name: 'Чёрный', value: bb.black || 0, fill: '#1f2937' },
+    { name: 'Белый', value: bb.white || 0, fill: '#e5e7eb' },
+    { name: 'Красный', value: bb.red || 0, fill: '#ef4444' },
+    { name: 'Синий', value: bb.blue || 0, fill: '#3b82f6' },
+  ], [bb]);
+
+  const tooltipStyle = {
+    backgroundColor: 'var(--surface-card)',
+    border: '1px solid var(--edge)',
+    borderRadius: '12px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    color: 'var(--content-primary)',
+  };
 
   const StatCard = ({ icon: Icon, label, value, subText, gradient, trend, iconColor }) => (
     <div className={`relative overflow-hidden p-5 rounded-2xl border border-edge bg-gradient-to-br ${gradient} hover:shadow-lg hover:shadow-brand-500/5 transition-all duration-300 group`}>
@@ -800,7 +744,7 @@ function Statistics() {
             </div>
           )}
         </div>
-        <div className="text-3xl font-bold text-content-primary mb-1">{value?.toLocaleString() || 0}</div>
+        <div className="text-3xl font-bold text-content-primary mb-1">{value?.toLocaleString?.() || 0}</div>
         <div className="text-sm text-content-muted">{label}</div>
         {subText && <div className="text-xs text-content-muted/70 mt-1">{subText}</div>}
       </div>
@@ -820,12 +764,12 @@ function Statistics() {
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <Skeleton key={i} className="h-32 rounded-2xl" />
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {[1, 2].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-80 rounded-2xl" />
           ))}
         </div>
@@ -846,204 +790,110 @@ function Statistics() {
             <p className="text-sm text-content-muted">Аналитика и показатели системы</p>
           </div>
         </div>
-
         <div className="flex items-center gap-2 bg-surface-card rounded-xl p-1 border border-edge">
           {['week', 'month', 'quarter', 'year'].map((period) => (
-            <button
-              key={period}
-              onClick={() => setDateRange(period)}
+            <button key={period} onClick={() => setDateRange(period)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                dateRange === period
-                  ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20'
-                  : 'hover:bg-surface-card-hover text-content-secondary'
-              }`}
-            >
-              {period === 'week' && 'Неделя'}
-              {period === 'month' && 'Месяц'}
-              {period === 'quarter' && 'Квартал'}
-              {period === 'year' && 'Год'}
+                dateRange === period ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20' : 'hover:bg-surface-card-hover text-content-secondary'
+              }`}>
+              {period === 'week' && 'Неделя'}{period === 'month' && 'Месяц'}{period === 'quarter' && 'Квартал'}{period === 'year' && 'Год'}
             </button>
           ))}
-          <button
-            onClick={loadAllStats}
-            className="p-2 rounded-lg hover:bg-surface-card-hover transition-colors ml-1"
-            title="Обновить"
-          >
+          <button onClick={loadAllStats} className="p-2 rounded-lg hover:bg-surface-card-hover transition-colors ml-1" title="Обновить">
             <RefreshCw size={18} className="text-content-muted" />
           </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* ── SECTION 1: Key Metric Cards (8) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          icon={ArrowRightLeft} 
-          label="Переводы" 
-          value={transferStats?.total} 
-          subText="за выбранный период"
-          gradient="from-blue-500/10 to-blue-600/5"
-          iconColor="bg-gradient-to-br from-blue-500 to-blue-600"
-          trend={transferStats?.prevPeriodChange}
-        />
-        <StatCard 
-          icon={Package} 
-          label="Браслеты" 
-          value={transferStats?.totalBracelets} 
-          subText="перемещено"
-          gradient="from-emerald-500/10 to-emerald-600/5"
-          iconColor="bg-gradient-to-br from-emerald-500 to-emerald-600"
-        />
-        <StatCard 
-          icon={UsersIcon} 
-          label="Пользователи" 
-          value={userStats?.total} 
-          subText={`${userStats?.active || 0} активных`}
-          gradient="from-purple-500/10 to-purple-600/5"
-          iconColor="bg-gradient-to-br from-purple-500 to-purple-600"
-        />
-        <StatCard 
-          icon={Calendar} 
-          label="Мероприятия" 
-          value={eventStats?.total} 
-          subText={`${eventStats?.active || 0} активных`}
-          gradient="from-amber-500/10 to-amber-600/5"
-          iconColor="bg-gradient-to-br from-amber-500 to-amber-600"
-        />
+        <StatCard icon={ArrowRightLeft} label="Переводы" value={s.totalTransfers} subText="за выбранный период"
+          gradient="from-blue-500/10 to-blue-600/5" iconColor="bg-gradient-to-br from-blue-500 to-blue-600" trend={s.transferChange} />
+        <StatCard icon={Package} label="Браслеты в переводах" value={s.totalBracelets} subText="перемещено"
+          gradient="from-emerald-500/10 to-emerald-600/5" iconColor="bg-gradient-to-br from-emerald-500 to-emerald-600" />
+        <StatCard icon={TrendingDown} label="Потери компании" value={s.totalLoss} subText="за период"
+          gradient="from-red-500/10 to-red-600/5" iconColor="bg-gradient-to-br from-red-500 to-red-600" />
+        <StatCard icon={Gauge} label="Создано на складе" value={s.totalCreated} subText="за период"
+          gradient="from-cyan-500/10 to-cyan-600/5" iconColor="bg-gradient-to-br from-cyan-500 to-cyan-600" />
+        <StatCard icon={UsersIcon} label="Пользователи" value={s.totalUsers}
+          subText={`${s.activeUsers || 0} активных за период`}
+          gradient="from-purple-500/10 to-purple-600/5" iconColor="bg-gradient-to-br from-purple-500 to-purple-600" />
+        <StatCard icon={Globe} label="Активные страны" value={s.activeCountries} subText="с ненулевым балансом"
+          gradient="from-teal-500/10 to-teal-600/5" iconColor="bg-gradient-to-br from-teal-500 to-teal-600" />
+        <StatCard icon={Building2} label="Активные города" value={s.activeCities} subText="с ненулевым балансом"
+          gradient="from-orange-500/10 to-orange-600/5" iconColor="bg-gradient-to-br from-orange-500 to-orange-600" />
+        <StatCard icon={Timer} label="Ср. время приёмки" value={stats?.avgAcceptTime ? `${stats.avgAcceptTime}ч` : '—'}
+          subText="от создания до принятия"
+          gradient="from-indigo-500/10 to-indigo-600/5" iconColor="bg-gradient-to-br from-indigo-500 to-indigo-600" />
       </div>
 
-      {/* Status Mini Cards */}
+      {/* ── Status Mini Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-4 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-600/5 border border-amber-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock size={14} className="text-amber-500" />
-            <span className="text-xs text-amber-400 font-medium">Ожидание</span>
-          </div>
-          <div className="text-2xl font-bold text-amber-400">{transferStats?.byStatus?.SENT || 0}</div>
+          <div className="flex items-center gap-2 mb-2"><Clock size={14} className="text-amber-500" /><span className="text-xs text-amber-400 font-medium">Ожидание</span></div>
+          <div className="text-2xl font-bold text-amber-400">{sb.pending || 0}</div>
         </div>
         <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle size={14} className="text-emerald-500" />
-            <span className="text-xs text-emerald-400 font-medium">Принято</span>
-          </div>
-          <div className="text-2xl font-bold text-emerald-400">{transferStats?.byStatus?.ACCEPTED || 0}</div>
+          <div className="flex items-center gap-2 mb-2"><CheckCircle size={14} className="text-emerald-500" /><span className="text-xs text-emerald-400 font-medium">Принято</span></div>
+          <div className="text-2xl font-bold text-emerald-400">{sb.accepted || 0}</div>
         </div>
         <div className="p-4 rounded-xl bg-gradient-to-br from-red-500/10 to-red-600/5 border border-red-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={14} className="text-red-500" />
-            <span className="text-xs text-red-400 font-medium">Расхождение</span>
-          </div>
-          <div className="text-2xl font-bold text-red-400">{transferStats?.byStatus?.DISCREPANCY_FOUND || 0}</div>
+          <div className="flex items-center gap-2 mb-2"><AlertTriangle size={14} className="text-red-500" /><span className="text-xs text-red-400 font-medium">Расхождение</span></div>
+          <div className="text-2xl font-bold text-red-400">{sb.discrepancy || 0}</div>
         </div>
         <div className="p-4 rounded-xl bg-gradient-to-br from-gray-500/10 to-gray-600/5 border border-gray-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <XCircle size={14} className="text-gray-500" />
-            <span className="text-xs text-gray-400 font-medium">Отменено</span>
-          </div>
-          <div className="text-2xl font-bold text-gray-400">{transferStats?.byStatus?.CANCELLED || 0}</div>
+          <div className="flex items-center gap-2 mb-2"><XCircle size={14} className="text-gray-500" /><span className="text-xs text-gray-400 font-medium">Отменено</span></div>
+          <div className="text-2xl font-bold text-gray-400">{sb.cancelled || 0}</div>
         </div>
       </div>
 
-      {/* Charts Row 1 */}
+      {/* ── SECTION 2: Charts ── */}
+      {/* Row 1: Transfer trend + Status donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Transfer Trend - Full Width */}
         <div className="lg:col-span-2 p-5 rounded-2xl bg-surface-card border border-edge">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-content-primary flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <Activity size={16} className="text-blue-500" />
-              </div>
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><Activity size={16} className="text-blue-500" /></div>
               Динамика переводов
             </h3>
             <div className="flex items-center gap-4 text-xs">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                <span className="text-content-muted">Отправлено</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span className="text-content-muted">Принято</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <span className="text-content-muted">Проблемные</span>
-              </div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /><span className="text-content-muted">Отправлено</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-content-muted">Принято</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-500" /><span className="text-content-muted">Проблемные</span></div>
             </div>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={transferStats?.dailyTrend || []}>
+              <AreaChart data={dailyTrend}>
                 <defs>
-                  <linearGradient id="gradSent" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gradReceived" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
+                  <linearGradient id="gradSent" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} /><stop offset="100%" stopColor="#3b82f6" stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gradAccepted" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.4} /><stop offset="100%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--edge)" strokeOpacity={0.5} />
                 <XAxis dataKey="date" tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'var(--surface-card)', 
-                    border: '1px solid var(--edge)',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    color: 'var(--content-primary)'
-                  }} 
-                />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Area type="monotone" dataKey="sent" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#gradSent)" name="Отправлено" />
-                <Area type="monotone" dataKey="received" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#gradReceived)" name="Принято" />
+                <Area type="monotone" dataKey="accepted" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#gradAccepted)" name="Принято" />
                 <Line type="monotone" dataKey="problematic" stroke="#ef4444" name="Проблемные" strokeWidth={2} dot={{ r: 3, fill: '#ef4444' }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Status Donut Chart */}
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <PieChart size={16} className="text-purple-500" />
-            </div>
-            Статусы
+            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center"><PieChart size={16} className="text-purple-500" /></div>
+            Статусы переводов
           </h3>
-          <div className="h-64 flex items-center justify-center">
+          <div className="h-56 flex items-center justify-center">
             {statusPieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <RePieChart>
-                  <Pie
-                    data={statusPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                  >
-                    {statusPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'var(--surface-card)', 
-                      border: '1px solid var(--edge)',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                    }} 
-                  />
-                </RePieChart>
+                <RePieChart><Pie data={statusPieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                  {statusPieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie><Tooltip contentStyle={tooltipStyle} /></RePieChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="text-center text-content-muted">
-                <Package size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Нет данных</p>
-              </div>
-            )}
+            ) : <div className="text-center text-content-muted"><Package size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
           </div>
           {statusPieData.length > 0 && (
             <div className="grid grid-cols-2 gap-2 mt-2">
@@ -1059,20 +909,70 @@ function Statistics() {
         </div>
       </div>
 
-      {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Bracelet Distribution */}
+      {/* Row 2: Bracelet by day (stacked bar) + Color distribution donut */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 p-5 rounded-2xl bg-surface-card border border-edge">
+          <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Package size={16} className="text-emerald-500" /></div>
+            Браслеты по дням
+          </h3>
+          <div className="h-72">
+            {braceletDayData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={braceletDayData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--edge)" strokeOpacity={0.5} />
+                  <XAxis dataKey="date" tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="black" stackId="a" fill="#1f2937" name="Чёрный" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="white" stackId="a" fill="#9ca3af" name="Белый" />
+                  <Bar dataKey="red" stackId="a" fill="#ef4444" name="Красный" />
+                  <Bar dataKey="blue" stackId="a" fill="#3b82f6" name="Синий" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <div className="h-full flex items-center justify-center text-content-muted"><Package size={32} className="opacity-30" /></div>}
+          </div>
+        </div>
+
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <Package size={16} className="text-emerald-500" />
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center"><PieChart size={16} className="text-cyan-500" /></div>
+            Баланс по цветам
+          </h3>
+          <div className="h-56 flex items-center justify-center">
+            {colorPieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <RePieChart><Pie data={colorPieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                  {colorPieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie><Tooltip contentStyle={tooltipStyle} /></RePieChart>
+              </ResponsiveContainer>
+            ) : <div className="text-center text-content-muted"><Package size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
+          </div>
+          {colorPieData.length > 0 && (
+            <div className="space-y-2 mt-2">
+              {colorPieData.map((item) => (
+                <div key={item.name} className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full border border-gray-600" style={{ backgroundColor: item.color }} />
+                  <span className="text-content-muted">{item.name}</span>
+                  <span className="text-content-secondary font-medium ml-auto">{item.value.toLocaleString()}</span>
+                </div>
+              ))}
             </div>
-            Распределение по цветам
+          )}
+        </div>
+      </div>
+
+      {/* Row 3: Bracelet progress bars + User roles pie */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="p-5 rounded-2xl bg-surface-card border border-edge">
+          <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Package size={16} className="text-emerald-500" /></div>
+            Распределение в переводах
           </h3>
           <div className="space-y-3">
             {braceletBarData.map((item) => {
               const maxValue = Math.max(...braceletBarData.map(b => b.value), 1);
-              const percentage = Math.round((item.value / maxValue) * 100);
+              const pct = Math.round((item.value / maxValue) * 100);
               return (
                 <div key={item.name} className="space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
@@ -1083,68 +983,32 @@ function Statistics() {
                     <span className="font-semibold text-content-primary">{item.value.toLocaleString()}</span>
                   </div>
                   <div className="h-2 bg-surface-primary rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ 
-                        width: `${percentage}%`, 
-                        backgroundColor: item.fill,
-                        boxShadow: `0 0 8px ${item.fill}40`
-                      }} 
-                    />
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, backgroundColor: item.fill, boxShadow: `0 0 8px ${item.fill}40` }} />
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="mt-4 pt-4 border-t border-edge">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-content-muted">Всего браслетов</span>
-              <span className="text-xl font-bold text-content-primary">{transferStats?.totalBracelets?.toLocaleString() || 0}</span>
-            </div>
+          <div className="mt-4 pt-4 border-t border-edge flex items-center justify-between">
+            <span className="text-sm text-content-muted">Всего браслетов</span>
+            <span className="text-xl font-bold text-content-primary">{(s.totalBracelets || 0).toLocaleString()}</span>
           </div>
         </div>
 
-        {/* User Roles Distribution */}
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <UsersIcon size={16} className="text-purple-500" />
-            </div>
+            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center"><UsersIcon size={16} className="text-purple-500" /></div>
             Пользователи по ролям
           </h3>
           <div className="h-52 flex items-center">
             {rolePieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <RePieChart>
-                  <Pie
-                    data={rolePieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={45}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                  >
-                    {rolePieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'var(--surface-card)', 
-                      border: '1px solid var(--edge)',
-                      borderRadius: '12px'
-                    }} 
-                  />
-                </RePieChart>
+                <RePieChart><Pie data={rolePieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                  {rolePieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie><Tooltip contentStyle={tooltipStyle} /></RePieChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="w-full text-center text-content-muted">
-                <UsersIcon size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Нет данных</p>
-              </div>
-            )}
+            ) : <div className="w-full text-center text-content-muted"><UsersIcon size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             {rolePieData.map((item) => (
@@ -1158,85 +1022,164 @@ function Statistics() {
         </div>
       </div>
 
-      {/* Top Senders & Receivers */}
+      {/* ── SECTION 3: Rankings — Top Countries + Top Cities ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Top Senders */}
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <Send size={16} className="text-blue-500" />
-            </div>
-            Топ отправители
+            <div className="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center"><Globe size={16} className="text-teal-500" /></div>
+            Топ стран по балансу
           </h3>
-          {topSenders.length > 0 ? (
-            <div className="space-y-3">
-              {topSenders.map((sender, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-surface-primary hover:bg-surface-card-hover transition-colors">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
-                    idx === 0 ? 'bg-amber-500/20 text-amber-400' :
-                    idx === 1 ? 'bg-gray-400/20 text-gray-400' :
-                    idx === 2 ? 'bg-orange-600/20 text-orange-400' :
-                    'bg-surface-card text-content-muted'
-                  }`}>
-                    {idx + 1}
+          {(stats?.topCountries || []).length > 0 ? (
+            <div className="space-y-2">
+              {stats.topCountries.map((c, i) => {
+                const maxB = Math.max(...stats.topCountries.map(x => x.balance), 1);
+                return (
+                  <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-surface-primary">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                      i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-gray-400/20 text-gray-400' : i === 2 ? 'bg-orange-600/20 text-orange-400' : 'bg-surface-card text-content-muted'
+                    }`}>{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-content-primary truncate">{c.name}</div>
+                      <div className="h-1.5 bg-surface-card rounded-full mt-1 overflow-hidden">
+                        <div className="h-full rounded-full bg-teal-500 transition-all duration-500" style={{ width: `${Math.round((c.balance / maxB) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-teal-400">{c.balance.toLocaleString()}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-content-primary truncate">{sender.name}</div>
-                    <div className="text-xs text-content-muted">{sender.count} переводов</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold text-blue-400">{sender.bracelets.toLocaleString()}</div>
-                    <div className="text-xs text-content-muted">браслетов</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          ) : (
-            <div className="text-center py-8 text-content-muted">
-              <Send size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Нет данных</p>
-            </div>
-          )}
+          ) : <div className="text-center py-8 text-content-muted"><Globe size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
         </div>
 
-        {/* Top Receivers */}
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <Download size={16} className="text-emerald-500" />
-            </div>
-            Топ получатели
+            <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><Building2 size={16} className="text-orange-500" /></div>
+            Топ городов по балансу
           </h3>
-          {topReceivers.length > 0 ? (
-            <div className="space-y-3">
-              {topReceivers.map((receiver, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-surface-primary hover:bg-surface-card-hover transition-colors">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
-                    idx === 0 ? 'bg-amber-500/20 text-amber-400' :
-                    idx === 1 ? 'bg-gray-400/20 text-gray-400' :
-                    idx === 2 ? 'bg-orange-600/20 text-orange-400' :
-                    'bg-surface-card text-content-muted'
-                  }`}>
-                    {idx + 1}
+          {(stats?.topCities || []).length > 0 ? (
+            <div className="space-y-2">
+              {stats.topCities.map((c, i) => {
+                const maxB = Math.max(...stats.topCities.map(x => x.balance), 1);
+                return (
+                  <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-surface-primary">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                      i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-gray-400/20 text-gray-400' : i === 2 ? 'bg-orange-600/20 text-orange-400' : 'bg-surface-card text-content-muted'
+                    }`}>{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-content-primary truncate">{c.name}</div>
+                      <div className="text-xs text-content-muted">{c.country}</div>
+                      <div className="h-1.5 bg-surface-card rounded-full mt-1 overflow-hidden">
+                        <div className="h-full rounded-full bg-orange-500 transition-all duration-500" style={{ width: `${Math.round((c.balance / maxB) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-orange-400">{c.balance.toLocaleString()}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-content-primary truncate">{receiver.name}</div>
-                    <div className="text-xs text-content-muted">{receiver.count} переводов</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold text-emerald-400">{receiver.bracelets.toLocaleString()}</div>
-                    <div className="text-xs text-content-muted">браслетов</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          ) : (
-            <div className="text-center py-8 text-content-muted">
-              <Download size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Нет данных</p>
-            </div>
-          )}
+          ) : <div className="text-center py-8 text-content-muted"><Building2 size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
         </div>
+      </div>
+
+      {/* ── SECTION 4: Losses ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 p-5 rounded-2xl bg-surface-card border border-edge">
+          <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center"><TrendingDown size={16} className="text-red-500" /></div>
+            Потери по дням
+          </h3>
+          <div className="h-64">
+            {lossDayData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={lossDayData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--edge)" strokeOpacity={0.5} />
+                  <XAxis dataKey="date" tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="black" stackId="a" fill="#1f2937" name="Чёрный" />
+                  <Bar dataKey="white" stackId="a" fill="#9ca3af" name="Белый" />
+                  <Bar dataKey="red" stackId="a" fill="#ef4444" name="Красный" />
+                  <Bar dataKey="blue" stackId="a" fill="#3b82f6" name="Синий" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <div className="h-full flex items-center justify-center text-content-muted"><TrendingDown size={32} className="opacity-30" /></div>}
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-surface-card border border-edge">
+          <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center"><Globe size={16} className="text-red-500" /></div>
+            Потери по странам
+          </h3>
+          {(stats?.lossByCountry || []).length > 0 ? (
+            <div className="space-y-2.5">
+              {stats.lossByCountry.slice(0, 8).map((c, i) => {
+                const maxL = Math.max(...stats.lossByCountry.map(x => x.total), 1);
+                return (
+                  <div key={i} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-content-secondary truncate">{c.country}</span>
+                      <span className="font-semibold text-red-400">{c.total.toLocaleString()}</span>
+                    </div>
+                    <div className="h-1.5 bg-surface-primary rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-red-500/70 transition-all duration-500" style={{ width: `${Math.round((c.total / maxL) * 100)}%` }} />
+                    </div>
+                    <div className="flex gap-2 text-[10px] text-content-muted">
+                      {c.black > 0 && <span>●Ч:{c.black}</span>}
+                      {c.white > 0 && <span>○Б:{c.white}</span>}
+                      {c.red > 0 && <span className="text-red-400">●К:{c.red}</span>}
+                      {c.blue > 0 && <span className="text-blue-400">●С:{c.blue}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <div className="text-center py-8 text-content-muted"><TrendingDown size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет потерь</p></div>}
+        </div>
+      </div>
+
+      {/* ── SECTION 5: Activity — Top Users ── */}
+      <div className="p-5 rounded-2xl bg-surface-card border border-edge">
+        <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"><Trophy size={16} className="text-amber-500" /></div>
+          Топ пользователей по активности
+        </h3>
+        {(stats?.topUsers || []).length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-edge">
+                  <th className="text-left py-2.5 px-3 text-content-muted font-medium">#</th>
+                  <th className="text-left py-2.5 px-3 text-content-muted font-medium">Пользователь</th>
+                  <th className="text-left py-2.5 px-3 text-content-muted font-medium">Роль</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Переводов</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Проблемных</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.topUsers.map((u, i) => {
+                  const roleLabels = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
+                  return (
+                    <tr key={i} className="border-b border-edge/50 hover:bg-surface-primary transition-colors">
+                      <td className="py-2.5 px-3">
+                        <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${
+                          i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-gray-400/20 text-gray-400' : i === 2 ? 'bg-orange-600/20 text-orange-400' : 'text-content-muted'
+                        }`}>{i + 1}</div>
+                      </td>
+                      <td className="py-2.5 px-3 font-medium text-content-primary">{u.name}</td>
+                      <td className="py-2.5 px-3"><span className="px-2 py-0.5 rounded-full text-xs bg-surface-primary text-content-muted">{roleLabels[u.role] || u.role}</span></td>
+                      <td className="py-2.5 px-3 text-right font-semibold text-blue-400">{u.sent}</td>
+                      <td className="py-2.5 px-3 text-right">
+                        {u.problematic > 0 ? <span className="font-semibold text-red-400">{u.problematic}</span> : <span className="text-content-muted">0</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="text-center py-8 text-content-muted"><UsersIcon size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
       </div>
     </div>
   );
