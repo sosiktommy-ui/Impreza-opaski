@@ -226,7 +226,7 @@ export default function Dashboard() {
       tooltip: 'Трансферы с расхождением в количестве, ожидают решения администратора',
     },
     {
-      label: 'Минус компании',
+      label: isAdminOrOffice ? 'Минус компании' : 'Мои потери',
       value: (lossSummary?.total || 0) > 0 ? `-${lossSummary.total}` : '0',
       icon: MinusCircle,
       iconBg: 'bg-red-500/10', iconColor: 'text-red-400',
@@ -258,6 +258,7 @@ export default function Dashboard() {
       borderHover: 'hover:border-emerald-500/50',
       path: '/balance',
       tooltip: 'Количество стран с активными менеджерами в системе',
+      roles: ['ADMIN', 'OFFICE', 'COUNTRY'],
     },
   ].filter((c) => !c.roles || c.roles.includes(user.role));
 
@@ -296,7 +297,7 @@ export default function Dashboard() {
         {/* System / personal balance */}
         {balance && balance.length > 0 && (
           <Card
-            title={isAdminOrOffice ? `Баланс системы — ${systemTotal} шт` : 'Текущий остаток'}
+            title={isAdminOrOffice ? `Баланс системы — ${systemTotal} шт` : `Мой баланс — ${systemTotal} шт`}
             action={
               <button onClick={() => navigate('/balance')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
                 Подробнее <ArrowRight size={12} />
@@ -320,7 +321,7 @@ export default function Dashboard() {
         {/* Company losses by color */}
         {lossSummary && (
           <Card
-            title="Минус компании по цветам"
+            title={isAdminOrOffice ? 'Минус компании по цветам' : 'Мои потери по цветам'}
             action={
               <button onClick={() => navigate('/company-losses')} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
                 Подробнее <ArrowRight size={12} />

@@ -90,8 +90,16 @@ export class UsersController {
   }
 
   @Get('cities')
-  getCities(@Query('countryId') countryId?: string) {
-    return this.usersService.getCities(countryId);
+  getCities(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('countryId') countryId?: string,
+  ) {
+    // COUNTRY/CITY roles can only see cities in their own country
+    let scopedCountryId = countryId;
+    if (user.role === 'COUNTRY' || user.role === 'CITY') {
+      scopedCountryId = user.countryId ?? undefined;
+    }
+    return this.usersService.getCities(scopedCountryId);
   }
 
   @Get(':id')

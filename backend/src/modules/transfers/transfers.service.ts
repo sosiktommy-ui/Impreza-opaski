@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -895,6 +896,22 @@ export class TransfersService {
 
     if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
 
+    // RBAC scope check: COUNTRY/CITY can only view transfers involving their scope
+    if (currentUser) {
+      const { role, countryId: uCountry, cityId: uCity } = currentUser;
+      if (role === 'COUNTRY' && uCountry) {
+        const involves =
+          transfer.senderCountryId === uCountry ||
+          transfer.receiverCountryId === uCountry;
+        if (!involves) throw new ForbiddenException('No access to this transfer');
+      } else if (role === 'CITY' && uCity) {
+        const involves =
+          transfer.senderCityId === uCity ||
+          transfer.receiverCityId === uCity;
+        if (!involves) throw new ForbiddenException('No access to this transfer');
+      }
+    }
+
     // Enrich with creator info
     const creator = await this.prisma.user.findUnique({
       where: { id: transfer.createdBy },
@@ -1349,23 +1366,39 @@ export class TransfersService {
     }
     const lossByCountry = Array.from(lossCountryMap.values()).sort((a, b) => b.total - a.total);
 
-    // ── Top countries by balance ──
-    const countryBalances = await this.prisma.inventory.groupBy({
-      by: ['countryId'],
-      where: { entityType: 'COUNTRY', countryId: { not: null } },
-      _sum: { quantity: true },
-    });
-    const countryNames = await this.prisma.country.findMany({ select: { id: true, name: true } });
-    const countryNameMap = new Map(countryNames.map((c) => [c.id, c.name]));
-    const topCountries = countryBalances
-      .map((c) => ({ name: countryNameMap.get(c.countryId!) || 'N/A', balance: c._sum.quantity || 0 }))
-      .sort((a, b) => b.balance - a.balance)
-      .slice(0, 10);
+    // ── Top countries by balance (scoped) ──
+    // CITY: empty (no subordinates). COUNTRY: only own country. ADMIN/OFFICE: all.
+    let topCountries: { name: string; balance: number }[] = [];
+    if (userRole !== 'CITY') {
+      const countryBalWhere: any = { entityType: 'COUNTRY', countryId: { not: null } };
+      if (userRole === 'COUNTRY' && userCountryId) {
+        countryBalWhere.countryId = userCountryId;
+      }
+      const countryBalances = await this.prisma.inventory.groupBy({
+        by: ['countryId'],
+        where: countryBalWhere,
+        _sum: { quantity: true },
+      });
+      const countryNames = await this.prisma.country.findMany({ select: { id: true, name: true } });
+      const countryNameMap = new Map(countryNames.map((c) => [c.id, c.name]));
+      topCountries = countryBalances
+        .map((c) => ({ name: countryNameMap.get(c.countryId!) || 'N/A', balance: c._sum.quantity || 0 }))
+        .sort((a, b) => b.balance - a.balance)
+        .slice(0, 10);
+    }
 
-    // ── Top cities by balance ──
+    // ── Top cities by balance (scoped) ──
+    // CITY: only own city. COUNTRY: only cities in own country. ADMIN/OFFICE: all.
+    const cityBalWhere: any = { entityType: 'CITY', cityId: { not: null } };
+    if (userRole === 'CITY' && userCityId) {
+      cityBalWhere.cityId = userCityId;
+    } else if (userRole === 'COUNTRY' && userCountryId) {
+      const myCities = await this.prisma.city.findMany({ where: { countryId: userCountryId }, select: { id: true } });
+      cityBalWhere.cityId = { in: myCities.map((c) => c.id) };
+    }
     const cityBalances = await this.prisma.inventory.groupBy({
       by: ['cityId'],
-      where: { entityType: 'CITY', cityId: { not: null } },
+      where: cityBalWhere,
       _sum: { quantity: true },
     });
     const cityDetails = await this.prisma.city.findMany({
@@ -1380,10 +1413,22 @@ export class TransfersService {
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 10);
 
-    // ── Color distribution (current inventory totals) ──
+    // ── Color distribution (scoped) ──
+    const colorDistWhere: any = { entityType: { not: 'ADMIN' } };
+    if (userRole === 'CITY' && userCityId) {
+      colorDistWhere.entityType = 'CITY';
+      colorDistWhere.cityId = userCityId;
+    } else if (userRole === 'COUNTRY' && userCountryId) {
+      const myCityIds = await this.prisma.city.findMany({ where: { countryId: userCountryId }, select: { id: true } });
+      colorDistWhere.OR = [
+        { entityType: 'COUNTRY', countryId: userCountryId },
+        { entityType: 'CITY', cityId: { in: myCityIds.map((c) => c.id) } },
+      ];
+      delete colorDistWhere.entityType;
+    }
     const colorDist = await this.prisma.inventory.groupBy({
       by: ['itemType'],
-      where: { entityType: { not: 'ADMIN' } },
+      where: colorDistWhere,
       _sum: { quantity: true },
     });
     const colorDistribution: Record<string, number> = { black: 0, white: 0, red: 0, blue: 0 };
@@ -1474,6 +1519,7 @@ export class TransfersService {
       topCities,
       topUsers,
       avgAcceptTime,
+      userRole: userRole || 'ADMIN',
       period,
       startDate: startDate.toISOString(),
       endDate: now.toISOString(),

@@ -622,6 +622,10 @@ function Statistics() {
   const [stats, setStats] = useState(null);
   const [userStats, setUserStats] = useState(null);
   const { countryId, cityId, eventId } = useFilterStore();
+  const { user } = useAuthStore();
+  const isAdminOrOffice = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  const isCity = user?.role === 'CITY';
+  const isCountry = user?.role === 'COUNTRY';
 
   useEffect(() => {
     loadAllStats();
@@ -787,7 +791,7 @@ function Statistics() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-content-primary">Статистика</h1>
-            <p className="text-sm text-content-muted">Аналитика и показатели системы</p>
+            <p className="text-sm text-content-muted">{isAdminOrOffice ? 'Аналитика и показатели системы' : isCountry ? `Статистика — ${user?.displayName || 'Моя страна'}` : `Статистика — ${user?.displayName || 'Мой город'}`}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 bg-surface-card rounded-xl p-1 border border-edge">
@@ -811,16 +815,16 @@ function Statistics() {
           gradient="from-blue-500/10 to-blue-600/5" iconColor="bg-gradient-to-br from-blue-500 to-blue-600" trend={s.transferChange} />
         <StatCard icon={Package} label="Браслеты в переводах" value={s.totalBracelets} subText="перемещено"
           gradient="from-emerald-500/10 to-emerald-600/5" iconColor="bg-gradient-to-br from-emerald-500 to-emerald-600" />
-        <StatCard icon={TrendingDown} label="Потери компании" value={s.totalLoss} subText="за период"
+        <StatCard icon={TrendingDown} label={isAdminOrOffice ? 'Потери компании' : 'Мои потери'} value={s.totalLoss} subText="за период"
           gradient="from-red-500/10 to-red-600/5" iconColor="bg-gradient-to-br from-red-500 to-red-600" />
         <StatCard icon={Gauge} label="Создано на складе" value={s.totalCreated} subText="за период"
           gradient="from-cyan-500/10 to-cyan-600/5" iconColor="bg-gradient-to-br from-cyan-500 to-cyan-600" />
-        <StatCard icon={UsersIcon} label="Пользователи" value={s.totalUsers}
+        {isAdminOrOffice && <StatCard icon={UsersIcon} label="Пользователи" value={s.totalUsers}
           subText={`${s.activeUsers || 0} активных за период`}
-          gradient="from-purple-500/10 to-purple-600/5" iconColor="bg-gradient-to-br from-purple-500 to-purple-600" />
-        <StatCard icon={Globe} label="Активные страны" value={s.activeCountries} subText="с ненулевым балансом"
-          gradient="from-teal-500/10 to-teal-600/5" iconColor="bg-gradient-to-br from-teal-500 to-teal-600" />
-        <StatCard icon={Building2} label="Активные города" value={s.activeCities} subText="с ненулевым балансом"
+          gradient="from-purple-500/10 to-purple-600/5" iconColor="bg-gradient-to-br from-purple-500 to-purple-600" />}
+        {!isCity && <StatCard icon={Globe} label="Активные страны" value={s.activeCountries} subText="с ненулевым балансом"
+          gradient="from-teal-500/10 to-teal-600/5" iconColor="bg-gradient-to-br from-teal-500 to-teal-600" />}
+        <StatCard icon={Building2} label={isCity ? 'Мой город' : 'Активные города'} value={isCity ? 1 : s.activeCities} subText={isCity ? '' : 'с ненулевым балансом'}
           gradient="from-orange-500/10 to-orange-600/5" iconColor="bg-gradient-to-br from-orange-500 to-orange-600" />
         <StatCard icon={Timer} label="Ср. время приёмки" value={stats?.avgAcceptTime ? `${stats.avgAcceptTime}ч` : '—'}
           subText="от создания до принятия"
@@ -937,7 +941,7 @@ function Statistics() {
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center"><PieChart size={16} className="text-cyan-500" /></div>
-            Баланс по цветам
+            {isAdminOrOffice ? 'Баланс по цветам' : 'Мой баланс по цветам'}
           </h3>
           <div className="h-56 flex items-center justify-center">
             {colorPieData.length > 0 ? (
@@ -1024,6 +1028,7 @@ function Statistics() {
 
       {/* ── SECTION 3: Rankings — Top Countries + Top Cities ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {isAdminOrOffice && (
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center"><Globe size={16} className="text-teal-500" /></div>
@@ -1051,11 +1056,13 @@ function Statistics() {
             </div>
           ) : <div className="text-center py-8 text-content-muted"><Globe size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
         </div>
+        )}
 
+        {!isCity && (
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><Building2 size={16} className="text-orange-500" /></div>
-            Топ городов по балансу
+            {isCountry ? 'Мои города по балансу' : 'Топ городов по балансу'}
           </h3>
           {(stats?.topCities || []).length > 0 ? (
             <div className="space-y-2">
@@ -1080,6 +1087,7 @@ function Statistics() {
             </div>
           ) : <div className="text-center py-8 text-content-muted"><Building2 size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
         </div>
+        )}
       </div>
 
       {/* ── SECTION 4: Losses ── */}
@@ -1107,10 +1115,11 @@ function Statistics() {
           </div>
         </div>
 
+        {!isCity && (
         <div className="p-5 rounded-2xl bg-surface-card border border-edge">
           <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center"><Globe size={16} className="text-red-500" /></div>
-            Потери по странам
+            {isCountry ? 'Потери по моим городам' : 'Потери по странам'}
           </h3>
           {(stats?.lossByCountry || []).length > 0 ? (
             <div className="space-y-2.5">
@@ -1137,9 +1146,11 @@ function Statistics() {
             </div>
           ) : <div className="text-center py-8 text-content-muted"><TrendingDown size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет потерь</p></div>}
         </div>
+        )}
       </div>
 
       {/* ── SECTION 5: Activity — Top Users ── */}
+      {isAdminOrOffice && (
       <div className="p-5 rounded-2xl bg-surface-card border border-edge">
         <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"><Trophy size={16} className="text-amber-500" /></div>
@@ -1181,6 +1192,7 @@ function Statistics() {
           </div>
         ) : <div className="text-center py-8 text-content-muted"><UsersIcon size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
       </div>
+      )}
     </div>
   );
 }
