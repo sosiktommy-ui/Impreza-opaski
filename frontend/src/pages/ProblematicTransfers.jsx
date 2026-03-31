@@ -201,15 +201,12 @@ export default function ProblematicTransfers() {
       if (countryId) params.countryId = countryId;
       if (cityId) params.cityId = cityId;
       
-      console.log('=== ProblematicTransfers v12 FETCH START ===');
       const transfersRes = await transfersApi.getProblematic(params);
-      console.log('v12 raw response:', transfersRes);
       
       // Axios interceptor unwraps: { success: true, data: X } -> res.data = X
       // Backend returns: { data: [...], meta: {...} }
       // So transfersRes.data = { data: [...], meta: {...} }
       const responseData = transfersRes?.data;
-      console.log('v12 responseData:', responseData);
       
       // Try multiple parsing strategies
       let list = [];
@@ -219,29 +216,23 @@ export default function ProblematicTransfers() {
         // Response is directly an array
         list = responseData;
         meta.total = list.length;
-        console.log('v12: responseData is array, length:', list.length);
       } else if (responseData && Array.isArray(responseData.data)) {
         // Response is { data: [...], meta: {...} }
         list = responseData.data;
         meta = responseData.meta || meta;
-        console.log('v12: responseData.data is array, length:', list.length);
       } else if (responseData && typeof responseData === 'object') {
         // Maybe responseData itself is the array wrapped differently
         const keys = Object.keys(responseData);
-        console.log('v12: responseData is object with keys:', keys);
         // Try to find an array in the response
         for (const key of keys) {
           if (Array.isArray(responseData[key])) {
             list = responseData[key];
-            console.log(`v12: found array at key '${key}', length:`, list.length);
             break;
           }
         }
         if (responseData.meta) meta = responseData.meta;
       }
       
-      console.log('v12 FINAL list length:', list.length);
-      console.log('v12 FINAL meta:', meta);
       
       if (list.length === 0 && meta.total > 0) {
         console.warn('v12 WARNING: meta.total > 0 but list is empty!');
@@ -278,7 +269,6 @@ export default function ProblematicTransfers() {
 
   // Open resolution modal for a transfer
   const openResolveModal = (transfer) => {
-    console.log('openResolveModal called with transfer:', transfer?.id);
     setSelectedTransfer(transfer);
     setSelectedResolution(null);
     setResolveError('');
@@ -288,7 +278,6 @@ export default function ProblematicTransfers() {
       initValues[r.itemType.toLowerCase()] = r.receivedQuantity || 0;
     });
     setCompromiseValues(initValues);
-    console.log('selectedTransfer set, modal should open now');
   };
 
   // Select a resolution type and show 2FA

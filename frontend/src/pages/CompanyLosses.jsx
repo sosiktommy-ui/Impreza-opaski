@@ -94,6 +94,7 @@ export default function CompanyLosses() {
       const params = { page: currentPage, limit: TAKE };
       if (countryId) params.countryId = countryId;
       if (cityId) params.cityId = cityId;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
 
       let response;
       if (isAdminOrOffice && mode === 'system') {

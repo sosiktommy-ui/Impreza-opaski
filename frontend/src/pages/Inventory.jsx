@@ -80,7 +80,6 @@ export default function Inventory() {
   const init = async () => {
     if (isAdminOrOffice) {
       try {
-        console.log('=== INVENTORY INIT DEBUG ===');
         const filterParams = {};
         if (globalCountryId) filterParams.countryId = globalCountryId;
         if (globalCityId) filterParams.cityId = globalCityId;
@@ -94,9 +93,6 @@ export default function Inventory() {
           }),
         ]);
         
-        console.log('Countries response:', countriesRes);
-        console.log('Inventory response:', inventoryRes);
-        console.log('Offices response:', officesRes);
         
         const cPayload = countriesRes.data?.data || countriesRes.data;
         setCountries(Array.isArray(cPayload) ? cPayload : []);
@@ -118,7 +114,6 @@ export default function Inventory() {
         } else if (Array.isArray(officesRes)) {
           officesList = officesRes;
         }
-        console.log('Parsed offices:', officesList);
         setOffices(officesList);
 
         // Auto-select office for OFFICE users
@@ -355,24 +350,18 @@ export default function Inventory() {
   // WAREHOUSE (Мой баланс) FUNCTIONS
   // ─────────────────────────────────────────────────────────────────────
   const loadWarehouseData = async () => {
-    console.log('=== LOAD WAREHOUSE DATA ===');
     setWarehouseLoading(true);
     try {
       const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
-      console.log('officeId for query:', officeId);
       
       const [balanceRes, historyRes] = await Promise.all([
         inventoryApi.getWarehouseBalance(officeId || undefined),
         inventoryApi.getWarehouseCreationHistory({ officeId: officeId || undefined, take: 50 }),
       ]);
       
-      console.log('balanceRes:', balanceRes);
-      console.log('balanceRes.data:', balanceRes.data);
-      console.log('historyRes:', historyRes);
       
       setWarehouseBalance(balanceRes.data);
       const histList = historyRes.data?.data || historyRes.data;
-      console.log('histList:', histList);
       setWarehouseHistory(Array.isArray(histList) ? histList : []);
     } catch (err) {
       console.error('Failed to load warehouse data', err);
@@ -390,10 +379,6 @@ export default function Inventory() {
     setCreateSuccess('');
     const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
     
-    console.log('=== handleCreateBracelets v12 ===');
-    console.log('user.role:', user.role);
-    console.log('officeId:', officeId);
-    console.log('createForm:', createForm);
     
     // ADMIN doesn't need officeId, OFFICE does
     if (user.role === 'OFFICE' && !officeId) {
@@ -421,14 +406,10 @@ export default function Inventory() {
       throw new Error('Нет данных для создания');
     }
     
-    console.log('=== CREATE BRACELETS v12 START ===');
-    console.log('pendingCreateData:', JSON.stringify(pendingCreateData));
     
     // Verify password first
     try {
-      console.log('v12: Verifying password...');
       const verifyRes = await authApi.verifyPassword(password);
-      console.log('v12: Password verified:', verifyRes);
     } catch (verifyErr) {
       console.error('v12: Password verification failed:', verifyErr);
       console.error('v12: verifyErr.response:', verifyErr.response);
@@ -438,9 +419,7 @@ export default function Inventory() {
     
     setCreating(true);
     try {
-      console.log('v12: Creating bracelets with data:', pendingCreateData);
       const createRes = await inventoryApi.createBracelets(pendingCreateData);
-      console.log('v12: Create response:', createRes);
       
       // Calculate total for success message
       const total = (pendingCreateData.black || 0) + (pendingCreateData.white || 0) + 
@@ -454,9 +433,7 @@ export default function Inventory() {
       // Clear success message after 5 seconds
       setTimeout(() => setCreateSuccess(''), 5000);
       
-      console.log('v12: Reloading warehouse data...');
       await loadWarehouseData();
-      console.log('v12: Warehouse data reloaded successfully');
     } catch (err) {
       console.error('v12: Create bracelets error:', err);
       console.error('v12: err.response:', err.response);

@@ -218,7 +218,7 @@ export class TransfersController {
     } else if (user.role === Role.CITY && user.cityId) {
       entityType = EntityType.CITY;
       entityId = user.cityId;
-    } else if (user.countryId) {
+    } else if (user.role === Role.COUNTRY && user.countryId) {
       entityType = EntityType.COUNTRY;
       entityId = user.countryId;
     } else {

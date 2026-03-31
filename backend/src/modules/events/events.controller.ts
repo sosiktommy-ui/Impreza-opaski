@@ -24,8 +24,8 @@ export class EventsController {
     @Query('active') active?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
-    // Auto-filter for CITY role: only show events in their city
-    if (user?.role === Role.CITY && user.cityId && !city) {
+    // Auto-filter for CITY role: always force their city scope
+    if (user?.role === Role.CITY && user.cityId) {
       const cityEntity = await this.prisma.city.findUnique({
         where: { id: user.cityId },
         select: { name: true },
@@ -33,8 +33,8 @@ export class EventsController {
       if (cityEntity) city = cityEntity.name;
     }
 
-    // Auto-filter for COUNTRY role: only show events in their country
-    if (user?.role === Role.COUNTRY && user.countryId && !country) {
+    // Auto-filter for COUNTRY role: always force their country scope
+    if (user?.role === Role.COUNTRY && user.countryId) {
       const countryEntity = await this.prisma.country.findUnique({
         where: { id: user.countryId },
         select: { code: true },

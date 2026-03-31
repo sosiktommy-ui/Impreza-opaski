@@ -171,7 +171,7 @@ export default function Acceptance() {
   const openDisagree = (transfer) => {
     setDisagreeTarget(transfer);
     setDisagreeReason('');
-    setReceivedTotal('');
+    setReceivedItems({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
     setError('');
   };
 

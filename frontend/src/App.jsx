@@ -88,7 +88,7 @@ function PendingTransfers() {
     return transfer.senderId === currentUser?.id || 
            transfer.senderCityId === currentUser?.cityId;
   };
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'OWNER';
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   // Open accept modal
   const openAcceptModal = (transfer) => {

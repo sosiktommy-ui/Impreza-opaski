@@ -401,6 +401,7 @@ export class InventoryController {
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
     @Query('scope') scope?: string,
+    @Query('search') search?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
@@ -420,6 +421,7 @@ export class InventoryController {
         countryId: scopedCountryId,
         cityId: scopedCityId,
         scope,
+        search,
       });
     } catch (error: any) {
       this.logger.error(`getCompanyLosses error: ${error?.message}`, error?.stack);

@@ -240,7 +240,7 @@ export default function Users() {
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={`font-medium ${u.isActive === false ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                  <span className={`font-medium ${u.isActive === false ? 'text-gray-400 line-through' : 'text-content-primary'}`}>
                     {u.displayName}
                   </span>
                   {u.isActive === false && (

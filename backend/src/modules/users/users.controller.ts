@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -17,6 +18,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { Role } from '@prisma/client';
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsEmail, MinLength } from 'class-validator';
+
+const ROLE_HIERARCHY: Record<string, number> = {
+  [Role.ADMIN]: 4,
+  [Role.OFFICE]: 3,
+  [Role.COUNTRY]: 2,
+  [Role.CITY]: 1,
+};
 
 class CreateUserDto {
   @IsString()
@@ -110,31 +118,48 @@ export class UsersController {
 
   @Post()
   @Roles(Role.ADMIN, Role.OFFICE)
-  createUser(@Body() dto: CreateUserDto) {
+  createUser(@Body() dto: CreateUserDto, @CurrentUser() caller: AuthenticatedUser) {
+    if (ROLE_HIERARCHY[dto.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя создать пользователя с ролью равной или выше вашей');
+    }
     return this.usersService.createUser(dto);
   }
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.OFFICE)
-  update(
+  async update(
     @Param('id') id: string,
     @Body() data: { displayName?: string; isActive?: boolean; email?: string },
+    @CurrentUser() caller: AuthenticatedUser,
   ) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя редактировать пользователя с ролью равной или выше вашей');
+    }
     return this.usersService.update(id, data);
   }
 
   @Patch(':id/password')
   @Roles(Role.ADMIN, Role.OFFICE)
-  resetPassword(
+  async resetPassword(
     @Param('id') id: string,
     @Body() dto: ResetPasswordDto,
+    @CurrentUser() caller: AuthenticatedUser,
   ) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя сбросить пароль пользователю с ролью равной или выше вашей');
+    }
     return this.usersService.resetPassword(id, dto.newPassword);
   }
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.OFFICE)
-  deleteUser(@Param('id') id: string) {
+  async deleteUser(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя удалить пользователя с ролью равной или выше вашей');
+    }
     return this.usersService.deleteUser(id);
   }
 }

@@ -928,8 +928,9 @@ export class InventoryService {
     countryId?: string;
     cityId?: string;
     scope?: string;
+    search?: string;
   }) {
-    const { page = 1, limit = 20, startDate, endDate, countryId, cityId, scope } = params;
+    const { page = 1, limit = 20, startDate, endDate, countryId, cityId, scope, search } = params;
     const skip = (page - 1) * limit;
 
     try {
@@ -947,6 +948,14 @@ export class InventoryService {
       }
       if (endDate) {
         where.resolvedAt = { ...where.resolvedAt, lte: new Date(endDate) };
+      }
+      if (search) {
+        where.OR = [
+          { senderName: { contains: search, mode: 'insensitive' } },
+          { receiverName: { contains: search, mode: 'insensitive' } },
+          { senderCity: { contains: search, mode: 'insensitive' } },
+          { receiverCity: { contains: search, mode: 'insensitive' } },
+        ];
       }
       if (cityId) {
         where.transfer = {

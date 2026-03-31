@@ -523,6 +523,24 @@ export default function Expenses() {
         title="Новый расход"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* City select for non-CITY roles */}
+          {user.role !== 'CITY' && cities.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-content-primary mb-1">Город</label>
+              <select
+                value={cityId}
+                onChange={handleCityChange}
+                className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+                required
+              >
+                <option value="">— Выберите город —</option>
+                {cities.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* IMPREZA events dropdown */}
           <div>
             <label className="block text-sm font-medium text-content-primary mb-1">
