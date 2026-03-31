@@ -857,7 +857,7 @@ export class InventoryService {
       const where: any = {};
       // For CITY/COUNTRY scoped queries, exclude ACCEPT_AS_IS (company-level losses)
       if (filters?.cityId || filters?.countryId) {
-        where.resolutionType = { not: 'ACCEPT_AS_IS' };
+        where.NOT = { resolutionType: 'ACCEPT_AS_IS' };
       }
       if (filters?.cityId) {
         where.transfer = {
@@ -963,7 +963,7 @@ export class InventoryService {
       }
       // For CITY/COUNTRY scoped queries, exclude ACCEPT_AS_IS (company-level losses)
       if (cityId || countryId) {
-        where.resolutionType = { not: 'ACCEPT_AS_IS' };
+        where.NOT = { resolutionType: 'ACCEPT_AS_IS' };
       }
       if (cityId) {
         where.transfer = {
