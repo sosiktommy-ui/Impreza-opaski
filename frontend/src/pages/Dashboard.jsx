@@ -118,7 +118,6 @@ export default function Dashboard() {
           setRawInventory(dPayload);
           const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
           dPayload.forEach((inv) => {
-            if (inv.entityType === 'ADMIN' || inv.entityType === 'OFFICE') return;
             if (totals[inv.itemType] !== undefined) totals[inv.itemType] += inv.quantity || 0;
           });
           setBalance(Object.entries(totals).map(([itemType, quantity]) => ({ itemType, quantity })));
@@ -283,7 +282,7 @@ export default function Dashboard() {
     </div>
   );
 
-  const balanceTitle = user.role === 'ADMIN' ? 'Баланс системы' :
+  const balanceTitle = user.role === 'ADMIN' ? 'Общий баланс' :
                        user.role === 'OFFICE' ? 'Баланс офиса' : 'Мой баланс';
 
   const citiesTotal = cityBalances.reduce((sum, { balance: bal }) => {

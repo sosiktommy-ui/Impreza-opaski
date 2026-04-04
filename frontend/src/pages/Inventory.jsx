@@ -29,7 +29,7 @@ export default function Inventory() {
   const { countryId: globalCountryId, cityId: globalCityId } = useFilterStore();
   const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
   
-  // Tab state: 'my' = Мой баланс (склад), 'system' = Баланс системы
+  // Tab state: 'my' = Мой баланс (склад), 'system' = Общий баланс
   const [activeTab, setActiveTab] = useState(isAdminOrOffice ? 'my' : 'system');
   
   // System balance state (existing inventory)
@@ -100,12 +100,9 @@ export default function Inventory() {
         const cPayload = countriesRes.data?.data || countriesRes.data;
         setCountries(Array.isArray(cPayload) ? cPayload : []);
 
-        // Filter out ADMIN and OFFICE inventory from system totals
+        // Include ALL accounts (ADMIN, OFFICE, COUNTRY, CITY) in system totals
         const iPayload = inventoryRes.data?.data || inventoryRes.data;
-        const filtered = (Array.isArray(iPayload) ? iPayload : []).filter(
-          inv => inv.entityType !== 'ADMIN' && inv.entityType !== 'OFFICE'
-        );
-        setAllInventory(filtered);
+        setAllInventory(Array.isArray(iPayload) ? iPayload : []);
 
         // Parse offices - handle multiple formats
         let officesList = [];
@@ -208,8 +205,8 @@ export default function Inventory() {
       } else if (inv.entityType === 'CITY' && inv.city) {
         countryId = inv.city.countryId;
         // We'll resolve the name from countries list
-      } else if (inv.entityType === 'OFFICE') {
-        // Office inventory shown separately
+      } else if (inv.entityType === 'OFFICE' || inv.entityType === 'ADMIN') {
+        // Admin/Office inventory shown in account breakdown
         return;
       }
 
@@ -246,6 +243,20 @@ export default function Inventory() {
 
     return Object.values(countryMap).sort((a, b) => a.name.localeCompare(b.name));
   }, [allInventory, countries, isAdminOrOffice]);
+
+  // Breakdown of ADMIN + OFFICE balances for "Общий баланс" view
+  const accountBreakdown = useMemo(() => {
+    if (!isAdminOrOffice || allInventory.length === 0) return [];
+    const map = {};
+    allInventory.forEach(inv => {
+      if (inv.entityType !== 'ADMIN' && inv.entityType !== 'OFFICE') return;
+      const key = inv.entityType === 'ADMIN' ? 'ADMIN' : inv.officeId || 'OFFICE';
+      const name = inv.entityType === 'ADMIN' ? 'Администратор' : (inv.office?.name || 'Офис');
+      if (!map[key]) map[key] = { id: key, name, entityType: inv.entityType, totals: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 } };
+      if (map[key].totals[inv.itemType] !== undefined) map[key].totals[inv.itemType] += inv.quantity || 0;
+    });
+    return Object.values(map);
+  }, [allInventory, isAdminOrOffice]);
 
   const loadBalance = async (entityType, entityId) => {
     try {
@@ -471,8 +482,9 @@ export default function Inventory() {
   // Combined operations timeline
   const operationsTimeline = useMemo(() => {
     const ops = [];
+    const isAdmin = user.role === 'ADMIN';
 
-    // Warehouse creations
+    // Warehouse creations (already filtered by backend for ADMIN)
     warehouseHistory.forEach((item) => {
       ops.push({
         id: `creation-${item.id}`,
@@ -487,8 +499,10 @@ export default function Inventory() {
       });
     });
 
-    // Transfers
-    warehouseTransfers.forEach((tr) => {
+    // Transfers — for ADMIN only show where ADMIN is sender/receiver
+    warehouseTransfers
+      .filter(tr => !isAdmin || tr.senderType === 'ADMIN' || tr.receiverType === 'ADMIN')
+      .forEach((tr) => {
       const items = {};
       let total = 0;
       (tr.items || []).forEach((i) => {
@@ -510,24 +524,26 @@ export default function Inventory() {
       });
     });
 
-    // Expenses
-    warehouseExpenses.forEach((exp) => {
-      const total = (exp.black || 0) + (exp.white || 0) + (exp.red || 0) + (exp.blue || 0);
-      ops.push({
-        id: `expense-${exp.id}`,
-        type: 'expense',
-        date: new Date(exp.eventDate || exp.createdAt),
-        label: exp.eventName || 'Расход',
-        sublabel: exp.city?.name || '',
-        amount: total,
-        sign: '-',
-        items: { BLACK: exp.black || 0, WHITE: exp.white || 0, RED: exp.red || 0, BLUE: exp.blue || 0 },
+    // Expenses — skip for ADMIN (expenses are city-level, not admin's personal ops)
+    if (!isAdmin) {
+      warehouseExpenses.forEach((exp) => {
+        const total = (exp.black || 0) + (exp.white || 0) + (exp.red || 0) + (exp.blue || 0);
+        ops.push({
+          id: `expense-${exp.id}`,
+          type: 'expense',
+          date: new Date(exp.eventDate || exp.createdAt),
+          label: exp.eventName || 'Расход',
+          sublabel: exp.city?.name || '',
+          amount: total,
+          sign: '-',
+          items: { BLACK: exp.black || 0, WHITE: exp.white || 0, RED: exp.red || 0, BLUE: exp.blue || 0 },
+        });
       });
-    });
+    }
 
     ops.sort((a, b) => b.date - a.date);
     return ops;
-  }, [warehouseHistory, warehouseTransfers, warehouseExpenses]);
+  }, [warehouseHistory, warehouseTransfers, warehouseExpenses, user.role]);
 
   if (loading) {
     return (
@@ -573,7 +589,7 @@ export default function Inventory() {
               }`}
             >
               <Boxes size={16} className="inline mr-2" />
-              Баланс системы
+              Общий баланс
             </button>
           </div>
         )}
@@ -767,7 +783,7 @@ export default function Inventory() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════ */}
-      {/* TAB: Баланс системы (System Inventory) */}
+      {/* TAB: Общий баланс (System Inventory) */}
       {/* ════════════════════════════════════════════════════════════════ */}
       {(activeTab === 'system' || !isAdminOrOffice) && (
         <div className="space-y-4">
@@ -780,7 +796,7 @@ export default function Inventory() {
                 className={`flex items-center gap-1.5 hover:text-brand-500 transition-colors ${!selectedCountry ? 'text-brand-500 font-semibold' : 'text-content-muted'}`}
               >
                 <Home size={16} />
-                <span>Баланс системы</span>
+                <span>Общий баланс</span>
               </button>
               {selectedCountry && (() => {
                 const countryData = countryBreakdown.find((c) => c.id === selectedCountry);
@@ -856,7 +872,7 @@ export default function Inventory() {
           <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-2xl p-6 shadow-xl shadow-brand-500/20">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-brand-100 text-sm font-medium">Общий баланс системы</p>
+                <p className="text-brand-100 text-sm font-medium">Общий баланс</p>
                 <p className="text-4xl font-bold text-white mt-1">{systemTotal.toLocaleString()}</p>
                 <p className="text-brand-200 text-sm mt-1">браслетов в обороте</p>
               </div>
@@ -894,6 +910,39 @@ export default function Inventory() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* ── Account Breakdown (ADMIN + OFFICE) ────── */}
+      {isAdminOrOffice && accountBreakdown.length > 0 && !selectedCountry && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <Building2 size={16} className="text-white" />
+            </div>
+            <h3 className="text-lg font-semibold text-content-primary">Баланс аккаунтов (Админ + Офисы)</h3>
+          </div>
+          <div className="space-y-2">
+            {accountBreakdown.map((acc) => {
+              const total = COLORS.reduce((s, c) => s + (acc.totals[c] || 0), 0);
+              return (
+                <div key={acc.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface-card-hover transition-colors">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm">{acc.entityType === 'ADMIN' ? '👤' : '🏢'}</span>
+                    <span className="font-medium text-content-primary">{acc.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {COLORS.map((c) => (
+                      <span key={c} className="text-xs tabular-nums text-content-secondary">
+                        {COLOR_LABELS[c].charAt(0)}: {acc.totals[c] || 0}
+                      </span>
+                    ))}
+                    <span className="font-bold text-sm text-content-primary ml-2">{total}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
       )}
 
       {/* ── Country Breakdown with Accordion (Admin/Office - no country selected) ────── */}
