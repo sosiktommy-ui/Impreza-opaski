@@ -132,8 +132,10 @@ export class InventoryController {
   getAllBalances(
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
+    @CurrentUser() user?: AuthenticatedUser,
   ) {
-    return this.inventoryService.getAllBalances({ countryId, cityId });
+    const officeId = (user?.role === Role.OFFICE && user.officeId) ? user.officeId : undefined;
+    return this.inventoryService.getAllBalances({ countryId, cityId, officeId });
   }
 
   @Get('my')

@@ -56,7 +56,7 @@ export class InventoryService {
     return balance;
   }
 
-  async getAllBalances(filters?: { countryId?: string; cityId?: string }) {
+  async getAllBalances(filters?: { countryId?: string; cityId?: string; officeId?: string }) {
     const where: any = {};
     if (filters?.cityId) {
       where.entityType = 'CITY';
@@ -66,6 +66,12 @@ export class InventoryService {
       where.OR = [
         { entityType: 'COUNTRY', countryId: filters.countryId },
         { entityType: 'CITY', city: { countryId: filters.countryId } },
+      ];
+    } else if (filters?.officeId) {
+      // Get all countries in this office and their cities
+      where.OR = [
+        { entityType: 'COUNTRY', country: { officeId: filters.officeId } },
+        { entityType: 'CITY', city: { country: { officeId: filters.officeId } } },
       ];
     }
 

@@ -51,6 +51,8 @@ export default function Dashboard() {
   const [systemMinus, setSystemMinus] = useState(null);
   const [totalUsers, setTotalUsers] = useState(0);
   const [mapData, setMapData] = useState([]);
+  const [cityBalances, setCityBalances] = useState([]);
+  const [citiesLossSummary, setCitiesLossSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
@@ -65,100 +67,130 @@ export default function Dashboard() {
       if (cityId) filterParams.cityId = cityId;
       if (eventId) filterParams.eventId = eventId;
 
-      const promises = [
-        transfersApi.getAll({ limit: 200, ...filterParams }),
-        usersApi.getCountries(),
-        transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
-        usersApi.getAll({ limit: 1 }),
-        inventoryApi.getExpenses({ limit: 100 }),
-      ];
-
       if (isAdminOrOffice) {
-        promises.push(inventoryApi.getAll(filterParams));
-        promises.push(inventoryApi.getCompanyLossesSummary(filterParams));
-        if (user.role === 'ADMIN') promises.push(inventoryApi.getMapData());
-        else promises.push(Promise.resolve(null));
-        promises.push(inventoryApi.getSystemLossesSummary());
-      } else {
-        const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
-        const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
-        promises.push(inventoryApi.getBalance(entityType, entityId));
-        promises.push(inventoryApi.getCompanyLossesSummary()); // scoped on backend
-      }
+        const [transfersRes, countriesRes, probRes, usersRes, expRes, balanceRes, lossRes, mapRes, sysLossRes] = await Promise.all([
+          transfersApi.getAll({ limit: 200, ...filterParams }),
+          usersApi.getCountries(),
+          transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
+          usersApi.getAll({ limit: 1 }),
+          inventoryApi.getExpenses({ limit: 100 }),
+          inventoryApi.getAll(filterParams),
+          inventoryApi.getCompanyLossesSummary(filterParams),
+          user.role === 'ADMIN' ? inventoryApi.getMapData() : Promise.resolve(null),
+          inventoryApi.getSystemLossesSummary(),
+        ]);
 
-      const results = await Promise.all(promises);
+        const allPayload = transfersRes.data?.data || transfersRes.data;
+        setTransfers(Array.isArray(allPayload) ? allPayload : (allPayload?.items || []));
 
-      // Transfers
-      const allData = results[0].data;
-      const allPayload = allData?.data || allData;
-      setTransfers(Array.isArray(allPayload) ? allPayload : (allPayload?.items || []));
+        const countriesPayload = countriesRes.data?.data || countriesRes.data;
+        const countriesList = Array.isArray(countriesPayload) ? countriesPayload : [];
+        const totalCities = countriesList.reduce((sum, c) => sum + (c.cities?.length || 0), 0);
+        setStats({ countries: countriesList.length, cities: totalCities });
 
-      // Countries
-      const countriesPayload = results[1].data?.data || results[1].data;
-      const countriesList = Array.isArray(countriesPayload) ? countriesPayload : [];
-      const totalCities = countriesList.reduce((sum, c) => sum + (c.cities?.length || 0), 0);
-      setStats({ countries: countriesList.length, cities: totalCities });
+        const probData = probRes.data;
+        setProblematicCount(probData?.meta?.total || (Array.isArray(probData?.data || []) ? (probData?.data || []).length : 0));
 
-      // Problematic
-      const probData = results[2].data;
-      const probList = probData?.data || [];
-      setProblematicCount(probData?.meta?.total || (Array.isArray(probList) ? probList.length : 0));
+        const usersPayload = usersRes.data;
+        const usersMeta = usersPayload?.meta;
+        if (usersMeta?.total) setTotalUsers(usersMeta.total);
+        else {
+          const usersList = usersPayload?.data || usersPayload;
+          setTotalUsers(Array.isArray(usersList) ? usersList.length : 0);
+        }
 
-      // Users count
-      const usersPayload = results[3].data;
-      const usersMeta = usersPayload?.meta;
-      if (usersMeta?.total) {
-        setTotalUsers(usersMeta.total);
-      } else {
-        const usersList = usersPayload?.data || usersPayload;
-        setTotalUsers(Array.isArray(usersList) ? usersList.length : 0);
-      }
+        const expPayload = expRes.data;
+        const expList = Array.isArray(expPayload) ? expPayload : (expPayload?.data || []);
+        setExpenses(Array.isArray(expList) ? expList : []);
 
-      // Expenses (index 4)
-      const expPayload = results[4].data;
-      const expList = Array.isArray(expPayload) ? expPayload : (expPayload?.data || []);
-      setExpenses(Array.isArray(expList) ? expList : []);
-
-      // Balance (index 5)
-      if (results[5]) {
-        const d = results[5].data;
-        const dPayload = d?.data || d;
-        const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
-
-        if (isAdminOrOffice && Array.isArray(dPayload)) {
+        const dPayload = balanceRes.data?.data || balanceRes.data;
+        if (Array.isArray(dPayload)) {
           const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
           dPayload.forEach((inv) => {
             if (inv.entityType === 'ADMIN' || inv.entityType === 'OFFICE') return;
             if (totals[inv.itemType] !== undefined) totals[inv.itemType] += inv.quantity || 0;
           });
           setBalance(Object.entries(totals).map(([itemType, quantity]) => ({ itemType, quantity })));
-        } else if (dPayload && typeof dPayload === 'object' && !Array.isArray(dPayload)) {
-          setBalance(
-            Object.entries(dPayload)
-              .filter(([key]) => VALID_TYPES.includes(key))
-              .map(([itemType, quantity]) => ({ itemType, quantity: Number(quantity) || 0 }))
-          );
-        } else {
-          setBalance(Array.isArray(dPayload) ? dPayload : []);
         }
-      }
 
-      // Company losses summary (index 6, all roles — backend scopes by role)
-      if (results[6]) {
-        const lossPayload = results[6].data?.data || results[6].data;
-        setLossSummary(lossPayload);
-      }
+        if (lossRes) setLossSummary(lossRes.data?.data || lossRes.data);
+        if (user.role === 'ADMIN' && mapRes) {
+          const mapPayload = mapRes.data?.data || mapRes.data;
+          setMapData(Array.isArray(mapPayload) ? mapPayload : []);
+        }
+        if (sysLossRes) setSystemMinus(sysLossRes.data?.data || sysLossRes.data);
 
-      // Map data (index 7, ADMIN only)
-      if (user.role === 'ADMIN' && results[7]) {
-        const mapPayload = results[7].data?.data || results[7].data;
-        setMapData(Array.isArray(mapPayload) ? mapPayload : []);
-      }
+      } else if (user.role === 'COUNTRY' && user.countryId) {
+        const [transfersRes, probRes, expRes, countryDataRes, ownLossRes, citiesLossRes] = await Promise.all([
+          transfersApi.getAll({ limit: 200, ...filterParams }),
+          transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
+          inventoryApi.getExpenses({ limit: 100 }),
+          inventoryApi.getByCountry(user.countryId),
+          inventoryApi.getCompanyLossesSummary({ scope: 'own' }),
+          inventoryApi.getCompanyLossesSummary({ scope: 'cities' }),
+        ]);
 
-      // System minus (index 8, ADMIN/OFFICE only)
-      if (isAdminOrOffice && results[8]) {
-        const minusPayload = results[8].data?.data || results[8].data;
-        setSystemMinus(minusPayload);
+        const allPayload = transfersRes.data?.data || transfersRes.data;
+        setTransfers(Array.isArray(allPayload) ? allPayload : (allPayload?.items || []));
+
+        const probData = probRes.data;
+        setProblematicCount(probData?.meta?.total || (Array.isArray(probData?.data || []) ? (probData?.data || []).length : 0));
+
+        const expPayload = expRes.data;
+        const expList = Array.isArray(expPayload) ? expPayload : (expPayload?.data || []);
+        setExpenses(Array.isArray(expList) ? expList : []);
+
+        const cData = countryDataRes.data?.data || countryDataRes.data;
+        if (cData) {
+          const countryBal = cData.country;
+          const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
+          if (countryBal && typeof countryBal === 'object') {
+            setBalance(
+              Object.entries(countryBal)
+                .filter(([key]) => VALID_TYPES.includes(key))
+                .map(([itemType, quantity]) => ({ itemType, quantity: Number(quantity) || 0 }))
+            );
+          }
+          if (Array.isArray(cData.cities)) setCityBalances(cData.cities);
+        }
+
+        if (ownLossRes) setLossSummary(ownLossRes.data?.data || ownLossRes.data);
+        if (citiesLossRes) setCitiesLossSummary(citiesLossRes.data?.data || citiesLossRes.data);
+
+      } else {
+        // CITY (and fallback)
+        const entityId = user.cityId;
+        const [transfersRes, probRes, expRes, balanceRes, lossRes] = await Promise.all([
+          transfersApi.getAll({ limit: 200, ...filterParams }),
+          transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
+          inventoryApi.getExpenses({ limit: 100 }),
+          entityId ? inventoryApi.getBalance('CITY', entityId) : Promise.resolve(null),
+          inventoryApi.getCompanyLossesSummary(),
+        ]);
+
+        const allPayload = transfersRes.data?.data || transfersRes.data;
+        setTransfers(Array.isArray(allPayload) ? allPayload : (allPayload?.items || []));
+
+        const probData = probRes.data;
+        setProblematicCount(probData?.meta?.total || (Array.isArray(probData?.data || []) ? (probData?.data || []).length : 0));
+
+        const expPayload = expRes.data;
+        const expList = Array.isArray(expPayload) ? expPayload : (expPayload?.data || []);
+        setExpenses(Array.isArray(expList) ? expList : []);
+
+        if (balanceRes) {
+          const dPayload = balanceRes.data?.data || balanceRes.data;
+          const VALID_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
+          if (dPayload && typeof dPayload === 'object' && !Array.isArray(dPayload)) {
+            setBalance(
+              Object.entries(dPayload)
+                .filter(([key]) => VALID_TYPES.includes(key))
+                .map(([itemType, quantity]) => ({ itemType, quantity: Number(quantity) || 0 }))
+            );
+          }
+        }
+
+        if (lossRes) setLossSummary(lossRes.data?.data || lossRes.data);
       }
     } catch (err) {
       console.error('Dashboard load error:', err);
@@ -183,6 +215,43 @@ export default function Dashboard() {
     .slice(0, 8);
 
   const systemTotal = balance ? balance.reduce((s, b) => s + (b.quantity || 0), 0) : 0;
+
+  const balanceTitle = user.role === 'ADMIN' ? 'Баланс системы' :
+                       user.role === 'OFFICE' ? 'Баланс офиса' : 'Мой баланс';
+
+  const citiesTotal = cityBalances.reduce((sum, { balance: bal }) => {
+    return sum + (Number(bal?.BLACK) || 0) + (Number(bal?.WHITE) || 0) + (Number(bal?.RED) || 0) + (Number(bal?.BLUE) || 0);
+  }, 0);
+
+  const renderLossCard = (title, data) => (
+    data ? (
+      <Card
+        title={title}
+        action={
+          <button onClick={() => navigate('/company-losses')} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+            Подробнее <ArrowRight size={12} />
+          </button>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3">
+          {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
+            const cfg = LOSS_COLOR[type];
+            const qty = data?.[type.toLowerCase()] || 0;
+            return (
+              <div key={type} className={`${cfg.bg} rounded-[var(--radius-md)] p-3 ring-1 ${cfg.ring} ring-inset`}>
+                <div className={`text-xl font-bold ${cfg.text} tabular-nums`}>-{qty}</div>
+                <div className={`text-xs ${cfg.text} opacity-70`}>{cfg.label}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex items-center gap-2 p-2 bg-red-500/10 rounded-lg border border-red-500/30">
+          <TrendingDown size={16} className="text-red-400" />
+          <span className="text-sm font-bold text-red-400">Итого: -{data?.total || 0}</span>
+        </div>
+      </Card>
+    ) : null
+  );
 
   const quickActions = [
     { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], tooltip: 'Отправить браслеты в страну, город или офис' },
@@ -210,36 +279,74 @@ export default function Dashboard() {
       iconBg: 'bg-orange-500/10', iconColor: 'text-orange-400',
       borderHover: 'hover:border-orange-500/50',
       path: '/problematic',
-      tooltip: 'Трансферы с расхождением в количестве, ожидают решения администратора',
+      tooltip: 'Трансферы с расхождением в количестве, ожидают решения',
     },
-    {
-      label: isAdminOrOffice ? 'Минус компании' : 'Мои потери',
+  ];
+
+  if (isAdminOrOffice) {
+    metricCards.push(
+      {
+        label: 'Минус компании',
+        value: (lossSummary?.total || 0) > 0 ? `-${lossSummary.total}` : '0',
+        icon: MinusCircle,
+        iconBg: 'bg-red-500/10', iconColor: 'text-red-400',
+        valueColor: (lossSummary?.total || 0) > 0 ? 'text-red-400' : undefined,
+        borderHover: 'hover:border-red-500/50',
+        path: '/company-losses',
+        tooltip: 'Общее количество потерянных браслетов по всем инцидентам',
+      },
+      {
+        label: 'Минус системы',
+        value: (systemMinus?.total || 0) > 0 ? `-${systemMinus.total}` : '0',
+        icon: Gauge,
+        iconBg: 'bg-purple-500/10', iconColor: 'text-purple-400',
+        valueColor: (systemMinus?.total || 0) > 0 ? 'text-purple-400' : undefined,
+        borderHover: 'hover:border-purple-500/50',
+        tooltip: 'Потери компании + расхождения аккаунтов',
+      },
+      {
+        label: 'Всего пользователей', value: totalUsers, icon: Users,
+        iconBg: 'bg-blue-500/10', iconColor: 'text-blue-400',
+        borderHover: 'hover:border-blue-500/50',
+        path: user.role === 'ADMIN' ? '/users' : null,
+        tooltip: 'Общее количество зарегистрированных пользователей в системе',
+      },
+    );
+  } else if (user.role === 'COUNTRY') {
+    metricCards.push(
+      {
+        label: 'Мои потери',
+        value: (lossSummary?.total || 0) > 0 ? `-${lossSummary.total}` : '0',
+        icon: MinusCircle,
+        iconBg: 'bg-red-500/10', iconColor: 'text-red-400',
+        valueColor: (lossSummary?.total || 0) > 0 ? 'text-red-400' : undefined,
+        borderHover: 'hover:border-red-500/50',
+        path: '/company-losses',
+        tooltip: 'Потери по вашей стране',
+      },
+      {
+        label: 'Потери городов',
+        value: (citiesLossSummary?.total || 0) > 0 ? `-${citiesLossSummary.total}` : '0',
+        icon: TrendingDown,
+        iconBg: 'bg-orange-500/10', iconColor: 'text-orange-400',
+        valueColor: (citiesLossSummary?.total || 0) > 0 ? 'text-orange-400' : undefined,
+        borderHover: 'hover:border-orange-500/50',
+        path: '/company-losses',
+        tooltip: 'Потери подчинённых городов',
+      },
+    );
+  } else {
+    metricCards.push({
+      label: 'Мои потери',
       value: (lossSummary?.total || 0) > 0 ? `-${lossSummary.total}` : '0',
       icon: MinusCircle,
       iconBg: 'bg-red-500/10', iconColor: 'text-red-400',
       valueColor: (lossSummary?.total || 0) > 0 ? 'text-red-400' : undefined,
       borderHover: 'hover:border-red-500/50',
       path: '/company-losses',
-      tooltip: 'Общее количество потерянных браслетов по всем инцидентам',
-    },
-    {
-      label: 'Минус системы',
-      value: (systemMinus?.total || 0) > 0 ? `-${systemMinus.total}` : '0',
-      icon: Gauge,
-      iconBg: 'bg-purple-500/10', iconColor: 'text-purple-400',
-      valueColor: (systemMinus?.total || 0) > 0 ? 'text-purple-400' : undefined,
-      borderHover: 'hover:border-purple-500/50',
-      roles: ['ADMIN', 'OFFICE'],
-      tooltip: 'Общая разница между созданными и распределёнными браслетами',
-    },
-    {
-      label: 'Всего пользователей', value: totalUsers, icon: Users,
-      iconBg: 'bg-blue-500/10', iconColor: 'text-blue-400',
-      borderHover: 'hover:border-blue-500/50',
-      path: user.role === 'ADMIN' ? '/users' : null,
-      tooltip: 'Общее количество зарегистрированных пользователей в системе',
-    },
-  ].filter((c) => !c.roles || c.roles.includes(user.role));
+      tooltip: 'Потери по вашему городу',
+    });
+  }
 
   return (
     <div className="space-y-5">
@@ -271,12 +378,12 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* ── ROW 2: Balance + Company Losses ───────── */}
+      {/* ── ROW 2: Balance + Second Panel ───────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* System / personal balance */}
+        {/* Balance card (all roles) */}
         {balance && balance.length > 0 && (
           <Card
-            title={isAdminOrOffice ? `Баланс системы — ${systemTotal} шт` : `Мой баланс — ${systemTotal} шт`}
+            title={`${balanceTitle} — ${systemTotal} шт`}
             action={
               <button onClick={() => navigate('/balance')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
                 Подробнее <ArrowRight size={12} />
@@ -286,9 +393,8 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-3">
               {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
                 const qty = balance.find((b) => b.itemType === type)?.quantity || 0;
-                const colorLabel = { BLACK: 'чёрных', WHITE: 'белых', RED: 'красных', BLUE: 'синих' }[type];
                 return (
-                  <div key={type} title={`Общее количество ${colorLabel} браслетов ${isAdminOrOffice ? 'во всей системе' : 'на вашем балансе'}`}>
+                  <div key={type}>
                     <BraceletCard type={type} quantity={qty} total={systemTotal} />
                   </div>
                 );
@@ -297,38 +403,49 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Company losses by color */}
-        {lossSummary && (
+        {/* Second panel depends on role */}
+        {user.role === 'COUNTRY' && cityBalances.length > 0 ? (
           <Card
-            title={isAdminOrOffice ? 'Минус компании по цветам' : 'Мои потери по цветам'}
+            title={`Баланс городов — ${citiesTotal} шт`}
             action={
-              <button onClick={() => navigate('/company-losses')} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+              <button onClick={() => navigate('/balance')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
                 Подробнее <ArrowRight size={12} />
               </button>
             }
           >
-            <div className="grid grid-cols-2 gap-3">
-              {['BLACK', 'WHITE', 'RED', 'BLUE'].map((type) => {
-                const cfg = LOSS_COLOR[type];
-                const qty = lossSummary?.[type.toLowerCase()] || 0;
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {cityBalances.map(({ city, balance: bal }) => {
+                const total = (Number(bal?.BLACK) || 0) + (Number(bal?.WHITE) || 0) + (Number(bal?.RED) || 0) + (Number(bal?.BLUE) || 0);
                 return (
-                  <div key={type} className={`${cfg.bg} rounded-[var(--radius-md)] p-3 ring-1 ${cfg.ring} ring-inset`}>
-                    <div className={`text-xl font-bold ${cfg.text} tabular-nums`}>-{qty}</div>
-                    <div className={`text-xs ${cfg.text} opacity-70`}>{cfg.label}</div>
+                  <div key={city.id} className="flex items-center justify-between p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors">
+                    <span className="text-sm font-medium text-content-primary">{city.name}</span>
+                    <div className="flex items-center gap-2 text-xs tabular-nums text-content-secondary">
+                      <span>⬛{bal?.BLACK || 0}</span>
+                      <span>⬜{bal?.WHITE || 0}</span>
+                      <span className="text-red-400">🟥{bal?.RED || 0}</span>
+                      <span className="text-blue-400">🟦{bal?.BLUE || 0}</span>
+                      <span className="font-bold text-content-primary ml-1">{total}</span>
+                    </div>
                   </div>
                 );
               })}
             </div>
-            <div className="mt-3 flex items-center gap-2 p-2 bg-red-500/10 rounded-lg border border-red-500/30">
-              <TrendingDown size={16} className="text-red-400" />
-              <span className="text-sm font-bold text-red-400">Итого: -{lossSummary?.total || 0}</span>
-            </div>
           </Card>
+        ) : (
+          renderLossCard(isAdminOrOffice ? 'Минус компании по цветам' : 'Мои потери по цветам', lossSummary)
         )}
       </div>
 
-      {/* ── ROW 2b: System Minus (ADMIN/OFFICE) ──── */}
-      {systemMinus && (
+      {/* ── COUNTRY: Own losses + Cities losses ──── */}
+      {user.role === 'COUNTRY' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {renderLossCard('Мои потери по цветам', lossSummary)}
+          {renderLossCard('Потери городов по цветам', citiesLossSummary)}
+        </div>
+      )}
+
+      {/* ── ADMIN/OFFICE: System Losses ──── */}
+      {isAdminOrOffice && systemMinus && (
         <Card
           title={`Минус по городам и странам — ${systemMinus.total} шт`}
           action={
