@@ -13,7 +13,7 @@ import {
   ArrowRight, Clock,
   CalendarDays, Boxes, AlertTriangle,
   TrendingDown, ShieldAlert,
-  BarChart3, MinusCircle, Users,
+  BarChart3, MinusCircle,
   PlusCircle, SlidersHorizontal, Gauge,
   ChevronDown, ChevronRight
 } from 'lucide-react';
@@ -52,7 +52,7 @@ export default function Dashboard() {
   const [lossSummary, setLossSummary] = useState(null);
   const [systemMinus, setSystemMinus] = useState(null);
   const [systemLossDetails, setSystemLossDetails] = useState([]);
-  const [totalUsers, setTotalUsers] = useState(0);
+
   const [mapData, setMapData] = useState([]);
   const [cityBalances, setCityBalances] = useState([]);
   const [citiesLossSummary, setCitiesLossSummary] = useState(null);
@@ -77,11 +77,10 @@ export default function Dashboard() {
       if (eventId) filterParams.eventId = eventId;
 
       if (isAdminOrOffice) {
-        const [transfersRes, countriesRes, probRes, usersRes, expRes, balanceRes, lossRes, mapRes, sysLossRes, sysLossDetailRes] = await Promise.all([
+        const [transfersRes, countriesRes, probRes, expRes, balanceRes, lossRes, mapRes, sysLossRes, sysLossDetailRes] = await Promise.all([
           transfersApi.getAll({ limit: 200, ...filterParams }),
           usersApi.getCountries(),
           transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
-          usersApi.getAll({ limit: 1 }),
           inventoryApi.getExpenses({ limit: 100 }),
           inventoryApi.getAll(filterParams),
           inventoryApi.getCompanyLossesSummary(filterParams),
@@ -100,14 +99,6 @@ export default function Dashboard() {
 
         const probData = probRes.data;
         setProblematicCount(probData?.meta?.total || (Array.isArray(probData?.data || []) ? (probData?.data || []).length : 0));
-
-        const usersPayload = usersRes.data;
-        const usersMeta = usersPayload?.meta;
-        if (usersMeta?.total) setTotalUsers(usersMeta.total);
-        else {
-          const usersList = usersPayload?.data || usersPayload;
-          setTotalUsers(Array.isArray(usersList) ? usersList.length : 0);
-        }
 
         const expPayload = expRes.data;
         const expList = Array.isArray(expPayload) ? expPayload : (expPayload?.data || []);
@@ -371,13 +362,6 @@ export default function Dashboard() {
         valueColor: (systemMinus?.total || 0) > 0 ? 'text-purple-400' : undefined,
         borderHover: 'hover:border-purple-500/50',
         tooltip: 'Потери компании + расхождения аккаунтов',
-      },
-      {
-        label: 'Всего пользователей', value: totalUsers, icon: Users,
-        iconBg: 'bg-blue-500/10', iconColor: 'text-blue-400',
-        borderHover: 'hover:border-blue-500/50',
-        path: user.role === 'ADMIN' ? '/users' : null,
-        tooltip: 'Общее количество зарегистрированных пользователей в системе',
       },
     );
   } else if (user.role === 'COUNTRY') {

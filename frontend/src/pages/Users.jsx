@@ -334,23 +334,7 @@ export default function Users() {
               { value: 'CITY', label: 'Город' },
             ]}
           />
-          {form.role === 'OFFICE' && (
-            offices.length > 0 ? (
-              <Select
-                label="Офис"
-                value={form.officeId}
-                onChange={(e) => setForm((p) => ({ ...p, officeId: e.target.value }))}
-                options={[
-                  { value: '', label: '— Выберите офис —' },
-                  ...offices.map((o) => ({ value: o.id, label: o.name })),
-                ]}
-              />
-            ) : (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">
-                Нет доступных офисов. Создайте офис в базе данных.
-              </div>
-            )
-          )}
+
           {(form.role === 'COUNTRY' || form.role === 'CITY') && (
             <Select
               label="Страна"
