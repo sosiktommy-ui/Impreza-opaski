@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
+import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
 import { authApi } from '../api/auth';
 import Card from '../components/ui/Card';
@@ -10,7 +11,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal, { TwoFactorModal } from '../components/ui/Modal';
 import BraceletBadge, { BraceletRow } from '../components/ui/BraceletBadge';
-import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft, Globe, MapPin, Sparkles, Home, Building2 } from 'lucide-react';
+import { Boxes, Plus, Minus, Package, History, RefreshCw, ChevronRight, ArrowLeft, Globe, MapPin, Sparkles, Home, Building2, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
 
 const COLORS = ['BLACK', 'WHITE', 'RED', 'BLUE'];
 const COLOR_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -47,6 +48,8 @@ export default function Inventory() {
   // Warehouse (Мой баланс) state
   const [warehouseBalance, setWarehouseBalance] = useState(null);
   const [warehouseHistory, setWarehouseHistory] = useState([]);
+  const [warehouseTransfers, setWarehouseTransfers] = useState([]);
+  const [warehouseExpenses, setWarehouseExpenses] = useState([]);
   const [offices, setOffices] = useState([]);
   const [selectedOfficeId, setSelectedOfficeId] = useState('');
   const [warehouseLoading, setWarehouseLoading] = useState(false);
@@ -75,7 +78,7 @@ export default function Inventory() {
     if (activeTab === 'my' && isAdminOrOffice) {
       loadWarehouseData();
     }
-  }, [activeTab, selectedOfficeId]);
+  }, [activeTab]);
 
   const init = async () => {
     if (isAdminOrOffice) {
@@ -352,17 +355,25 @@ export default function Inventory() {
   const loadWarehouseData = async () => {
     setWarehouseLoading(true);
     try {
-      const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
+      const officeId = user.role === 'OFFICE' ? user.officeId : undefined;
       
-      const [balanceRes, historyRes] = await Promise.all([
-        inventoryApi.getWarehouseBalance(officeId || undefined),
-        inventoryApi.getWarehouseCreationHistory({ officeId: officeId || undefined, take: 50 }),
+      const [balanceRes, historyRes, transfersRes, expensesRes] = await Promise.all([
+        inventoryApi.getWarehouseBalance(officeId),
+        inventoryApi.getWarehouseCreationHistory({ officeId, take: 50 }),
+        transfersApi.getAll({ limit: 50 }).catch(() => ({ data: { data: [] } })),
+        inventoryApi.getExpenses({ limit: 50 }).catch(() => ({ data: { data: [] } })),
       ]);
       
       
       setWarehouseBalance(balanceRes.data);
       const histList = historyRes.data?.data || historyRes.data;
       setWarehouseHistory(Array.isArray(histList) ? histList : []);
+      
+      const trList = transfersRes.data?.data || transfersRes.data;
+      setWarehouseTransfers(Array.isArray(trList) ? trList : []);
+      
+      const expList = expensesRes.data?.data || expensesRes.data;
+      setWarehouseExpenses(Array.isArray(expList) ? expList : []);
     } catch (err) {
       console.error('Failed to load warehouse data', err);
     } finally {
@@ -454,6 +465,67 @@ export default function Inventory() {
     return { total: black + white + red + blue, black, white, red, blue };
   }, [warehouseBalance]);
 
+  // Combined operations timeline
+  const operationsTimeline = useMemo(() => {
+    const ops = [];
+
+    // Warehouse creations
+    warehouseHistory.forEach((item) => {
+      ops.push({
+        id: `creation-${item.id}`,
+        type: 'creation',
+        date: new Date(item.createdAt),
+        label: 'Создание браслетов',
+        sublabel: item.createdByUser?.displayName || item.createdByUser?.username || item.office?.name || '',
+        notes: item.notes,
+        amount: item.totalAmount || 0,
+        sign: '+',
+        items: { BLACK: item.black || 0, WHITE: item.white || 0, RED: item.red || 0, BLUE: item.blue || 0 },
+      });
+    });
+
+    // Transfers
+    warehouseTransfers.forEach((tr) => {
+      const items = {};
+      let total = 0;
+      (tr.items || []).forEach((i) => {
+        items[i.itemType] = (items[i.itemType] || 0) + i.quantity;
+        total += i.quantity;
+      });
+      const receiverName = tr.receiverOffice?.name || tr.receiverCountry?.name || tr.receiverCity?.name || '';
+      const senderName = tr.senderOffice?.name || tr.senderCountry?.name || tr.senderCity?.name || '';
+      ops.push({
+        id: `transfer-${tr.id}`,
+        type: 'transfer',
+        date: new Date(tr.createdAt),
+        label: `Отправка → ${receiverName || 'получатель'}`,
+        sublabel: tr.notes || (senderName ? `от ${senderName}` : ''),
+        status: tr.status,
+        amount: total,
+        sign: '-',
+        items,
+      });
+    });
+
+    // Expenses
+    warehouseExpenses.forEach((exp) => {
+      const total = (exp.black || 0) + (exp.white || 0) + (exp.red || 0) + (exp.blue || 0);
+      ops.push({
+        id: `expense-${exp.id}`,
+        type: 'expense',
+        date: new Date(exp.eventDate || exp.createdAt),
+        label: exp.eventName || 'Расход',
+        sublabel: exp.city?.name || '',
+        amount: total,
+        sign: '-',
+        items: { BLACK: exp.black || 0, WHITE: exp.white || 0, RED: exp.red || 0, BLUE: exp.blue || 0 },
+      });
+    });
+
+    ops.sort((a, b) => b.date - a.date);
+    return ops;
+  }, [warehouseHistory, warehouseTransfers, warehouseExpenses]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -509,22 +581,6 @@ export default function Inventory() {
       {/* ════════════════════════════════════════════════════════════════ */}
       {isAdminOrOffice && activeTab === 'my' && (
         <div className="space-y-4">
-          {/* Office selector (ADMIN only) */}
-          {user.role === 'ADMIN' && offices.length > 0 && (
-            <Card>
-              <Select
-                label="Офис"
-                value={selectedOfficeId}
-                onChange={(e) => setSelectedOfficeId(e.target.value)}
-              >
-                <option value="">Все офисы</option>
-                {offices.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name} ({o.code})</option>
-                ))}
-              </Select>
-            </Card>
-          )}
-
           {/* Actions */}
           <div className="flex justify-end gap-2">
             <Button onClick={() => loadWarehouseData()} variant="outline" size="sm" disabled={warehouseLoading} title="Обновить данные баланса">
@@ -579,43 +635,73 @@ export default function Inventory() {
             })}
           </div>
 
-          {/* Creation History */}
-          <Card title={<span className="flex items-center gap-2"><History size={18} /> История создания</span>}>
+          {/* Operations History */}
+          <Card title={<span className="flex items-center gap-2"><History size={18} /> История операций</span>}>
             {warehouseLoading ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin h-6 w-6 border-2 border-brand-200 border-t-brand-600 rounded-full" />
               </div>
-            ) : warehouseHistory.length === 0 ? (
+            ) : operationsTimeline.length === 0 ? (
               <div className="text-center py-8 text-content-muted">
                 <Package size={32} className="mx-auto mb-2 opacity-30" />
                 <p>История пуста</p>
               </div>
             ) : (
               <div className="divide-y divide-edge -mx-4">
-                {warehouseHistory.map((item) => (
-                  <div key={item.id} className="px-4 py-3 hover:bg-surface-hover transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-medium text-content-primary">
-                          {item.createdByUser?.displayName || item.createdByUser?.username || item.office?.name || 'Неизвестно'}
+                {operationsTimeline.map((op) => {
+                  const iconMap = {
+                    creation: <Plus size={16} className="text-green-500" />,
+                    transfer: <ArrowUpRight size={16} className="text-orange-500" />,
+                    expense: <Calendar size={16} className="text-red-500" />,
+                  };
+                  const colorMap = {
+                    creation: 'text-green-600',
+                    transfer: 'text-orange-600',
+                    expense: 'text-red-600',
+                  };
+                  const bgMap = {
+                    creation: 'bg-green-50 dark:bg-green-900/30',
+                    transfer: 'bg-orange-50 dark:bg-orange-900/30',
+                    expense: 'bg-red-50 dark:bg-red-900/30',
+                  };
+                  const typeLabel = {
+                    creation: 'Создание',
+                    transfer: 'Трансфер',
+                    expense: 'Расход',
+                  };
+                  return (
+                    <div key={op.id} className="px-4 py-3 hover:bg-surface-hover transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-8 h-8 rounded-lg ${bgMap[op.type]} flex items-center justify-center mt-0.5`}>
+                            {iconMap[op.type]}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-content-primary">{op.label}</div>
+                            <div className="text-xs text-content-muted mt-0.5">
+                              {op.date.toLocaleString('ru-RU')}
+                              {op.sublabel && <span className="ml-2">• {op.sublabel}</span>}
+                            </div>
+                            {op.status && op.status !== 'ACCEPTED' && (
+                              <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+                                op.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                op.status === 'DISPUTED' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                              }`}>{op.status}</span>
+                            )}
+                            {op.notes && <div className="text-xs text-content-secondary mt-1 italic">{op.notes}</div>}
+                          </div>
                         </div>
-                        <div className="text-xs text-content-muted mt-1">
-                          {new Date(item.createdAt).toLocaleString('ru-RU')}
-                          {item.office && (
-                            <span className="ml-2">• {item.office.name}</span>
-                          )}
+                        <div className="text-right">
+                          <div className={`text-lg font-bold ${colorMap[op.type]}`}>
+                            {op.sign}{op.amount?.toLocaleString()}
+                          </div>
+                          <BraceletRow items={op.items} size="sm" />
                         </div>
-                        {item.notes && (
-                          <div className="text-xs text-content-secondary mt-1 italic">{item.notes}</div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-green-600">+{item.totalAmount?.toLocaleString()}</div>
-                        <BraceletRow items={{ BLACK: item.black, WHITE: item.white, RED: item.red, BLUE: item.blue }} size="sm" />
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>

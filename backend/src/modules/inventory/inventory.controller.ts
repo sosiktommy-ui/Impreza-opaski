@@ -269,8 +269,8 @@ export class InventoryController {
           this.logger.log(`ADMIN viewing OFFICE balance for ${queryOfficeId}`);
           return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, queryOfficeId);
         }
-        this.logger.log(`ADMIN viewing ADMIN balance`);
-        return await this.inventoryService.getWarehouseBalance(EntityType.ADMIN);
+        this.logger.log(`ADMIN viewing TOTAL balance (ADMIN + all offices)`);
+        return await this.inventoryService.getWarehouseTotalBalance();
       } else {
         return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, user.officeId!);
       }
@@ -301,8 +301,8 @@ export class InventoryController {
             limit,
           });
         }
+        // Show ALL creations (ADMIN + all offices)
         return await this.inventoryService.getWarehouseCreationHistory({
-          entityType: EntityType.ADMIN,
           page,
           limit,
         });

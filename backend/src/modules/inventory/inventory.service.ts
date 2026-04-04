@@ -840,6 +840,33 @@ export class InventoryService {
     }
   }
 
+  // Get total warehouse balance (ADMIN + all OFFICE entities combined)
+  async getWarehouseTotalBalance() {
+    try {
+      this.logger.log('getWarehouseTotalBalance: summing ADMIN + all offices');
+
+      const inventory = await this.prisma.inventory.findMany({
+        where: {
+          entityType: { in: [EntityType.ADMIN, EntityType.OFFICE] },
+        },
+      });
+
+      const balance = { black: 0, white: 0, red: 0, blue: 0 };
+      for (const entry of inventory) {
+        const key = entry.itemType.toLowerCase() as keyof typeof balance;
+        if (key in balance) {
+          balance[key] += entry.quantity;
+        }
+      }
+
+      this.logger.log(`getWarehouseTotalBalance => ${JSON.stringify(balance)}`);
+      return balance;
+    } catch (error: any) {
+      this.logger.error(`getWarehouseTotalBalance ERROR: ${error?.message}`, error?.stack);
+      return { black: 0, white: 0, red: 0, blue: 0 };
+    }
+  }
+
   // ──────────────────────────────────────────────
   // COMPANY LOSSES: Summary and list
   // ──────────────────────────────────────────────
