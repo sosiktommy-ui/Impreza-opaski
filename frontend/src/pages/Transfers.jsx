@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
 import { inventoryApi } from '../api/inventory';
@@ -19,6 +20,7 @@ const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Крас
 
 export default function Transfers() {
   const { user } = useAuthStore();
+  const { countryId: globalCountryId, cityId: globalCityId } = useFilterStore();
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -53,7 +55,7 @@ export default function Transfers() {
 
   useEffect(() => {
     loadTransfers();
-  }, [activeTab]);
+  }, [activeTab, globalCountryId, globalCityId]);
 
   const loadTransfers = async (p = 1) => {
     setLoading(true);
@@ -65,6 +67,8 @@ export default function Transfers() {
       };
       if (activeTab === 'active') params.status = 'SENT';
       else if (activeTab === 'completed') params.status = 'ACCEPTED';
+      if (globalCountryId) params.countryId = globalCountryId;
+      if (globalCityId) params.cityId = globalCityId;
 
       const { data } = await transfersApi.getAll(params);
       const result = data.data || data;

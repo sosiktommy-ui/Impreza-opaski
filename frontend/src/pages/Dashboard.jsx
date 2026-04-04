@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore, useBadgeStore } from '../store/useAppStore';
@@ -14,7 +14,8 @@ import {
   CalendarDays, Boxes, AlertTriangle,
   TrendingDown, ShieldAlert,
   BarChart3, MinusCircle, Users,
-  PlusCircle, SlidersHorizontal, Gauge
+  PlusCircle, SlidersHorizontal, Gauge,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 
 /* ── helpers ─────────────────────────────── */
@@ -43,17 +44,25 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [balance, setBalance] = useState(null);
+  const [rawInventory, setRawInventory] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [problematicCount, setProblematicCount] = useState(0);
   const [stats, setStats] = useState({ countries: 0, cities: 0 });
   const [lossSummary, setLossSummary] = useState(null);
   const [systemMinus, setSystemMinus] = useState(null);
+  const [systemLossDetails, setSystemLossDetails] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [mapData, setMapData] = useState([]);
   const [cityBalances, setCityBalances] = useState([]);
   const [citiesLossSummary, setCitiesLossSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Expandable sections
+  const [balanceExpanded, setBalanceExpanded] = useState(false);
+  const [expandedBalCountries, setExpandedBalCountries] = useState({});
+  const [lossExpanded, setLossExpanded] = useState(false);
+  const [expandedLossCountries, setExpandedLossCountries] = useState({});
 
   const isAdminOrOffice = user.role === 'ADMIN' || user.role === 'OFFICE';
 
@@ -68,7 +77,7 @@ export default function Dashboard() {
       if (eventId) filterParams.eventId = eventId;
 
       if (isAdminOrOffice) {
-        const [transfersRes, countriesRes, probRes, usersRes, expRes, balanceRes, lossRes, mapRes, sysLossRes] = await Promise.all([
+        const [transfersRes, countriesRes, probRes, usersRes, expRes, balanceRes, lossRes, mapRes, sysLossRes, sysLossDetailRes] = await Promise.all([
           transfersApi.getAll({ limit: 200, ...filterParams }),
           usersApi.getCountries(),
           transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
@@ -76,8 +85,9 @@ export default function Dashboard() {
           inventoryApi.getExpenses({ limit: 100 }),
           inventoryApi.getAll(filterParams),
           inventoryApi.getCompanyLossesSummary(filterParams),
-          user.role === 'ADMIN' ? inventoryApi.getMapData() : Promise.resolve(null),
+          inventoryApi.getMapData().catch(() => null),
           inventoryApi.getSystemLossesSummary(),
+          inventoryApi.getSystemLosses({ limit: 500 }).catch(() => ({ data: { data: [] } })),
         ]);
 
         const allPayload = transfersRes.data?.data || transfersRes.data;
@@ -105,6 +115,7 @@ export default function Dashboard() {
 
         const dPayload = balanceRes.data?.data || balanceRes.data;
         if (Array.isArray(dPayload)) {
+          setRawInventory(dPayload);
           const totals = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
           dPayload.forEach((inv) => {
             if (inv.entityType === 'ADMIN' || inv.entityType === 'OFFICE') return;
@@ -114,11 +125,15 @@ export default function Dashboard() {
         }
 
         if (lossRes) setLossSummary(lossRes.data?.data || lossRes.data);
-        if (user.role === 'ADMIN' && mapRes) {
+        if (mapRes) {
           const mapPayload = mapRes.data?.data || mapRes.data;
           setMapData(Array.isArray(mapPayload) ? mapPayload : []);
         }
         if (sysLossRes) setSystemMinus(sysLossRes.data?.data || sysLossRes.data);
+        if (sysLossDetailRes) {
+          const ld = sysLossDetailRes.data?.data || sysLossDetailRes.data;
+          setSystemLossDetails(Array.isArray(ld) ? ld : (ld?.data || []));
+        }
 
       } else if (user.role === 'COUNTRY' && user.countryId) {
         const [transfersRes, probRes, expRes, countryDataRes, ownLossRes, citiesLossRes] = await Promise.all([
@@ -216,6 +231,58 @@ export default function Dashboard() {
 
   const systemTotal = balance ? balance.reduce((s, b) => s + (b.quantity || 0), 0) : 0;
 
+  /* ── balance accordion hierarchy ─── */
+  const balanceHierarchy = useMemo(() => {
+    if (!rawInventory.length) return { offices: [], countries: [] };
+    const offMap = {}, cMap = {}, ciMap = {};
+    rawInventory.forEach(inv => {
+      if (inv.entityType === 'ADMIN') return;
+      const key = inv.entityType === 'OFFICE' ? inv.officeId
+        : inv.entityType === 'COUNTRY' ? inv.countryId
+        : inv.entityType === 'CITY' ? inv.cityId : null;
+      if (!key) return;
+      const t = inv.entityType === 'OFFICE' ? offMap : inv.entityType === 'COUNTRY' ? cMap : ciMap;
+      if (!t[key]) t[key] = { id: key, name: inv.office?.name || inv.country?.name || inv.city?.name || key, countryId: inv.city?.countryId || inv.countryId, BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+      if (t[key][inv.itemType] !== undefined) t[key][inv.itemType] += inv.quantity || 0;
+    });
+    const countries = Object.values(cMap).map(c => ({
+      ...c, total: c.BLACK + c.WHITE + c.RED + c.BLUE,
+      cities: Object.values(ciMap).filter(ci => ci.countryId === c.id)
+        .map(ci => ({ ...ci, total: ci.BLACK + ci.WHITE + ci.RED + ci.BLUE }))
+        .sort((a, b) => b.total - a.total),
+    })).sort((a, b) => b.total - a.total);
+    const offices = Object.values(offMap).map(o => ({ ...o, total: o.BLACK + o.WHITE + o.RED + o.BLUE })).sort((a, b) => b.total - a.total);
+    return { offices, countries };
+  }, [rawInventory]);
+
+  /* ── loss accordion hierarchy ─── */
+  const lossHierarchy = useMemo(() => {
+    if (!systemLossDetails.length) return [];
+    const grouped = {};
+    systemLossDetails.forEach(loss => {
+      const key = loss.entityName || 'Неизвестно';
+      if (!grouped[key]) grouped[key] = { name: key, type: loss.type, entityType: loss.entityType, BLACK: 0, WHITE: 0, RED: 0, BLUE: 0, total: 0 };
+      grouped[key].BLACK += loss.black || 0;
+      grouped[key].WHITE += loss.white || 0;
+      grouped[key].RED += loss.red || 0;
+      grouped[key].BLUE += loss.blue || 0;
+      grouped[key].total += loss.totalAmount || 0;
+    });
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
+  }, [systemLossDetails]);
+
+  const toggleBalCountry = (id) => setExpandedBalCountries(p => ({ ...p, [id]: !p[id] }));
+  const toggleLossEntity = (n) => setExpandedLossCountries(p => ({ ...p, [n]: !p[n] }));
+
+  /* ── inline helper: color badge row ─── */
+  const colorRow = (d, bold) => (
+    <div className={`flex items-center gap-2 text-xs tabular-nums ${bold ? 'text-content-secondary' : 'text-content-muted'}`}>
+      <span>⬛{d.BLACK}</span><span>⬜{d.WHITE}</span>
+      <span className="text-red-400">🟥{d.RED}</span><span className="text-blue-400">🟦{d.BLUE}</span>
+      <span className={`${bold ? 'font-bold text-content-primary' : 'font-semibold text-content-secondary'} ml-1`}>{d.total}</span>
+    </div>
+  );
+
   const balanceTitle = user.role === 'ADMIN' ? 'Баланс системы' :
                        user.role === 'OFFICE' ? 'Баланс офиса' : 'Мой баланс';
 
@@ -227,10 +294,12 @@ export default function Dashboard() {
     data ? (
       <Card
         title={title}
+        className="cursor-pointer hover:border-red-500/40 transition-colors"
+        onClick={() => navigate('/company-losses')}
         action={
-          <button onClick={() => navigate('/company-losses')} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+          <span className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
             Подробнее <ArrowRight size={12} />
-          </button>
+          </span>
         }
       >
         <div className="grid grid-cols-2 gap-3">
@@ -385,9 +454,20 @@ export default function Dashboard() {
           <Card
             title={`${balanceTitle} — ${systemTotal} шт`}
             action={
-              <button onClick={() => navigate('/balance')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
-                Подробнее <ArrowRight size={12} />
-              </button>
+              <div className="flex items-center gap-2">
+                {isAdminOrOffice && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setBalanceExpanded(!balanceExpanded); }}
+                    className="text-xs text-content-muted hover:text-content-primary flex items-center gap-1 transition-colors"
+                  >
+                    {balanceExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {balanceExpanded ? 'Свернуть' : 'Развернуть'}
+                  </button>
+                )}
+                <button onClick={() => navigate('/balance')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
+                  Подробнее <ArrowRight size={12} />
+                </button>
+              </div>
             }
           >
             <div className="grid grid-cols-2 gap-3">
@@ -400,6 +480,45 @@ export default function Dashboard() {
                 );
               })}
             </div>
+
+            {/* Expandable hierarchy */}
+            {isAdminOrOffice && balanceExpanded && (
+              <div className="mt-4 space-y-1 border-t border-edge pt-3">
+                {balanceHierarchy.offices.map(o => (
+                  <div key={o.id} className="flex items-center justify-between p-2 rounded-[var(--radius-sm)] bg-surface-card-hover/50">
+                    <span className="text-sm font-medium text-content-primary">🏢 {o.name}</span>
+                    {colorRow(o, true)}
+                  </div>
+                ))}
+                {balanceHierarchy.countries.map(c => (
+                  <div key={c.id}>
+                    <div
+                      onClick={() => toggleBalCountry(c.id)}
+                      className="flex items-center justify-between p-2 rounded-[var(--radius-sm)] hover:bg-surface-card-hover cursor-pointer transition-colors"
+                    >
+                      <span className="text-sm font-medium text-content-primary flex items-center gap-1">
+                        {expandedBalCountries[c.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        🌍 {c.name}
+                      </span>
+                      {colorRow(c, true)}
+                    </div>
+                    {expandedBalCountries[c.id] && c.cities.length > 0 && (
+                      <div className="ml-6 space-y-0.5">
+                        {c.cities.map(ci => (
+                          <div key={ci.id} className="flex items-center justify-between p-1.5 pl-3 rounded-[var(--radius-sm)] hover:bg-surface-card-hover/50 transition-colors">
+                            <span className="text-xs text-content-secondary">🏙️ {ci.name}</span>
+                            {colorRow(ci, false)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {balanceHierarchy.offices.length === 0 && balanceHierarchy.countries.length === 0 && (
+                  <p className="text-xs text-content-muted text-center py-2">Нет данных для детализации</p>
+                )}
+              </div>
+            )}
           </Card>
         )}
 
@@ -449,9 +568,18 @@ export default function Dashboard() {
         <Card
           title={`Минус по городам и странам — ${systemMinus.total} шт`}
           action={
-            <span className="text-xs text-content-muted">
-              Компания: {systemMinus.companyCount || 0} · Аккаунты: {systemMinus.shortageCount || 0}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setLossExpanded(!lossExpanded)}
+                className="text-xs text-content-muted hover:text-content-primary flex items-center gap-1 transition-colors"
+              >
+                {lossExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {lossExpanded ? 'Свернуть' : 'Развернуть'}
+              </button>
+              <span className="text-xs text-content-muted">
+                Компания: {systemMinus.companyCount || 0} · Аккаунты: {systemMinus.shortageCount || 0}
+              </span>
+            </div>
           }
         >
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -479,6 +607,40 @@ export default function Dashboard() {
             </span>
             <span className="text-xs text-content-muted ml-auto">потери компании + расхождения аккаунтов</span>
           </div>
+
+          {/* Expandable loss hierarchy */}
+          {lossExpanded && lossHierarchy.length > 0 && (
+            <div className="mt-4 space-y-1 border-t border-edge pt-3">
+              {lossHierarchy.map(entity => (
+                <div key={entity.name}>
+                  <div
+                    onClick={() => toggleLossEntity(entity.name)}
+                    className="flex items-center justify-between p-2 rounded-[var(--radius-sm)] hover:bg-surface-card-hover cursor-pointer transition-colors"
+                  >
+                    <span className="text-sm font-medium text-content-primary flex items-center gap-1">
+                      {expandedLossCountries[entity.name] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      {entity.type === 'COMPANY' ? '🏢' : entity.entityType === 'CITY' ? '🏙️' : '🌍'} {entity.name}
+                    </span>
+                    <div className="flex items-center gap-2 text-xs tabular-nums text-content-secondary">
+                      <span>⬛{entity.BLACK}</span><span>⬜{entity.WHITE}</span>
+                      <span className="text-red-400">🟥{entity.RED}</span><span className="text-blue-400">🟦{entity.BLUE}</span>
+                      <span className="font-bold text-red-400 ml-1">-{entity.total}</span>
+                    </div>
+                  </div>
+                  {expandedLossCountries[entity.name] && (
+                    <div className="ml-6 text-xs text-content-muted p-2">
+                      <span className="inline-block px-2 py-0.5 rounded bg-surface-card-hover text-content-secondary">
+                        {entity.type === 'COMPANY' ? 'Потеря компании' : 'Расхождение аккаунта'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {lossExpanded && lossHierarchy.length === 0 && (
+            <p className="mt-3 text-xs text-content-muted text-center py-2 border-t border-edge pt-3">Нет детализации</p>
+          )}
         </Card>
       )}
 

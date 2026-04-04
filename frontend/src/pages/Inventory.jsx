@@ -337,7 +337,10 @@ export default function Inventory() {
       setAdjustForm({ itemType: 'BLACK', delta: 0, reason: '' });
       await loadBalance(pendingAdjustData.entityType, pendingAdjustData.entityId);
       if (isAdminOrOffice) {
-        const { data } = await inventoryApi.getAll();
+        const fp = {};
+        if (globalCountryId) fp.countryId = globalCountryId;
+        if (globalCityId) fp.cityId = globalCityId;
+        const { data } = await inventoryApi.getAll(fp);
         const iPayload = data?.data || data;
         setAllInventory(Array.isArray(iPayload) ? iPayload : []);
       }

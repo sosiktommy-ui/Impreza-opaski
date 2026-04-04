@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { transfersApi } from '../api/transfers';
 import { inventoryApi } from '../api/inventory';
 import { useAuthStore } from '../store/useAuthStore';
-import { useBadgeStore } from '../store/useAppStore';
+import { useBadgeStore, useFilterStore } from '../store/useAppStore';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -18,6 +18,7 @@ const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Крас
 
 export default function Acceptance() {
   const { user } = useAuthStore();
+  const { countryId: globalCountryId, cityId: globalCityId } = useFilterStore();
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'accepted' | 'problematic'
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +74,7 @@ export default function Acceptance() {
 
   useEffect(() => {
     loadTransfers();
-  }, [activeTab]);
+  }, [activeTab, globalCountryId, globalCityId]);
 
   const loadTransfers = async (p = 1) => {
     setLoading(true);
@@ -87,12 +88,15 @@ export default function Acceptance() {
         setPage(1);
       } else if (activeTab === 'accepted') {
         // Accepted: received transfers with ACCEPTED status
-        const { data } = await transfersApi.getAll({
+        const params = {
           page: p,
           limit: 30,
           direction: 'received',
           status: 'ACCEPTED',
-        });
+        };
+        if (globalCountryId) params.countryId = globalCountryId;
+        if (globalCityId) params.cityId = globalCityId;
+        const { data } = await transfersApi.getAll(params);
         const payload = data?.data || data;
         const list = Array.isArray(payload) ? payload : (payload?.data || payload?.items || []);
         setTransfers(list);
@@ -101,11 +105,14 @@ export default function Acceptance() {
         setPage(meta?.page || p);
       } else {
         // Problematic: DISCREPANCY_FOUND + REJECTED + CANCELLED received transfers
-        const { data } = await transfersApi.getAll({
+        const params = {
           page: p,
           limit: 30,
           direction: 'received',
-        });
+        };
+        if (globalCountryId) params.countryId = globalCountryId;
+        if (globalCityId) params.cityId = globalCityId;
+        const { data } = await transfersApi.getAll(params);
         const payload = data?.data || data;
         const list = Array.isArray(payload) ? payload : (payload?.data || payload?.items || []);
         setTransfers(list.filter((t) =>

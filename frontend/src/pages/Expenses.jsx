@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
 import { eventsApi } from '../api/events';
@@ -19,6 +20,7 @@ const BRACELET_KEYS = ['black', 'white', 'red', 'blue'];
 
 export default function Expenses() {
   const { user } = useAuthStore();
+  const { countryId: globalCountryId, cityId: globalCityId } = useFilterStore();
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -47,11 +49,14 @@ export default function Expenses() {
     loadExpenses();
     loadCountries();
     loadCities();
-  }, []);
+  }, [globalCountryId, globalCityId]);
 
   const loadExpenses = async () => {
     try {
-      const { data } = await inventoryApi.getExpenses({ limit: 100 });
+      const params = { limit: 100 };
+      if (globalCountryId) params.countryId = globalCountryId;
+      if (globalCityId) params.cityId = globalCityId;
+      const { data } = await inventoryApi.getExpenses(params);
       const list = Array.isArray(data) ? data : (data?.data || []);
       setExpenses(Array.isArray(list) ? list : []);
     } catch (err) {

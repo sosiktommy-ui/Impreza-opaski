@@ -7,6 +7,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { inventoryApi } from '../api/inventory';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFilterStore } from '../store/useAppStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { Maximize2, Minimize2 } from 'lucide-react';
 
@@ -74,6 +75,7 @@ function DynamicTiles({ dark }) {
 
 export default function MapPage() {
   const { user } = useAuthStore();
+  const { countryId: globalCountryId, cityId: globalCityId } = useFilterStore();
   const theme = useThemeStore((s) => s.theme);
   const darkMode = theme === 'dark';
   const [data, setData] = useState({ cities: [], countries: [], transferLines: [] });
@@ -104,6 +106,19 @@ export default function MapPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Sync local filter with global filter
+  useEffect(() => {
+    if (globalCountryId) setCountryFilter(globalCountryId);
+    else setCountryFilter('all');
+  }, [globalCountryId]);
+
+  useEffect(() => {
+    if (globalCityId && data.cities.length) {
+      const city = data.cities.find(c => c.id === globalCityId);
+      if (city?.lat && city?.lng) setFlyToPos([city.lat, city.lng]);
+    }
+  }, [globalCityId, data.cities]);
 
   const loadData = async () => {
     try {
