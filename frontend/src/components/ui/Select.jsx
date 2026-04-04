@@ -1,4 +1,4 @@
-export default function Select({ label, error, options = [], className = '', ...props }) {
+export default function Select({ label, error, options = [], className = '', children, ...props }) {
   return (
     <div className="w-full">
       {label && (
@@ -14,7 +14,7 @@ export default function Select({ label, error, options = [], className = '', ...
         `}
         {...props}
       >
-        {options.map((opt) => (
+        {children || options.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}
           </option>
