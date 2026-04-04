@@ -36,7 +36,14 @@ const server = createServer(async (req, res) => {
   try {
     const data = await readFile(filePath);
     const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
+    // Prevent stale HTML cache (assets have hash-based filenames from Vite)
+    if (ext === '.html') {
+      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    } else if (ext === '.js' || ext === '.css') {
+      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+    }
+    res.writeHead(200, headers);
     res.end(data);
   } catch {
     // Final fallback to index.html for SPA routing

@@ -245,7 +245,8 @@ export default function Inventory() {
   }, [allInventory, countries, isAdminOrOffice]);
 
   // Breakdown of ADMIN + OFFICE balances for "Общий баланс" view
-  const accountBreakdown = useMemo(() => {
+  // NOTE: intentionally NOT useMemo — computing inline to keep hook count stable
+  const accountBreakdown = (() => {
     if (!isAdminOrOffice || allInventory.length === 0) return [];
     const map = {};
     allInventory.forEach(inv => {
@@ -256,7 +257,7 @@ export default function Inventory() {
       if (map[key].totals[inv.itemType] !== undefined) map[key].totals[inv.itemType] += inv.quantity || 0;
     });
     return Object.values(map);
-  }, [allInventory, isAdminOrOffice]);
+  })();
 
   const loadBalance = async (entityType, entityId) => {
     try {
