@@ -213,23 +213,6 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) return <DashboardSkeleton />;
-
-  /* ── derived data ────────────────── */
-  const recentExpenses = [...expenses]
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 7);
-
-  const topExpenses = [...expenses]
-    .sort((a, b) => {
-      const at = (a.black || 0) + (a.white || 0) + (a.red || 0) + (a.blue || 0);
-      const bt = (b.black || 0) + (b.white || 0) + (b.red || 0) + (b.blue || 0);
-      return bt - at;
-    })
-    .slice(0, 8);
-
-  const systemTotal = balance ? balance.reduce((s, b) => s + (b.quantity || 0), 0) : 0;
-
   /* ── balance accordion hierarchy ─── */
   const balanceHierarchy = useMemo(() => {
     if (!rawInventory.length) return { offices: [], countries: [] };
@@ -269,6 +252,23 @@ export default function Dashboard() {
     });
     return Object.values(grouped).sort((a, b) => b.total - a.total);
   }, [systemLossDetails]);
+
+  if (loading) return <DashboardSkeleton />;
+
+  /* ── derived data ────────────────── */
+  const recentExpenses = [...expenses]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 7);
+
+  const topExpenses = [...expenses]
+    .sort((a, b) => {
+      const at = (a.black || 0) + (a.white || 0) + (a.red || 0) + (a.blue || 0);
+      const bt = (b.black || 0) + (b.white || 0) + (b.red || 0) + (b.blue || 0);
+      return bt - at;
+    })
+    .slice(0, 8);
+
+  const systemTotal = balance ? balance.reduce((s, b) => s + (b.quantity || 0), 0) : 0;
 
   const toggleBalCountry = (id) => setExpandedBalCountries(p => ({ ...p, [id]: !p[id] }));
   const toggleLossEntity = (n) => setExpandedLossCountries(p => ({ ...p, [n]: !p[n] }));
