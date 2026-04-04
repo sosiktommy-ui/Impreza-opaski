@@ -358,9 +358,9 @@ export default function Acceptance() {
                           variant="ghost"
                           className="text-orange-500 hover:text-orange-700 hover:bg-orange-50"
                           onClick={() => openDisagree(t)}
-                          title="Отклонить с указанием фактического количества"
+                          title="Оспорить с указанием фактического количества"
                         >
-                          <XCircle size={16} /> Отклонить
+                          <XCircle size={16} /> Оспорить
                         </Button>
                       )}
                       {/* Sender button: Cancel */}

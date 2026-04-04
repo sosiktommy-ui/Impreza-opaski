@@ -359,7 +359,7 @@ function PendingTransfers() {
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-colors"
                   >
                     <X size={14} />
-                    Отклонить
+                    Оспорить
                   </button>
                 )}
                 {canCancel && (

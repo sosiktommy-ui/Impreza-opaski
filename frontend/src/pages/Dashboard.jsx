@@ -2,24 +2,19 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore, useBadgeStore } from '../store/useAppStore';
-import { useNotificationStore } from '../store/useNotificationStore';
 import { inventoryApi } from '../api/inventory';
 import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
-import { notificationsApi } from '../api/notifications';
 import Card from '../components/ui/Card';
-import Badge from '../components/ui/Badge';
-import BraceletBadge from '../components/ui/BraceletBadge';
 import BraceletCard from '../components/ui/BraceletCard';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
-import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity } from '../utils/transferHelpers';
 import {
-  Send, PackageCheck, Globe,
+  Send, PackageCheck,
   ArrowRight, Clock,
   CalendarDays, Boxes, AlertTriangle,
   TrendingDown, ShieldAlert,
   BarChart3, MinusCircle, Users,
-  Bell, PlusCircle, SlidersHorizontal, Gauge
+  PlusCircle, SlidersHorizontal, Gauge
 } from 'lucide-react';
 
 /* ── helpers ─────────────────────────────── */
@@ -32,14 +27,6 @@ const timeAgo = (date) => {
   if (hrs < 24) return `${hrs} ч назад`;
   const days = Math.floor(hrs / 24);
   return `${days} д назад`;
-};
-
-const STATUS_ICON = {
-  SENT: { icon: Clock, cls: 'text-yellow-400' },
-  ACCEPTED: { icon: PackageCheck, cls: 'text-green-400' },
-  DISCREPANCY_FOUND: { icon: AlertTriangle, cls: 'text-orange-400' },
-  REJECTED: { icon: MinusCircle, cls: 'text-red-400' },
-  CANCELLED: { icon: MinusCircle, cls: 'text-gray-400' },
 };
 
 const LOSS_COLOR = {
@@ -57,12 +44,12 @@ export default function Dashboard() {
 
   const [balance, setBalance] = useState(null);
   const [transfers, setTransfers] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [problematicCount, setProblematicCount] = useState(0);
   const [stats, setStats] = useState({ countries: 0, cities: 0 });
   const [lossSummary, setLossSummary] = useState(null);
   const [systemMinus, setSystemMinus] = useState(null);
   const [totalUsers, setTotalUsers] = useState(0);
-  const [notifications, setNotifications] = useState([]);
   const [mapData, setMapData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,7 +70,7 @@ export default function Dashboard() {
         usersApi.getCountries(),
         transfersApi.getProblematic({ page: 1, limit: 5, ...filterParams }),
         usersApi.getAll({ limit: 1 }),
-        notificationsApi.getAll({ limit: 7 }),
+        inventoryApi.getExpenses({ limit: 100 }),
       ];
 
       if (isAdminOrOffice) {
@@ -127,9 +114,10 @@ export default function Dashboard() {
         setTotalUsers(Array.isArray(usersList) ? usersList.length : 0);
       }
 
-      // Notifications
-      const notifPayload = results[4].data?.data || results[4].data;
-      setNotifications(Array.isArray(notifPayload) ? notifPayload.slice(0, 7) : []);
+      // Expenses (index 4)
+      const expPayload = results[4].data;
+      const expList = Array.isArray(expPayload) ? expPayload : (expPayload?.data || []);
+      setExpenses(Array.isArray(expList) ? expList : []);
 
       // Balance (index 5)
       if (results[5]) {
@@ -182,20 +170,19 @@ export default function Dashboard() {
   if (loading) return <DashboardSkeleton />;
 
   /* ── derived data ────────────────── */
-  const recentTransfers = [...transfers]
+  const recentExpenses = [...expenses]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 7);
 
-  const systemTotal = balance ? balance.reduce((s, b) => s + (b.quantity || 0), 0) : 0;
-
-  // Top countries from mapData
-  const topCountries = [...mapData]
+  const topExpenses = [...expenses]
     .sort((a, b) => {
-      const aTotal = (a.black || 0) + (a.white || 0) + (a.red || 0) + (a.blue || 0);
-      const bTotal = (b.black || 0) + (b.white || 0) + (b.red || 0) + (b.blue || 0);
-      return bTotal - aTotal;
+      const at = (a.black || 0) + (a.white || 0) + (a.red || 0) + (a.blue || 0);
+      const bt = (b.black || 0) + (b.white || 0) + (b.red || 0) + (b.blue || 0);
+      return bt - at;
     })
     .slice(0, 8);
+
+  const systemTotal = balance ? balance.reduce((s, b) => s + (b.quantity || 0), 0) : 0;
 
   const quickActions = [
     { label: 'Новая отправка', icon: Send, path: '/transfers', color: 'bg-blue-500', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], tooltip: 'Отправить браслеты в страну, город или офис' },
@@ -251,14 +238,6 @@ export default function Dashboard() {
       borderHover: 'hover:border-blue-500/50',
       path: user.role === 'ADMIN' ? '/users' : null,
       tooltip: 'Общее количество зарегистрированных пользователей в системе',
-    },
-    {
-      label: 'Активных стран', value: stats.countries, icon: Globe,
-      iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-400',
-      borderHover: 'hover:border-emerald-500/50',
-      path: '/balance',
-      tooltip: 'Количество стран с активными менеджерами в системе',
-      roles: ['ADMIN', 'OFFICE', 'COUNTRY'],
     },
   ].filter((c) => !c.roles || c.roles.includes(user.role));
 
@@ -386,46 +365,37 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* ── ROW 3: Recent Transfers + Notifications ── */}
+      {/* ── ROW 3: Recent Expenses + Top Expenses ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent transfers feed */}
+        {/* Recent expenses feed */}
         <Card
-          title="Последние отправки"
+          title="Последние расходы"
           action={
-            <button onClick={() => navigate('/transfers')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
+            <button onClick={() => navigate('/expenses')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
               Все <ArrowRight size={12} />
             </button>
           }
         >
-          {recentTransfers.length === 0 ? (
-            <p className="text-sm text-content-muted text-center py-6">Нет отправок</p>
+          {recentExpenses.length === 0 ? (
+            <p className="text-sm text-content-muted text-center py-6">Нет расходов</p>
           ) : (
             <div className="space-y-1.5">
-              {recentTransfers.map((t) => {
-                const isAdmin = isAdminTransfer(t);
-                const st = STATUS_ICON[t.status] || STATUS_ICON.SENT;
-                const StIcon = st.icon;
+              {recentExpenses.map((ex) => {
+                const total = (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0);
                 return (
                   <div
-                    key={t.id}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors
-                      ${isAdmin ? 'border-l-[3px] border-l-violet-500 bg-violet-500/5' : ''}`}
+                    key={ex.id}
+                    className="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover transition-colors"
                   >
-                    <StIcon size={16} className={`${st.cls} flex-shrink-0`} />
+                    <CalendarDays size={16} className="text-purple-400 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm flex items-center gap-1 flex-wrap">
-                        <span className="font-medium text-blue-400 truncate max-w-[80px]">{getSenderName(t)}</span>
-                        <span className="text-content-muted">→</span>
-                        <span className="font-medium text-emerald-400 truncate max-w-[80px]">{getReceiverName(t)}</span>
-                        {isAdmin && <span className="text-[10px] px-1 py-0.5 bg-violet-500/20 text-violet-400 rounded">👑</span>}
-                      </div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {(t.items || []).map((item) => (
-                          <BraceletBadge key={item.itemType} type={item.itemType} count={item.quantity} size="sm" />
-                        ))}
-                      </div>
+                      <div className="text-sm font-medium text-content-primary truncate">{ex.eventName}</div>
+                      <div className="text-[11px] text-content-muted">{ex.city?.name || 'Город'}</div>
                     </div>
-                    <span className="text-[10px] text-content-muted flex-shrink-0 whitespace-nowrap">{timeAgo(t.createdAt)}</span>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-sm font-bold text-red-400">-{total}</span>
+                      <div className="text-[10px] text-content-muted whitespace-nowrap">{timeAgo(ex.createdAt)}</div>
+                    </div>
                   </div>
                 );
               })}
@@ -433,89 +403,53 @@ export default function Dashboard() {
           )}
         </Card>
 
-        {/* Notifications feed */}
+        {/* Top expenses by volume */}
         <Card
-          title="Уведомления"
+          title="Топ расходов"
           action={
-            <button onClick={() => navigate('/notifications')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
-              Все <ArrowRight size={12} />
+            <button onClick={() => navigate('/expenses')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
+              Подробнее <ArrowRight size={12} />
             </button>
           }
         >
-          {notifications.length === 0 ? (
-            <p className="text-sm text-content-muted text-center py-6">Нет уведомлений</p>
+          {topExpenses.length === 0 ? (
+            <p className="text-sm text-content-muted text-center py-6">Нет расходов</p>
           ) : (
-            <div className="space-y-1.5">
-              {notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex items-start gap-2.5 p-2.5 rounded-[var(--radius-sm)] transition-colors
-                    ${!n.read ? 'bg-brand-500/5 border-l-[3px] border-l-brand-500' : 'hover:bg-surface-card-hover'}`}
-                >
-                  <Bell size={14} className="text-content-muted flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-content-primary line-clamp-2">{n.message || n.title || 'Уведомление'}</p>
-                    <span className="text-[10px] text-content-muted">{timeAgo(n.createdAt)}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-content-muted text-xs border-b border-edge">
+                    <th className="text-left py-2 pr-2 font-medium">Событие</th>
+                    <th className="text-right py-2 px-2 font-medium">⬛</th>
+                    <th className="text-right py-2 px-2 font-medium">⬜</th>
+                    <th className="text-right py-2 px-2 font-medium">🟥</th>
+                    <th className="text-right py-2 px-2 font-medium">🟦</th>
+                    <th className="text-right py-2 pl-2 font-medium">Всего</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topExpenses.map((ex) => {
+                    const total = (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0);
+                    return (
+                      <tr key={ex.id} className="border-b border-edge/50 hover:bg-surface-card-hover transition-colors">
+                        <td className="py-2 pr-2">
+                          <div className="font-medium text-content-primary truncate max-w-[180px]">{ex.eventName}</div>
+                          <div className="text-[10px] text-content-muted">{ex.city?.name || ''}</div>
+                        </td>
+                        <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{ex.black || 0}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{ex.white || 0}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{ex.red || 0}</td>
+                        <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{ex.blue || 0}</td>
+                        <td className="text-right py-2 pl-2 tabular-nums font-bold text-content-primary">{total}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>
       </div>
-
-      {/* ── ROW 4: Top Countries (ADMIN) ─────────── */}
-      {user.role === 'ADMIN' && topCountries.length > 0 && (
-        <Card
-          title="Топ стран по браслетам"
-          action={
-            <button onClick={() => navigate('/map')} className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1">
-              Карта <ArrowRight size={12} />
-            </button>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-content-muted text-xs border-b border-edge">
-                  <th className="text-left py-2 pr-2 font-medium">Страна</th>
-                  <th className="text-right py-2 px-2 font-medium">⬛</th>
-                  <th className="text-right py-2 px-2 font-medium">⬜</th>
-                  <th className="text-right py-2 px-2 font-medium">🟥</th>
-                  <th className="text-right py-2 px-2 font-medium">🟦</th>
-                  <th className="text-right py-2 pl-2 font-medium">Всего</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topCountries.map((c) => {
-                  const total = (c.black || 0) + (c.white || 0) + (c.red || 0) + (c.blue || 0);
-                  const maxTotal = topCountries.length > 0
-                    ? (topCountries[0].black || 0) + (topCountries[0].white || 0) + (topCountries[0].red || 0) + (topCountries[0].blue || 0)
-                    : 1;
-                  const pct = maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
-                  return (
-                    <tr key={c.countryId || c.name} className="border-b border-edge/50 hover:bg-surface-card-hover transition-colors">
-                      <td className="py-2 pr-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-content-primary">{c.countryName || c.name}</span>
-                          <div className="hidden sm:block flex-1 max-w-[80px] h-1.5 bg-surface-secondary rounded-full overflow-hidden">
-                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{c.black || 0}</td>
-                      <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{c.white || 0}</td>
-                      <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{c.red || 0}</td>
-                      <td className="text-right py-2 px-2 tabular-nums text-content-secondary">{c.blue || 0}</td>
-                      <td className="text-right py-2 pl-2 tabular-nums font-bold text-content-primary">{total}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
 
       {/* ── Quick Actions ────────────────────────────── */}
       <div>

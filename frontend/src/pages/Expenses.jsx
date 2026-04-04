@@ -22,7 +22,9 @@ export default function Expenses() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [countries, setCountries] = useState([]);
   const [cities, setCities] = useState([]);
+  const [selectedCountryId, setSelectedCountryId] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [imprezaEvents, setimprezaEvents] = useState([]);
@@ -43,6 +45,7 @@ export default function Expenses() {
 
   useEffect(() => {
     loadExpenses();
+    loadCountries();
     loadCities();
   }, []);
 
@@ -58,12 +61,23 @@ export default function Expenses() {
     }
   };
 
-  const loadCities = async () => {
+  const loadCountries = async () => {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+      try {
+        const { data } = await usersApi.getCountries();
+        const list = data?.data || data;
+        setCountries(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const loadCities = async (countryIdParam) => {
     if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'COUNTRY') {
       try {
-        const { data } = await usersApi.getCities(
-          user.role === 'COUNTRY' ? user.countryId : undefined,
-        );
+        const cid = user.role === 'COUNTRY' ? user.countryId : countryIdParam;
+        const { data } = await usersApi.getCities(cid);
         const list = data?.data || data;
         setCities(Array.isArray(list) ? list : []);
       } catch (err) {
@@ -158,11 +172,11 @@ export default function Expenses() {
     setShowCreate(true);
     setError('');
     setSelectedEvent('');
+    setSelectedCountryId('');
     setimprezaEvents([]);
 
     if (user.role === 'CITY') {
       setCityId(user.cityId);
-      // Auto-load events for this city
       const cityName = user.city?.name;
       if (cityName) {
         await loadimprezaEvents(cityName);
@@ -170,11 +184,26 @@ export default function Expenses() {
         await loadimprezaEvents();
       }
     } else if (user.role === 'ADMIN' || user.role === 'OFFICE') {
-      // For ADMIN/OFFICE, load ALL events (no city filter)
       await loadimprezaEvents();
     } else if (user.role === 'COUNTRY') {
-      // For COUNTRY, load events for their country (will be filtered when city selected)
       await loadimprezaEvents();
+    }
+  };
+
+  // When country is selected, reload cities filtered by that country
+  const handleCountryChange = async (e) => {
+    const cid = e.target.value;
+    setSelectedCountryId(cid);
+    setCityId('');
+    setSelectedEvent('');
+    setEventName('');
+    setEventDate('');
+    setLocation('');
+    setimprezaEvents([]);
+    if (cid) {
+      await loadCities(cid);
+    } else {
+      setCities([]);
     }
   };
 
@@ -256,6 +285,7 @@ export default function Expenses() {
 
   const resetForm = () => {
     setCityId(user.role === 'CITY' ? user.cityId : '');
+    setSelectedCountryId('');
     setEventName('');
     setEventDate('');
     setLocation('');
@@ -523,8 +553,25 @@ export default function Expenses() {
         title="Новый расход"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Country select for ADMIN/OFFICE */}
+          {(user.role === 'ADMIN' || user.role === 'OFFICE') && countries.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-content-primary mb-1">Страна</label>
+              <select
+                value={selectedCountryId}
+                onChange={handleCountryChange}
+                className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+              >
+                <option value="">— Выберите страну —</option>
+                {countries.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* City select for non-CITY roles */}
-          {user.role !== 'CITY' && cities.length > 0 && (
+          {user.role !== 'CITY' && (selectedCountryId || user.role === 'COUNTRY') && cities.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-content-primary mb-1">Город</label>
               <select

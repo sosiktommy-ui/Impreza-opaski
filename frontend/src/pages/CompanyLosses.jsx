@@ -266,21 +266,21 @@ export default function CompanyLosses() {
           <div className="text-2xl font-bold text-content-primary">{stats.count}</div>
           <div className="text-xs text-content-muted">Инцидентов</div>
         </div>
-        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
-          <div className="text-2xl font-bold text-gray-700 dark:text-gray-300">{stats.black}</div>
-          <div className="text-xs text-content-muted">Чёрные</div>
+        <div className="bg-gray-900 dark:bg-gray-800 rounded-[var(--radius-md)] border border-gray-700 p-4">
+          <div className="text-2xl font-bold text-gray-300">{stats.black}</div>
+          <div className="text-xs text-gray-400">Чёрные</div>
         </div>
-        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
-          <div className="text-2xl font-bold text-gray-400">{stats.white}</div>
-          <div className="text-xs text-content-muted">Белые</div>
+        <div className="bg-gray-100 dark:bg-gray-300 rounded-[var(--radius-md)] border border-gray-300 p-4">
+          <div className="text-2xl font-bold text-gray-700 dark:text-gray-800">{stats.white}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-600">Белые</div>
         </div>
-        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
-          <div className="text-2xl font-bold text-red-500">{stats.red}</div>
-          <div className="text-xs text-content-muted">Красные</div>
+        <div className="bg-red-600 rounded-[var(--radius-md)] border border-red-500 p-4">
+          <div className="text-2xl font-bold text-red-100">{stats.red}</div>
+          <div className="text-xs text-red-200">Красные</div>
         </div>
-        <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
-          <div className="text-2xl font-bold text-blue-500">{stats.blue}</div>
-          <div className="text-xs text-content-muted">Синие</div>
+        <div className="bg-blue-600 rounded-[var(--radius-md)] border border-blue-500 p-4">
+          <div className="text-2xl font-bold text-blue-100">{stats.blue}</div>
+          <div className="text-xs text-blue-200">Синие</div>
         </div>
       </div>
 
