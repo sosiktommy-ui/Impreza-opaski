@@ -621,6 +621,7 @@ function Statistics() {
   const [dateRange, setDateRange] = useState('month');
   const [stats, setStats] = useState(null);
   const [userStats, setUserStats] = useState(null);
+  const [expensesRaw, setExpensesRaw] = useState([]);
   const { countryId, cityId, eventId } = useFilterStore();
   const { user } = useAuthStore();
   const isAdminOrOffice = user?.role === 'ADMIN' || user?.role === 'OFFICE';
@@ -639,13 +640,17 @@ function Statistics() {
       if (cityId) params.cityId = cityId;
       if (eventId) params.eventId = eventId;
 
-      const [statsRes, usersRes] = await Promise.all([
+      const [statsRes, usersRes, expensesRes] = await Promise.all([
         transfersApi.getStats(params).catch((e) => { console.error('Stats API error:', e); return { data: null }; }),
         usersApi.getAll({ limit: 500 }).catch(() => ({ data: [] })),
+        inventoryApi.getExpenses({ limit: 500, ...(countryId ? { countryId } : {}), ...(cityId ? { cityId } : {}) }).catch(() => ({ data: { data: [] } })),
       ]);
 
       const data = statsRes?.data?.data || statsRes?.data || null;
       setStats(data);
+
+      const expList = expensesRes?.data?.data || expensesRes?.data || [];
+      setExpensesRaw(Array.isArray(expList) ? expList : []);
 
       const usersRaw = usersRes?.data;
       const users = usersRaw?.data || (Array.isArray(usersRaw) ? usersRaw : []);
@@ -675,6 +680,38 @@ function Statistics() {
       problematic: t.problematic || 0,
     }));
   }, [stats]);
+
+  const expenseDayData = useMemo(() => {
+    const byDay = {};
+    expensesRaw.forEach((e) => {
+      const d = new Date(e.eventDate || e.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      if (!byDay[d]) byDay[d] = { date: d, black: 0, white: 0, red: 0, blue: 0 };
+      byDay[d].black += e.black || 0;
+      byDay[d].white += e.white || 0;
+      byDay[d].red += e.red || 0;
+      byDay[d].blue += e.blue || 0;
+    });
+    return Object.values(byDay).sort((a, b) => {
+      const [da, ma] = a.date.split('.').map(Number);
+      const [db, mb] = b.date.split('.').map(Number);
+      return ma !== mb ? ma - mb : da - db;
+    });
+  }, [expensesRaw]);
+
+  const topExpenseCities = useMemo(() => {
+    const byCity = {};
+    expensesRaw.forEach((e) => {
+      const cityName = e.city?.name || 'Неизвестно';
+      if (!byCity[cityName]) byCity[cityName] = { city: cityName, total: 0, black: 0, white: 0, red: 0, blue: 0 };
+      const qty = (e.black || 0) + (e.white || 0) + (e.red || 0) + (e.blue || 0);
+      byCity[cityName].total += qty;
+      byCity[cityName].black += e.black || 0;
+      byCity[cityName].white += e.white || 0;
+      byCity[cityName].red += e.red || 0;
+      byCity[cityName].blue += e.blue || 0;
+    });
+    return Object.values(byCity).sort((a, b) => b.total - a.total).slice(0, 10);
+  }, [expensesRaw]);
 
   const braceletDayData = useMemo(() => {
     return (stats?.transfersByDay || []).map((t) => ({
@@ -822,8 +859,7 @@ function Statistics() {
         {isAdminOrOffice && <StatCard icon={UsersIcon} label="Пользователи" value={s.totalUsers}
           subText={`${s.activeUsers || 0} активных за период`}
           gradient="from-purple-500/10 to-purple-600/5" iconColor="bg-gradient-to-br from-purple-500 to-purple-600" />}
-        {!isCity && <StatCard icon={Globe} label="Активные страны" value={s.activeCountries} subText="с ненулевым балансом"
-          gradient="from-teal-500/10 to-teal-600/5" iconColor="bg-gradient-to-br from-teal-500 to-teal-600" />}
+
         <StatCard icon={Building2} label={isCity ? 'Мой город' : 'Активные города'} value={isCity ? 1 : s.activeCities} subText={isCity ? '' : 'с ненулевым балансом'}
           gradient="from-orange-500/10 to-orange-600/5" iconColor="bg-gradient-to-br from-orange-500 to-orange-600" />
         <StatCard icon={Timer} label="Ср. время приёмки" value={stats?.avgAcceptTime ? `${stats.avgAcceptTime}ч` : '—'}
@@ -852,36 +888,36 @@ function Statistics() {
       </div>
 
       {/* ── SECTION 2: Charts ── */}
-      {/* Row 1: Transfer trend + Status donut */}
+      {/* Row 1: Expense trend + Status donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 p-5 rounded-2xl bg-surface-card border border-edge">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-content-primary flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><Activity size={16} className="text-blue-500" /></div>
-              Динамика переводов
+              <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><Activity size={16} className="text-orange-500" /></div>
+              Динамика расходов
             </h3>
             <div className="flex items-center gap-4 text-xs">
-              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /><span className="text-content-muted">Отправлено</span></div>
-              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-content-muted">Принято</span></div>
-              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-500" /><span className="text-content-muted">Проблемные</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-gray-700" /><span className="text-content-muted">Чёрные</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-gray-400" /><span className="text-content-muted">Белые</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-500" /><span className="text-content-muted">Красные</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /><span className="text-content-muted">Синие</span></div>
             </div>
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dailyTrend}>
-                <defs>
-                  <linearGradient id="gradSent" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} /><stop offset="100%" stopColor="#3b82f6" stopOpacity={0} /></linearGradient>
-                  <linearGradient id="gradAccepted" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.4} /><stop offset="100%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--edge)" strokeOpacity={0.5} />
-                <XAxis dataKey="date" tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Area type="monotone" dataKey="sent" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#gradSent)" name="Отправлено" />
-                <Area type="monotone" dataKey="accepted" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#gradAccepted)" name="Принято" />
-                <Line type="monotone" dataKey="problematic" stroke="#ef4444" name="Проблемные" strokeWidth={2} dot={{ r: 3, fill: '#ef4444' }} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {expenseDayData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={expenseDayData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--edge)" strokeOpacity={0.5} />
+                  <XAxis dataKey="date" tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="black" stackId="a" fill="#1f2937" name="Чёрный" />
+                  <Bar dataKey="white" stackId="a" fill="#9ca3af" name="Белый" />
+                  <Bar dataKey="red" stackId="a" fill="#ef4444" name="Красный" />
+                  <Bar dataKey="blue" stackId="a" fill="#3b82f6" name="Синий" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <div className="h-full flex items-center justify-center text-content-muted"><Package size={32} className="opacity-30" /><p className="ml-2 text-sm">Нет расходов</p></div>}
           </div>
         </div>
 
@@ -1149,50 +1185,47 @@ function Statistics() {
         )}
       </div>
 
-      {/* ── SECTION 5: Activity — Top Users ── */}
-      {isAdminOrOffice && (
+      {/* ── SECTION 5: Expense Rankings — Top Cities ── */}
       <div className="p-5 rounded-2xl bg-surface-card border border-edge">
         <h3 className="text-base font-semibold text-content-primary flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"><Trophy size={16} className="text-amber-500" /></div>
-          Топ пользователей по активности
+          Топ по расходам
         </h3>
-        {(stats?.topUsers || []).length > 0 ? (
+        {topExpenseCities.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-edge">
                   <th className="text-left py-2.5 px-3 text-content-muted font-medium">#</th>
-                  <th className="text-left py-2.5 px-3 text-content-muted font-medium">Пользователь</th>
-                  <th className="text-left py-2.5 px-3 text-content-muted font-medium">Роль</th>
-                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Переводов</th>
-                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Проблемных</th>
+                  <th className="text-left py-2.5 px-3 text-content-muted font-medium">Город</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Всего</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Ч</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">Б</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">К</th>
+                  <th className="text-right py-2.5 px-3 text-content-muted font-medium">С</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.topUsers.map((u, i) => {
-                  const roleLabels = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
-                  return (
-                    <tr key={i} className="border-b border-edge/50 hover:bg-surface-primary transition-colors">
-                      <td className="py-2.5 px-3">
-                        <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${
-                          i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-gray-400/20 text-gray-400' : i === 2 ? 'bg-orange-600/20 text-orange-400' : 'text-content-muted'
-                        }`}>{i + 1}</div>
-                      </td>
-                      <td className="py-2.5 px-3 font-medium text-content-primary">{u.name}</td>
-                      <td className="py-2.5 px-3"><span className="px-2 py-0.5 rounded-full text-xs bg-surface-primary text-content-muted">{roleLabels[u.role] || u.role}</span></td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-blue-400">{u.sent}</td>
-                      <td className="py-2.5 px-3 text-right">
-                        {u.problematic > 0 ? <span className="font-semibold text-red-400">{u.problematic}</span> : <span className="text-content-muted">0</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {topExpenseCities.map((c, i) => (
+                  <tr key={i} className="border-b border-edge/50 hover:bg-surface-primary transition-colors">
+                    <td className="py-2.5 px-3">
+                      <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${
+                        i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-gray-400/20 text-gray-400' : i === 2 ? 'bg-orange-600/20 text-orange-400' : 'text-content-muted'
+                      }`}>{i + 1}</div>
+                    </td>
+                    <td className="py-2.5 px-3 font-medium text-content-primary">{c.city}</td>
+                    <td className="py-2.5 px-3 text-right font-semibold text-orange-400">{c.total.toLocaleString()}</td>
+                    <td className="py-2.5 px-3 text-right text-gray-400">{c.black || '—'}</td>
+                    <td className="py-2.5 px-3 text-right text-gray-300">{c.white || '—'}</td>
+                    <td className="py-2.5 px-3 text-right text-red-400">{c.red || '—'}</td>
+                    <td className="py-2.5 px-3 text-right text-blue-400">{c.blue || '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        ) : <div className="text-center py-8 text-content-muted"><UsersIcon size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет данных</p></div>}
+        ) : <div className="text-center py-8 text-content-muted"><Package size={32} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Нет расходов</p></div>}
       </div>
-      )}
     </div>
   );
 }

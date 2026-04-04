@@ -62,7 +62,7 @@ export default function Expenses() {
   };
 
   const loadCountries = async () => {
-    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'COUNTRY') {
       try {
         const { data } = await usersApi.getCountries();
         const list = data?.data || data;
@@ -203,7 +203,7 @@ export default function Expenses() {
     if (cid) {
       await loadCities(cid);
     } else {
-      setCities([]);
+      await loadCities();
     }
   };
 
@@ -553,8 +553,8 @@ export default function Expenses() {
         title="Новый расход"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Country select for ADMIN/OFFICE */}
-          {(user.role === 'ADMIN' || user.role === 'OFFICE') && countries.length > 0 && (
+          {/* Country select */}
+          {user.role !== 'CITY' && countries.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-content-primary mb-1">Страна</label>
               <select
@@ -571,7 +571,7 @@ export default function Expenses() {
           )}
 
           {/* City select for non-CITY roles */}
-          {user.role !== 'CITY' && (selectedCountryId || user.role === 'COUNTRY') && cities.length > 0 && (
+          {user.role !== 'CITY' && cities.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-content-primary mb-1">Город</label>
               <select
