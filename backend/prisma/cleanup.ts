@@ -3,6 +3,9 @@
  *
  * Clears all operational data while preserving structure:
  *  - Transfers + related records (items, acceptances, rejections)
+ *  - Company losses & account shortages
+ *  - Warehouse creations
+ *  - Chat messages
  *  - Expenses
  *  - Notifications
  *  - Adjustments
@@ -40,29 +43,45 @@ async function main() {
   const auditCount = await prisma.auditLog.deleteMany({});
   console.log(`   ✅ AuditLogs: ${auditCount.count} deleted`);
 
-  // 6. Delete transfers
+  // 6. Delete company losses (FK → Transfer)
+  const companyLossCount = await (prisma as any).companyLoss.deleteMany({});
+  console.log(`   ✅ CompanyLosses: ${companyLossCount.count} deleted`);
+
+  // 7. Delete shortages (FK → Transfer)
+  const shortageCount = await (prisma as any).shortage.deleteMany({});
+  console.log(`   ✅ Shortages: ${shortageCount.count} deleted`);
+
+  // 8. Delete transfers
   const transfersCount = await prisma.transfer.deleteMany({});
   console.log(`   ✅ Transfers: ${transfersCount.count} deleted`);
 
-  // 7. Delete expenses
+  // 9. Delete warehouse creations
+  const warehouseCount = await (prisma as any).warehouseCreation.deleteMany({});
+  console.log(`   ✅ WarehouseCreations: ${warehouseCount.count} deleted`);
+
+  // 10. Delete chat messages
+  const chatCount = await (prisma as any).chatMessage.deleteMany({});
+  console.log(`   ✅ ChatMessages: ${chatCount.count} deleted`);
+
+  // 11. Delete expenses
   const expensesCount = await prisma.expense.deleteMany({});
   console.log(`   ✅ Expenses: ${expensesCount.count} deleted`);
 
-  // 8. Delete notifications
+  // 12. Delete notifications
   const notifCount = await prisma.notification.deleteMany({});
   console.log(`   ✅ Notifications: ${notifCount.count} deleted`);
 
-  // 9. Delete adjustments
+  // 13. Delete adjustments
   const adjCount = await prisma.adjustment.deleteMany({});
   console.log(`   ✅ Adjustments: ${adjCount.count} deleted`);
 
-  // 10. Set all inventory quantities to 0
+  // 14. Set all inventory quantities to 0
   const invCount = await prisma.inventory.updateMany({
     data: { quantity: 0 },
   });
   console.log(`   ✅ Inventory: ${invCount.count} rows set to quantity=0`);
 
-  // 11. Reset all city statuses to ACTIVE
+  // 15. Reset all city statuses to ACTIVE
   const cityCount = await prisma.city.updateMany({
     data: { status: CityStatus.ACTIVE },
   });

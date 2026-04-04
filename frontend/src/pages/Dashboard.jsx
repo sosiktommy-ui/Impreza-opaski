@@ -91,7 +91,7 @@ export default function Dashboard() {
         promises.push(inventoryApi.getCompanyLossesSummary(filterParams));
         if (user.role === 'ADMIN') promises.push(inventoryApi.getMapData());
         else promises.push(Promise.resolve(null));
-        promises.push(inventoryApi.getSystemMinusSummary());
+        promises.push(inventoryApi.getSystemLossesSummary());
       } else {
         const entityType = user.role === 'COUNTRY' ? 'COUNTRY' : 'CITY';
         const entityId = user.role === 'COUNTRY' ? user.countryId : user.cityId;
@@ -351,10 +351,10 @@ export default function Dashboard() {
       {/* ── ROW 2b: System Minus (ADMIN/OFFICE) ──── */}
       {systemMinus && (
         <Card
-          title={`Минус системы — ${systemMinus.total > 0 ? '-' : ''}${systemMinus.total} шт`}
+          title={`Минус по городам и странам — ${systemMinus.total} шт`}
           action={
             <span className="text-xs text-content-muted">
-              Создано: {systemMinus.totalCreated} · На балансах: {systemMinus.totalBalances}
+              Компания: {systemMinus.companyCount || 0} · Аккаунты: {systemMinus.shortageCount || 0}
             </span>
           }
         >
@@ -370,7 +370,7 @@ export default function Dashboard() {
               }[type];
               return (
                 <div key={type} className={`${styles.bg} rounded-[var(--radius-md)] p-3 ring-1 ${styles.ring} ring-inset`}>
-                  <div className={`text-xl font-bold ${styles.text} tabular-nums`}>{val > 0 ? `-${val}` : val}</div>
+                  <div className={`text-xl font-bold ${styles.text} tabular-nums`}>{val}</div>
                   <div className={`text-xs ${styles.text} opacity-60`}>{label}</div>
                 </div>
               );
@@ -379,9 +379,9 @@ export default function Dashboard() {
           <div className="mt-3 flex items-center gap-2 p-2 bg-purple-500/10 rounded-lg border border-purple-500/30">
             <Gauge size={16} className="text-purple-400" />
             <span className="text-sm font-bold text-purple-400">
-              Итого: {systemMinus.total > 0 ? `-${systemMinus.total}` : systemMinus.total}
+              Итого: {systemMinus.total}
             </span>
-            <span className="text-xs text-content-muted ml-auto">вкл. минус компании + расхождения</span>
+            <span className="text-xs text-content-muted ml-auto">потери компании + расхождения аккаунтов</span>
           </div>
         </Card>
       )}

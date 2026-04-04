@@ -154,7 +154,7 @@ export default function CompanyLosses() {
   const getHeaderTitle = () => {
     if (isCity) return `Потери — ${user?.displayName || 'Мой город'}`;
     if (isCountry) return `Потери — ${user?.displayName || 'Моя страна'}`;
-    if (mode === 'system') return 'Минус системы';
+    if (mode === 'system') return 'Минус по городам и странам';
     return 'Минус компании';
   };
 
@@ -214,7 +214,7 @@ export default function CompanyLosses() {
           className="flex items-center gap-2"
         >
           <Users size={16} />
-          Минус системы
+          Минус по городам и странам
         </Button>
       </div>
       )}
