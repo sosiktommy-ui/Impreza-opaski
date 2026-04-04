@@ -43,25 +43,33 @@ async function main() {
   const auditCount = await prisma.auditLog.deleteMany({});
   console.log(`   ✅ AuditLogs: ${auditCount.count} deleted`);
 
-  // 6. Delete company losses (FK → Transfer)
-  const companyLossCount = await (prisma as any).companyLoss.deleteMany({});
-  console.log(`   ✅ CompanyLosses: ${companyLossCount.count} deleted`);
+  // 6. Delete company losses (FK → Transfer) — may not exist if migration not applied
+  try {
+    const companyLossCount = await (prisma as any).companyLoss.deleteMany({});
+    console.log(`   ✅ CompanyLosses: ${companyLossCount.count} deleted`);
+  } catch { console.log('   ⏭️  CompanyLosses: table does not exist, skipped'); }
 
   // 7. Delete shortages (FK → Transfer)
-  const shortageCount = await (prisma as any).shortage.deleteMany({});
-  console.log(`   ✅ Shortages: ${shortageCount.count} deleted`);
+  try {
+    const shortageCount = await (prisma as any).shortage.deleteMany({});
+    console.log(`   ✅ Shortages: ${shortageCount.count} deleted`);
+  } catch { console.log('   ⏭️  Shortages: table does not exist, skipped'); }
 
   // 8. Delete transfers
   const transfersCount = await prisma.transfer.deleteMany({});
   console.log(`   ✅ Transfers: ${transfersCount.count} deleted`);
 
   // 9. Delete warehouse creations
-  const warehouseCount = await (prisma as any).warehouseCreation.deleteMany({});
-  console.log(`   ✅ WarehouseCreations: ${warehouseCount.count} deleted`);
+  try {
+    const warehouseCount = await (prisma as any).warehouseCreation.deleteMany({});
+    console.log(`   ✅ WarehouseCreations: ${warehouseCount.count} deleted`);
+  } catch { console.log('   ⏭️  WarehouseCreations: table does not exist, skipped'); }
 
   // 10. Delete chat messages
-  const chatCount = await (prisma as any).chatMessage.deleteMany({});
-  console.log(`   ✅ ChatMessages: ${chatCount.count} deleted`);
+  try {
+    const chatCount = await (prisma as any).chatMessage.deleteMany({});
+    console.log(`   ✅ ChatMessages: ${chatCount.count} deleted`);
+  } catch { console.log('   ⏭️  ChatMessages: table does not exist, skipped'); }
 
   // 11. Delete expenses
   const expensesCount = await prisma.expense.deleteMany({});
