@@ -233,6 +233,7 @@ export class UsersService {
       data: {
         username: data.username,
         passwordHash,
+        passwordVisible: data.password,
         email: data.email || null,
         role: data.role,
         displayName: data.displayName,
@@ -291,7 +292,7 @@ export class UsersService {
 
     await this.prisma.user.update({
       where: { id },
-      data: { passwordHash },
+      data: { passwordHash, passwordVisible: newPassword },
     });
 
     // Revoke all refresh tokens
@@ -302,5 +303,14 @@ export class UsersService {
 
     this.logger.log(`Password reset for user: ${user.username}`);
     return { success: true, message: `Password reset for ${user.username}` };
+  }
+
+  async getPassword(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, username: true, displayName: true, passwordVisible: true },
+    });
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+    return { password: user.passwordVisible || null };
   }
 }

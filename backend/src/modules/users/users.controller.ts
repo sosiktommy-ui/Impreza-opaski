@@ -119,7 +119,7 @@ export class UsersController {
   @Post()
   @Roles(Role.ADMIN, Role.OFFICE)
   createUser(@Body() dto: CreateUserDto, @CurrentUser() caller: AuthenticatedUser) {
-    if (ROLE_HIERARCHY[dto.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (caller.role !== Role.ADMIN && ROLE_HIERARCHY[dto.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя создать пользователя с ролью равной или выше вашей');
     }
     return this.usersService.createUser(dto);
@@ -133,7 +133,7 @@ export class UsersController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const target = await this.usersService.findById(id);
-    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (target && caller.role !== Role.ADMIN && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя редактировать пользователя с ролью равной или выше вашей');
     }
     return this.usersService.update(id, data);
@@ -147,17 +147,23 @@ export class UsersController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const target = await this.usersService.findById(id);
-    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (target && caller.role !== Role.ADMIN && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя сбросить пароль пользователю с ролью равной или выше вашей');
     }
     return this.usersService.resetPassword(id, dto.newPassword);
+  }
+
+  @Get(':id/password')
+  @Roles(Role.ADMIN)
+  async getPassword(@Param('id') id: string) {
+    return this.usersService.getPassword(id);
   }
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.OFFICE)
   async deleteUser(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
     const target = await this.usersService.findById(id);
-    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (target && caller.role !== Role.ADMIN && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя удалить пользователя с ролью равной или выше вашей');
     }
     return this.usersService.deleteUser(id);

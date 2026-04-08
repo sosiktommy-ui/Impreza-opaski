@@ -6,11 +6,13 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings } from 'lucide-react';
+import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye } from 'lucide-react';
+import { useAuthStore } from '../store/useAuthStore';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
 export default function Users() {
+  const { user: currentUser } = useAuthStore();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [countries, setCountries] = useState([]);
@@ -20,6 +22,9 @@ export default function Users() {
   const [showEdit, setShowEdit] = useState(null);
   const [showPassword, setShowPassword] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [viewPasswordModal, setViewPasswordModal] = useState(null);
+  const [viewedPassword, setViewedPassword] = useState(null);
+  const [viewPasswordLoading, setViewPasswordLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -268,6 +273,28 @@ export default function Users() {
                 >
                   {u.isActive === false ? <UserCheck size={16} /> : <UserX size={16} />}
                 </button>
+                {currentUser?.role === 'ADMIN' && (
+                  <button
+                    onClick={async () => {
+                      setViewPasswordModal(u);
+                      setViewedPassword(null);
+                      setViewPasswordLoading(true);
+                      try {
+                        const res = await usersApi.getPassword(u.id);
+                        const pw = res.data?.password || res.data?.data?.password;
+                        setViewedPassword(pw || 'Пароль не сохранён');
+                      } catch {
+                        setViewedPassword('Ошибка загрузки');
+                      } finally {
+                        setViewPasswordLoading(false);
+                      }
+                    }}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-emerald-500"
+                    title="Посмотреть пароль"
+                  >
+                    <Eye size={16} />
+                  </button>
+                )}
                 <button
                   onClick={() => openEdit(u)}
                   className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
@@ -428,6 +455,26 @@ export default function Users() {
           )}
           <Button onClick={handleResetPassword} loading={saving} className="w-full">
             Сохранить
+          </Button>
+        </div>
+      </Modal>
+
+      {/* View password modal */}
+      <Modal
+        open={!!viewPasswordModal}
+        onClose={() => setViewPasswordModal(null)}
+        title={`Пароль: ${viewPasswordModal?.displayName || viewPasswordModal?.username || ''}`}
+      >
+        <div className="space-y-4">
+          {viewPasswordLoading ? (
+            <div className="text-center text-content-muted">Загрузка...</div>
+          ) : (
+            <div className="bg-surface-card p-4 rounded-[var(--radius-sm)] text-center">
+              <span className="text-lg font-mono select-all">{viewedPassword}</span>
+            </div>
+          )}
+          <Button onClick={() => setViewPasswordModal(null)} className="w-full">
+            Закрыть
           </Button>
         </div>
       </Modal>

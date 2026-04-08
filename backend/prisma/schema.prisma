@@ -102,6 +102,7 @@ model User {
   email         String?  @unique
   username      String   @unique
   passwordHash  String   @map("password_hash")
+  passwordVisible String? @map("password_visible")
   role          Role
   displayName   String   @map("display_name")
   isActive      Boolean  @default(true) @map("is_active")

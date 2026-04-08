@@ -15,6 +15,8 @@ export const usersApi = {
   resetPassword: (id, newPassword) =>
     api.patch(`/users/${id}/password`, { newPassword }),
 
+  getPassword: (id) => api.get(`/users/${id}/password`),
+
   getCountries: () => api.get('/users/countries'),
 
   getOffices: () => api.get('/users/offices'),
