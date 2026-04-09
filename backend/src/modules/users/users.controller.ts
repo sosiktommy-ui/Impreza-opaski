@@ -133,7 +133,7 @@ export class UsersController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const target = await this.usersService.findById(id);
-    if (target && caller.role !== Role.ADMIN && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя редактировать пользователя с ролью равной или выше вашей');
     }
     return this.usersService.update(id, data);
@@ -147,15 +147,19 @@ export class UsersController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const target = await this.usersService.findById(id);
-    if (target && caller.role !== Role.ADMIN && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя сбросить пароль пользователю с ролью равной или выше вашей');
     }
     return this.usersService.resetPassword(id, dto.newPassword);
   }
 
   @Get(':id/password')
-  @Roles(Role.ADMIN)
-  async getPassword(@Param('id') id: string) {
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getPassword(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя просматривать пароль пользователя с ролью равной или выше вашей');
+    }
     return this.usersService.getPassword(id);
   }
 
@@ -163,7 +167,7 @@ export class UsersController {
   @Roles(Role.ADMIN, Role.OFFICE)
   async deleteUser(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
     const target = await this.usersService.findById(id);
-    if (target && caller.role !== Role.ADMIN && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
       throw new ForbiddenException('Нельзя удалить пользователя с ролью равной или выше вашей');
     }
     return this.usersService.deleteUser(id);

