@@ -25,6 +25,7 @@ export default function Users() {
   const [viewPasswordModal, setViewPasswordModal] = useState(null);
   const [viewedPassword, setViewedPassword] = useState(null);
   const [viewPasswordLoading, setViewPasswordLoading] = useState(false);
+  const [viewResetPw, setViewResetPw] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -287,9 +288,9 @@ export default function Users() {
                           try {
                             const res = await usersApi.getPassword(u.id);
                             const pw = res.data?.password || res.data?.data?.password;
-                            setViewedPassword(pw || 'Пароль не сохранён');
+                            setViewedPassword(pw || '__EMPTY__');
                           } catch {
-                            setViewedPassword('Нет доступа');
+                            setViewedPassword('__EMPTY__');
                           } finally {
                             setViewPasswordLoading(false);
                           }
@@ -469,18 +470,52 @@ export default function Users() {
       {/* View password modal */}
       <Modal
         open={!!viewPasswordModal}
-        onClose={() => setViewPasswordModal(null)}
+        onClose={() => { setViewPasswordModal(null); setViewResetPw(''); }}
         title={`Пароль: ${viewPasswordModal?.displayName || viewPasswordModal?.username || ''}`}
       >
         <div className="space-y-4">
           {viewPasswordLoading ? (
             <div className="text-center text-content-muted">Загрузка...</div>
-          ) : (
+          ) : viewedPassword && viewedPassword !== '__EMPTY__' ? (
             <div className="bg-surface-card p-4 rounded-[var(--radius-sm)] text-center">
               <span className="text-lg font-mono select-all">{viewedPassword}</span>
             </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm text-content-muted text-center">
+                Пароль не зафиксирован. Задайте новый:
+              </div>
+              <Input
+                type="password"
+                value={viewResetPw}
+                onChange={(e) => setViewResetPw(e.target.value)}
+                placeholder="Минимум 6 символов"
+              />
+              <Button
+                loading={saving}
+                className="w-full"
+                onClick={async () => {
+                  if (!viewResetPw || viewResetPw.length < 6) {
+                    setError('Минимум 6 символов');
+                    return;
+                  }
+                  setSaving(true);
+                  try {
+                    await usersApi.resetPassword(viewPasswordModal.id, viewResetPw);
+                    setViewedPassword(viewResetPw);
+                    setViewResetPw('');
+                  } catch {
+                    setError('Ошибка сброса пароля');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                Сохранить и показать
+              </Button>
+            </div>
           )}
-          <Button onClick={() => setViewPasswordModal(null)} className="w-full">
+          <Button variant="secondary" onClick={() => { setViewPasswordModal(null); setViewResetPw(''); }} className="w-full">
             Закрыть
           </Button>
         </div>
