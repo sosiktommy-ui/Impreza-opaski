@@ -163,6 +163,33 @@ export class AuditService {
     });
   }
 
+  @OnEvent('discrepancy.resolved')
+  async onDiscrepancyResolved(payload: {
+    transferId: string;
+    actorId: string;
+    resolutionType: string;
+    totalLoss: number;
+    sentByColor: Record<string, number>;
+    receivedByColor: Record<string, number>;
+    notes?: string;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.DISCREPANCY_RESOLVED,
+      entityType: 'Transfer',
+      entityId: payload.transferId,
+      metadata: {
+        event: 'discrepancy.resolved',
+        resolutionType: payload.resolutionType,
+        totalLoss: payload.totalLoss,
+        sentByColor: payload.sentByColor,
+        receivedByColor: payload.receivedByColor,
+        notes: payload.notes,
+      },
+    });
+  }
+
   @OnEvent('inventory.adjusted')
   async onInventoryAdjusted(payload: {
     actorId: string;

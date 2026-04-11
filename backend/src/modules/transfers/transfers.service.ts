@@ -1610,6 +1610,15 @@ export class TransfersService {
         if (!compromiseValues) {
           throw new BadRequestException('Compromise values are required for ACCEPT_COMPROMISE resolution');
         }
+        // Validate compromise values don't exceed sent quantities
+        for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+          const key = color.toLowerCase() as 'black' | 'white' | 'red' | 'blue';
+          if (compromiseValues[key] > sentByColor[color]) {
+            throw new BadRequestException(
+              `Компромиссное значение для ${color} (${compromiseValues[key]}) не может превышать отправленное (${sentByColor[color]})`,
+            );
+          }
+        }
         // Custom values - shortage split between both
         finalByColor = {
           BLACK: compromiseValues.black,
@@ -1828,6 +1837,28 @@ export class TransfersService {
         where: { id: transferId },
         include: { items: true, acceptanceRecords: true },
       });
+    });
+
+    // Emit event for audit logging AFTER transaction commits
+    const items = await this.prisma.transferItem.findMany({ where: { transferId } });
+    const acceptanceRecords = await this.prisma.acceptanceRecord.findMany({ where: { transferId } });
+    const sentMap: Record<string, number> = {};
+    const receivedMap: Record<string, number> = {};
+    let auditTotalLoss = 0;
+    for (const i of items) sentMap[i.itemType] = i.quantity;
+    for (const r of acceptanceRecords) receivedMap[r.itemType] = r.receivedQuantity;
+    for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE']) {
+      auditTotalLoss += Math.max(0, (sentMap[color] || 0) - (receivedMap[color] || 0));
+    }
+
+    this.eventEmitter.emit('discrepancy.resolved', {
+      transferId,
+      actorId,
+      resolutionType,
+      totalLoss: auditTotalLoss,
+      sentByColor: sentMap,
+      receivedByColor: receivedMap,
+      notes,
     });
 
     // Invalidate caches AFTER the transaction commits
