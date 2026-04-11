@@ -672,7 +672,7 @@ export default function Acceptance() {
 
             <div className="text-sm">
               <div className="text-xs text-content-muted mb-1">Отправитель</div>
-              <div className="font-medium">{getSenderLabel(detailTarget)}</div>
+              <div className="font-medium">{getSenderName(detailTarget)}</div>
               {detailTarget.createdByUser?.displayName && (
                 <div className="text-xs text-gray-500 mt-0.5">
                   {detailTarget.createdByUser.displayName}
