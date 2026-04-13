@@ -10,7 +10,7 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import BraceletBadge from '../components/ui/BraceletBadge';
 import Pagination from '../components/ui/Pagination';
-import { CheckCircle, XCircle, AlertTriangle, Package, Search, HelpCircle, PackageCheck, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Package, Search, HelpCircle, PackageCheck, ChevronDown, ChevronUp, ArrowRight, Pencil } from 'lucide-react';
 import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
 
 const ITEM_TYPES = ['BLACK', 'WHITE', 'RED', 'BLUE'];
@@ -39,6 +39,12 @@ export default function Acceptance() {
 
   // Detail modal
   const [detailTarget, setDetailTarget] = useState(null);
+
+  // Edit modal (ADMIN only)
+  const [editTarget, setEditTarget] = useState(null);
+  const [editItems, setEditItems] = useState({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
+  const [editPassword, setEditPassword] = useState('');
+  const [editNotes, setEditNotes] = useState('');
 
   // Helper to check if current user is the receiver of a transfer
   const isUserReceiver = (transfer) => {
@@ -227,6 +233,53 @@ export default function Acceptance() {
     }
   };
 
+  // ── EDIT TRANSFER: Admin only, 2FA required ──
+  const openEdit = (transfer) => {
+    const items = { BLACK: '', WHITE: '', RED: '', BLUE: '' };
+    for (const item of (transfer.items || [])) {
+      items[item.itemType] = String(item.quantity);
+    }
+    setEditTarget(transfer);
+    setEditItems(items);
+    setEditPassword('');
+    setEditNotes(transfer.notes || '');
+    setError('');
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editTarget) return;
+    if (!editPassword.trim()) {
+      setError('Введите пароль для подтверждения');
+      return;
+    }
+    setProcessing(true);
+    setError('');
+    try {
+      const items = [];
+      for (const color of ITEM_TYPES) {
+        const qty = parseInt(editItems[color]) || 0;
+        if (qty > 0) items.push({ itemType: color, quantity: qty });
+      }
+      if (items.length === 0) {
+        setError('Укажите хотя бы один браслет');
+        setProcessing(false);
+        return;
+      }
+      await transfersApi.editTransfer(editTarget.id, {
+        items,
+        password: editPassword,
+        notes: editNotes || undefined,
+      });
+      setEditTarget(null);
+      await loadTransfers();
+      useBadgeStore.getState().refreshCounts(transfersApi, inventoryApi);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка редактирования');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const getDisagreePreview = () => {
     if (!disagreeTarget) return null;
     
@@ -380,6 +433,18 @@ export default function Acceptance() {
                           title="Отменить отправку и вернуть браслеты на баланс"
                         >
                           <AlertTriangle size={16} /> Отменить
+                        </Button>
+                      )}
+                      {/* Admin: Edit transfer */}
+                      {canCancel && t.status === 'SENT' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => openEdit(t)}
+                          title="Редактировать количество браслетов (2FA)"
+                        >
+                          <Pencil size={16} /> Ред.
                         </Button>
                       )}
                     </div>
@@ -733,6 +798,74 @@ export default function Acceptance() {
                 {detailTarget.rejection.reason}
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Edit Transfer Modal (Admin 2FA) ── */}
+      <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Редактировать отправку">
+        {editTarget && (
+          <div className="space-y-4">
+            <div className="text-sm text-content-muted">
+              Отправка #{editTarget.id?.slice(-6)} — изменение количества браслетов.
+              Разница будет списана/возвращена отправителю.
+            </div>
+
+            {error && <div className="text-red-500 text-sm bg-red-500/10 p-2 rounded">{error}</div>}
+
+            <div className="space-y-2">
+              {ITEM_TYPES.map((color) => {
+                const oldItem = (editTarget.items || []).find(i => i.itemType === color);
+                const oldQty = oldItem?.quantity || 0;
+                const newQty = parseInt(editItems[color]) || 0;
+                const delta = newQty - oldQty;
+                return (
+                  <div key={color} className="flex items-center gap-3">
+                    <span className="w-24 text-sm font-medium">{ITEM_LABELS[color]}</span>
+                    <span className="text-xs text-content-muted w-16">было: {oldQty}</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editItems[color]}
+                      onChange={(e) => setEditItems(prev => ({ ...prev, [color]: e.target.value }))}
+                      className="w-24"
+                      placeholder="0"
+                    />
+                    {delta !== 0 && (
+                      <span className={`text-xs font-medium ${delta > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {delta > 0 ? `+${delta} (спишется)` : `${delta} (вернётся)`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div>
+              <label className="text-xs text-content-muted mb-1 block">Комментарий (необязательно)</label>
+              <Input
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Причина изменения"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-content-muted mb-1 block">Пароль для подтверждения</label>
+              <Input
+                type="password"
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+                placeholder="Введите ваш пароль"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setEditTarget(null)}>Отмена</Button>
+              <Button variant="primary" onClick={handleEditSubmit} loading={processing}>
+                <Pencil size={16} /> Сохранить
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

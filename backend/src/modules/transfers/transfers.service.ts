@@ -1882,6 +1882,161 @@ export class TransfersService {
   }
 
   // ──────────────────────────────────────────────
+  // EDIT TRANSFER (Admin only, 2FA required)
+  // Only SENT transfers can be edited.
+  // Adjusts sender inventory based on quantity delta.
+  // ──────────────────────────────────────────────
+
+  async editTransfer(
+    transferId: string,
+    newItems: Array<{ itemType: ItemType; quantity: number }>,
+    actorId: string,
+    notes?: string,
+  ) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const transfer = await tx.transfer.findUnique({
+        where: { id: transferId },
+        include: {
+          items: true,
+          senderOffice: { select: { name: true } },
+          senderCountry: { select: { name: true } },
+          senderCity: { select: { name: true } },
+          receiverOffice: { select: { name: true } },
+          receiverCountry: { select: { name: true } },
+          receiverCity: { select: { name: true } },
+        },
+      });
+
+      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
+
+      if (transfer.status !== TransferStatus.SENT) {
+        throw new BadRequestException(
+          `Можно редактировать только отправки в статусе SENT. Текущий статус: ${transfer.status}`,
+        );
+      }
+
+      // Build old quantities map
+      const oldByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+      for (const item of transfer.items) {
+        oldByColor[item.itemType] = item.quantity;
+      }
+
+      // Build new quantities map
+      const newByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+      for (const item of newItems) {
+        if (item.quantity <= 0) {
+          throw new BadRequestException(`Количество должно быть положительным для ${item.itemType}`);
+        }
+        newByColor[item.itemType] = item.quantity;
+      }
+
+      // Check that at least one item has quantity > 0
+      const totalNew = Object.values(newByColor).reduce((a, b) => a + b, 0);
+      if (totalNew === 0) {
+        throw new BadRequestException('Трансфер должен содержать хотя бы один браслет');
+      }
+
+      // Calculate deltas and adjust sender inventory
+      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+
+      // First pass: check if sender has enough balance for increases
+      const fullBalance: Record<string, number> = {};
+      for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+        fullBalance[color] = await this.getEntityBalance(
+          tx,
+          transfer.senderType,
+          senderEntityId,
+          color as any,
+        );
+      }
+
+      for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+        const delta = newByColor[color] - oldByColor[color];
+        if (delta > 0 && fullBalance[color] < delta) {
+          throw new BadRequestException(
+            `Недостаточно браслетов у отправителя для увеличения. Баланс: Ч:${fullBalance.BLACK} Б:${fullBalance.WHITE} К:${fullBalance.RED} С:${fullBalance.BLUE}`,
+          );
+        }
+      }
+
+      // Second pass: apply deltas
+      for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+        const delta = newByColor[color] - oldByColor[color];
+        if (delta > 0) {
+          // Increase: deduct more from sender
+          await this.deductInventory(tx, transfer.senderType, senderEntityId, color as any, delta);
+        } else if (delta < 0) {
+          // Decrease: return excess to sender
+          await this.creditInventory(tx, transfer.senderType, senderEntityId, color as any, Math.abs(delta));
+        }
+      }
+
+      // Update transfer items: delete old, create new
+      await tx.transferItem.deleteMany({ where: { transferId } });
+      const itemsToCreate = Object.entries(newByColor)
+        .filter(([_, qty]) => qty > 0)
+        .map(([itemType, quantity]) => ({
+          transferId,
+          itemType: itemType as ItemType,
+          quantity,
+        }));
+      await tx.transferItem.createMany({ data: itemsToCreate });
+
+      // Update notes if provided
+      if (notes !== undefined) {
+        await tx.transfer.update({
+          where: { id: transferId },
+          data: { version: transfer.version + 1, notes: notes || transfer.notes },
+        });
+      } else {
+        await tx.transfer.update({
+          where: { id: transferId },
+          data: { version: transfer.version + 1 },
+        });
+      }
+
+      // Store domain event
+      await this.storeDomainEvent(transferId, 'TransferEdited', {
+        actorId,
+        oldItems: oldByColor,
+        newItems: newByColor,
+        notes,
+      });
+
+      this.logger.log(`Transfer ${transferId} EDITED by ${actorId}: ${JSON.stringify(oldByColor)} → ${JSON.stringify(newByColor)}`);
+
+      return tx.transfer.findUnique({
+        where: { id: transferId },
+        include: { items: true },
+      });
+    });
+
+    // Emit event for audit logging
+    this.eventEmitter.emit('transfer.edited', {
+      transferId,
+      actorId,
+      oldItems: (await this.prisma.domainEvent.findFirst({
+        where: { aggregateId: transferId, eventType: 'TransferEdited' },
+        orderBy: { version: 'desc' },
+      }))?.payload,
+      notes,
+    });
+
+    // Invalidate sender cache
+    const transfer = await this.prisma.transfer.findUnique({ where: { id: transferId } });
+    if (transfer) {
+      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+      if (senderEntityId) {
+        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+      } else if (transfer.senderType === EntityType.ADMIN) {
+        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
+      }
+    }
+
+    return result;
+  }
+
+  // ──────────────────────────────────────────────
   // INTERNAL HELPERS
   // ──────────────────────────────────────────────
 

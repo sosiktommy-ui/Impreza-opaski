@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { History as HistoryIcon, Send, PackageCheck, CalendarDays, ArrowRight, Filter, Search } from 'lucide-react';
+import { History as HistoryIcon, Send, PackageCheck, CalendarDays, ArrowRight, Filter, Search, ShieldCheck } from 'lucide-react';
 import { transfersApi } from '../api/transfers';
 import { inventoryApi } from '../api/inventory';
+import { auditApi } from '../api/audit';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore } from '../store/useAppStore';
 import Badge from '../components/ui/Badge';
@@ -10,7 +11,7 @@ import Skeleton from '../components/ui/Skeleton';
 import Pagination from '../components/ui/Pagination';
 import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
 
-const TAB_FILTERS = [
+const TAB_FILTERS_BASE = [
   { key: 'all', label: 'Все' },
   { key: 'transfers', label: 'Отправки' },
   { key: 'expenses', label: 'Расходы' },
@@ -91,20 +92,98 @@ function ExpenseRow({ e }) {
   );
 }
 
+const AUDIT_ACTION_LABELS = {
+  TRANSFER_SENT: 'Отправка',
+  TRANSFER_ACCEPTED: 'Приёмка',
+  TRANSFER_REJECTED: 'Отклонение',
+  TRANSFER_CANCELLED: 'Отмена',
+  TRANSFER_EDITED: 'Редактирование',
+  DISCREPANCY_FOUND: 'Расхождение',
+  DISCREPANCY_RESOLVED: 'Решение расхождения',
+  INVENTORY_ADJUSTED: 'Корректировка склада',
+  USER_CREATED: 'Создание пользователя',
+  USER_UPDATED: 'Обновление пользователя',
+  USER_DELETED: 'Удаление пользователя',
+  USER_LOGIN: 'Вход',
+  USER_LOGOUT: 'Выход',
+  PASSWORD_CHANGED: 'Смена пароля',
+  EXPENSE_CREATED: 'Расход создан',
+  EXPENSE_DELETED: 'Расход удалён',
+  COMPANY_LOSS_CREATED: 'Потеря компании',
+  SHORTAGE_CREATED: 'Недостача',
+  WAREHOUSE_CREATED: 'Создание на складе',
+};
+
+function AuditRow({ log }) {
+  const label = AUDIT_ACTION_LABELS[log.action] || log.action;
+  const meta = log.metadata || {};
+  return (
+    <div className="flex items-start gap-3 p-3">
+      <div className="w-8 h-8 rounded-full bg-violet-500/10 text-violet-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <ShieldCheck size={14} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-content-primary">{label}</span>
+          <span className="text-2xs text-content-muted font-mono">#{log.entityId?.slice(-6) || '—'}</span>
+        </div>
+        <p className="text-2xs text-content-muted mt-0.5">
+          Актор: {log.actor?.displayName || log.actor?.username || log.actorId?.slice(-6) || '—'}
+          {log.entityType && <span className="ml-2">· {log.entityType}</span>}
+        </p>
+        {meta.notes && <p className="text-2xs text-content-secondary mt-0.5">"{meta.notes}"</p>}
+        {meta.oldItems && meta.newItems && (
+          <p className="text-2xs text-content-secondary mt-0.5">
+            До: Ч:{meta.oldItems.BLACK || 0} Б:{meta.oldItems.WHITE || 0} К:{meta.oldItems.RED || 0} С:{meta.oldItems.BLUE || 0}
+            {' → '}
+            После: Ч:{meta.newItems.BLACK || 0} Б:{meta.newItems.WHITE || 0} К:{meta.newItems.RED || 0} С:{meta.newItems.BLUE || 0}
+          </p>
+        )}
+        <p className="text-2xs text-content-muted mt-1">
+          {new Date(log.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function History() {
   const { user } = useAuthStore();
   const { countryId, cityId, eventId } = useFilterStore();
   const [transfers, setTransfers] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const perPage = 30;
 
+  const canSeeAudit = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  const TAB_FILTERS = canSeeAudit
+    ? [...TAB_FILTERS_BASE, { key: 'audit', label: 'Журнал' }]
+    : TAB_FILTERS_BASE;
+
   useEffect(() => {
     loadData();
   }, [countryId, cityId, eventId]);
+
+  useEffect(() => {
+    if (tab === 'audit' && canSeeAudit) loadAudit(auditPage);
+  }, [tab, auditPage]);
+
+  const loadAudit = async (p = 1) => {
+    try {
+      const { data } = await auditApi.getAll({ page: p, limit: perPage });
+      const payload = data?.data || data;
+      setAuditLogs(Array.isArray(payload) ? payload : payload.data || []);
+      setAuditTotalPages(data?.meta?.totalPages || 1);
+    } catch (err) {
+      console.error('Failed to load audit logs', err);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -227,26 +306,45 @@ export default function History() {
         </div>
       </div>
 
-      {/* Timeline */}
-      <div className="bg-surface-card border border-edge rounded-[var(--radius-md)] divide-y divide-edge">
-        {paged.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-content-muted">
-            <HistoryIcon size={36} className="mb-2 opacity-40" />
-            <p className="text-sm">Нет записей</p>
-          </div>
-        ) : (
-          paged.map((item) =>
-            item._type === 'transfer' ? (
-              <TransferRow key={`t-${item.id}`} t={item} />
+      {/* Timeline / Audit */}
+      {tab === 'audit' ? (
+        <>
+          <div className="bg-surface-card border border-edge rounded-[var(--radius-md)] divide-y divide-edge">
+            {auditLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-content-muted">
+                <ShieldCheck size={36} className="mb-2 opacity-40" />
+                <p className="text-sm">Нет записей в журнале</p>
+              </div>
             ) : (
-              <ExpenseRow key={`e-${item.id}`} e={item} />
-            ),
-          )
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+              auditLogs.map((log) => <AuditRow key={log.id} log={log} />)
+            )}
+          </div>
+          {auditTotalPages > 1 && (
+            <Pagination page={auditPage} totalPages={auditTotalPages} onPageChange={setAuditPage} />
+          )}
+        </>
+      ) : (
+        <>
+          <div className="bg-surface-card border border-edge rounded-[var(--radius-md)] divide-y divide-edge">
+            {paged.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-content-muted">
+                <HistoryIcon size={36} className="mb-2 opacity-40" />
+                <p className="text-sm">Нет записей</p>
+              </div>
+            ) : (
+              paged.map((item) =>
+                item._type === 'transfer' ? (
+                  <TransferRow key={`t-${item.id}`} t={item} />
+                ) : (
+                  <ExpenseRow key={`e-${item.id}`} e={item} />
+                ),
+              )
+            )}
+          </div>
+          {totalPages > 1 && (
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          )}
+        </>
       )}
     </div>
   );

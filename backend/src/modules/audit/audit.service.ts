@@ -190,6 +190,27 @@ export class AuditService {
     });
   }
 
+  @OnEvent('transfer.edited')
+  async onTransferEdited(payload: {
+    transferId: string;
+    actorId: string;
+    oldItems: any;
+    notes?: string;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.TRANSFER_EDITED,
+      entityType: 'Transfer',
+      entityId: payload.transferId,
+      metadata: {
+        event: 'transfer.edited',
+        ...payload.oldItems,
+        notes: payload.notes,
+      },
+    });
+  }
+
   @OnEvent('inventory.adjusted')
   async onInventoryAdjusted(payload: {
     actorId: string;

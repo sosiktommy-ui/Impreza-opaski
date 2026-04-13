@@ -19,6 +19,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { Role, TransferStatus, EntityType, ItemType } from '@prisma/client';
 import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
+import { EditTransferDto } from './dto/edit-transfer.dto';
 import {
   IsEnum,
   IsString,
@@ -174,6 +175,20 @@ export class TransfersController {
       throw new BadRequestException('Неверный пароль');
     }
     return this.transfersService.resolveDiscrepancy(id, dto, user.id);
+  }
+
+  @Patch(':id/edit')
+  @Roles(Role.ADMIN)
+  async editTransfer(
+    @Param('id') id: string,
+    @Body() dto: EditTransferDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const isValid = await this.authService.verifyPassword(user.id, dto.password);
+    if (!isValid) {
+      throw new BadRequestException('Неверный пароль');
+    }
+    return this.transfersService.editTransfer(id, dto.items, user.id, dto.notes);
   }
 
   @Get()

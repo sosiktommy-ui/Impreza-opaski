@@ -28,4 +28,9 @@ export const transfersApi = {
   
   // Get statistics for dashboard
   getStats: (params) => api.get('/transfers/stats', { params }),
+
+  // Admin-only: edit SENT transfer (requires 2FA password)
+  editTransfer: (id, payload) =>
+    api.patch(`/transfers/${id}/edit`, payload),
+  // payload: { items: [{itemType, quantity}], password, notes? }
 };
