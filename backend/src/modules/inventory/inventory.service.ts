@@ -549,10 +549,104 @@ export class InventoryService {
       orderBy: { name: 'asc' },
     });
 
+    // Country-level inventory totals
+    const countryInventories = await this.prisma.inventory.findMany({
+      where: {
+        entityType: EntityType.COUNTRY,
+        countryId: { in: countries.map((c) => c.id) },
+      },
+    });
+
+    // Also aggregate city inventories per country
+    const countryData = countries.map((country) => {
+      // Country's own inventory
+      const ownInv = countryInventories.filter((i) => i.countryId === country.id);
+      const ownBalance: Record<string, number> = {};
+      for (const t of Object.values(ItemType)) {
+        ownBalance[t] = ownInv.find((i) => i.itemType === t)?.quantity ?? 0;
+      }
+
+      // Sum of all cities in this country
+      const countryCities = cityData.filter((c) => c.countryId === country.id);
+      const cityTotal: Record<string, number> = {};
+      for (const t of Object.values(ItemType)) {
+        cityTotal[t] = countryCities.reduce((sum, c) => sum + (c.balance[t] || 0), 0);
+      }
+
+      const totalOwn = Object.values(ownBalance).reduce((a, b) => a + b, 0);
+      const totalCities = Object.values(cityTotal).reduce((a, b) => a + b, 0);
+
+      return {
+        ...country,
+        balance: ownBalance,
+        cityBalance: cityTotal,
+        totalStock: totalOwn + totalCities,
+        cityCount: countryCities.length,
+      };
+    });
+
+    // Individual recent transfers (last 90 days) with details
+    const recentTransfers = await this.prisma.transfer.findMany({
+      where: {
+        createdAt: { gte: since },
+        OR: [
+          { senderCityId: { in: cityIds } },
+          { receiverCityId: { in: cityIds } },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        notes: true,
+        senderType: true,
+        senderCityId: true,
+        senderCountryId: true,
+        receiverType: true,
+        receiverCityId: true,
+        receiverCountryId: true,
+        items: { select: { itemType: true, quantity: true } },
+        senderCity: { select: { name: true, latitude: true, longitude: true, countryId: true } },
+        senderCountry: { select: { name: true, latitude: true, longitude: true } },
+        receiverCity: { select: { name: true, latitude: true, longitude: true, countryId: true } },
+        receiverCountry: { select: { name: true, latitude: true, longitude: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    const transferData = recentTransfers
+      .filter((t) => {
+        const from = t.senderCity || t.senderCountry;
+        const to = t.receiverCity || t.receiverCountry;
+        return from?.latitude && to?.latitude && from.latitude !== 0 && to.latitude !== 0;
+      })
+      .map((t) => {
+        const from = t.senderCity || t.senderCountry;
+        const to = t.receiverCity || t.receiverCountry;
+        const volume = t.items.reduce((s, i) => s + i.quantity, 0);
+        return {
+          id: t.id,
+          status: t.status,
+          createdAt: t.createdAt,
+          senderName: t.senderCity?.name || t.senderCountry?.name || '—',
+          receiverName: t.receiverCity?.name || t.receiverCountry?.name || '—',
+          senderCountryId: t.senderCity?.countryId || t.senderCountryId,
+          receiverCountryId: t.receiverCity?.countryId || t.receiverCountryId,
+          fromLat: from!.latitude,
+          fromLng: from!.longitude,
+          toLat: to!.latitude,
+          toLng: to!.longitude,
+          volume,
+          items: t.items,
+        };
+      });
+
     return {
       cities: cityData,
-      countries,
+      countries: countryData,
       transferLines: Array.from(lineMap.values()),
+      transfers: transferData,
     };
   }
 
