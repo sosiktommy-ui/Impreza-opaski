@@ -293,7 +293,6 @@ export default function MapPage() {
   const [geoJsonData, setGeoJsonData] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null); // { entity, type: 'city'|'country' }
   const mapWrapRef = useRef(null);
-  const geoJsonRef = useRef(null);
 
   const isZoomedIn = zoomLevel >= ZOOM_THRESHOLD;
 
@@ -455,13 +454,6 @@ export default function MapPage() {
       });
     }
   }, [countryByCode]);
-
-  // Force GeoJSON re-render when style changes
-  useEffect(() => {
-    if (geoJsonRef.current) {
-      geoJsonRef.current.setStyle(geoJsonStyle);
-    }
-  }, [geoJsonStyle]);
 
   const canFilterCountry = user?.role === 'ADMIN' || user?.role === 'OFFICE';
 
@@ -626,8 +618,7 @@ export default function MapPage() {
           {/* ── COUNTRY BOUNDARIES (GeoJSON) ── */}
           {geoJsonData && (
             <GeoJSON
-              ref={geoJsonRef}
-              key="country-boundaries"
+              key={`geo-${isZoomedIn}`}
               data={geoJsonData}
               style={geoJsonStyle}
               onEachFeature={onEachCountryFeature}

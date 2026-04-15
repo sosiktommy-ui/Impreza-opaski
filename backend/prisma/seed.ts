@@ -95,6 +95,7 @@ const COUNTRIES: CountryData[] = [
       { name: 'Czestochowa', slug: 'czestochowa', lat: 50.8118, lng: 19.1203 },
       { name: 'Bydgoszcz', slug: 'bydgoszcz', lat: 53.1235, lng: 18.0084 },
       { name: 'Legnica', slug: 'legnica', lat: 51.2070, lng: 16.1619 },
+      { name: 'Bialystok', slug: 'bialystok', lat: 53.1325, lng: 23.1688 },
     ],
   },
   {
@@ -111,6 +112,7 @@ const COUNTRIES: CountryData[] = [
       { name: 'Freiburg', slug: 'freiburg', lat: 47.9990, lng: 7.8421 },
       { name: 'Hannover', slug: 'hannover', lat: 52.3759, lng: 9.7320 },
       { name: 'Dusseldorf', slug: 'dusseldorf', lat: 51.2277, lng: 6.7735 },
+      { name: 'Koblenz', slug: 'koblenz', lat: 50.3569, lng: 7.5890 },
       { name: 'Dresden', slug: 'dresden', lat: 51.0504, lng: 13.7373 },
       { name: 'Cologne', slug: 'cologne', lat: 50.9375, lng: 6.9603 },
       { name: 'Hameln', slug: 'hameln', lat: 52.1037, lng: 9.3568 },
@@ -152,10 +154,19 @@ const COUNTRIES: CountryData[] = [
     ],
   },
   {
-    name: 'Spain', code: 'es', lat: 41.3874, lng: 2.1686,
+    name: 'Spain', code: 'es', lat: 40.4168, lng: -3.7038,
     cities: [
+      { name: 'Madrid', slug: 'madrid', lat: 40.4168, lng: -3.7038 },
       { name: 'Barcelona', slug: 'barcelona', lat: 41.3874, lng: 2.1686 },
       { name: 'Valencia', slug: 'valencia', lat: 39.4699, lng: -0.3763 },
+      { name: 'Malaga', slug: 'malaga', lat: 36.7213, lng: -4.4214 },
+    ],
+  },
+  {
+    name: 'South Korea', code: 'kr', lat: 37.5665, lng: 126.9780,
+    cities: [
+      { name: 'Seoul', slug: 'seoul', lat: 37.5665, lng: 126.9780 },
+      { name: 'Incheon', slug: 'incheon', lat: 37.4563, lng: 126.7052 },
     ],
   },
 ];

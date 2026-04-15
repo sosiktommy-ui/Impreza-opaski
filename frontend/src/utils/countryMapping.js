@@ -17,6 +17,7 @@ export const ISO_NUMERIC_TO_ALPHA2 = {
   '724': 'es', // Spain
   '826': 'gb', // United Kingdom
   '840': 'us', // USA
+  '410': 'kr', // South Korea
 };
 
 // Reverse mapping
@@ -42,4 +43,5 @@ export const COUNTRY_NAMES = {
   pt: 'Portugal',
   sk: 'Slovakia',
   us: 'USA',
+  kr: 'South Korea',
 };
