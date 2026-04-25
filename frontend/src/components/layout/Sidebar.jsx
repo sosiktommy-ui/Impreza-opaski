@@ -8,7 +8,6 @@ import {
   Warehouse,
   SlidersHorizontal,
   X,
-  MessagesSquare,
   CircleUserRound,
   ClockArrowUp,
   PanelLeftClose,
@@ -20,7 +19,6 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore, useBadgeStore } from '../../store/useAppStore';
-import { useChatStore } from '../../store/useChatStore';
 import { useEffect } from 'react';
 import { transfersApi } from '../../api/transfers';
 import { inventoryApi } from '../../api/inventory';
@@ -37,7 +35,6 @@ const MENU_TOOLTIPS = {
   '/map': 'Географическое распределение браслетов',
   '/history': 'Все трансферы и операции',
   '/statistics': 'Аналитика и отчётность',
-  '/chat': 'Сообщения между пользователями',
   '/users': 'Управление пользователями и настройки',
   '/profile': 'Ваш профиль и настройки аккаунта',
 };
@@ -54,7 +51,6 @@ const allLinks = [
   { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
   { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
   { to: '/statistics', icon: BarChart3, label: 'Статистика', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/chat', icon: MessagesSquare, label: 'Чат', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'chat' },
   { to: '/users', icon: SlidersHorizontal, label: 'Настройки', roles: ['ADMIN', 'OFFICE'], badgeKey: null },
   { to: '/profile', icon: CircleUserRound, label: 'Профиль', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
 ];
@@ -62,16 +58,13 @@ const allLinks = [
 export default function Sidebar() {
   const { user } = useAuthStore();
   const { sidebarOpen, closeSidebar, sidebarCollapsed, toggleCollapsed } = useAppStore();
-  const { unreadCount: chatUnread, startPolling, stopPolling } = useChatStore();
   const { pendingCount, problematicCount, incomingCount, companyLossCount, refreshCounts } = useBadgeStore();
 
   useEffect(() => {
-    startPolling();
     // Initial fetch and polling for badge counts
     refreshCounts(transfersApi, inventoryApi);
     const badgeInterval = setInterval(() => refreshCounts(transfersApi, inventoryApi), 30000);
     return () => {
-      stopPolling();
       clearInterval(badgeInterval);
     };
   }, []);
@@ -81,7 +74,6 @@ export default function Sidebar() {
   // Get badge count for a link
   const getBadge = (badgeKey) => {
     switch (badgeKey) {
-      case 'chat': return chatUnread > 0 ? chatUnread : null;
       case 'incoming': return incomingCount > 0 ? incomingCount : null;
       case 'problematic': return problematicCount > 0 ? problematicCount : null;
       case 'pending': return pendingCount > 0 ? pendingCount : null;

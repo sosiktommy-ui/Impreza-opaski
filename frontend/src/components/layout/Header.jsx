@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Bell, LogOut, Sun, Moon, MessageCircle, AlertTriangle } from 'lucide-react';
+import { Menu, Bell, LogOut, Sun, Moon, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore, useBadgeStore } from '../../store/useAppStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
-import { useChatStore } from '../../store/useChatStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import NotificationPanel from '../ui/NotificationPanel';
 
@@ -15,7 +14,6 @@ export default function Header() {
   const navigate = useNavigate();
   const { toggleSidebar } = useAppStore();
   const { unreadCount, fetchUnreadCount } = useNotificationStore();
-  const { unreadCount: chatUnread } = useChatStore();
   const { theme, toggleTheme } = useThemeStore();
   const { problematicCount, companyLossCount } = useBadgeStore();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -58,19 +56,6 @@ export default function Header() {
             <AlertTriangle size={20} />
           </button>
         )}
-
-        <button
-          onClick={() => navigate('/chat')}
-          className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted relative transition-colors"
-          title="Чат"
-        >
-          <MessageCircle size={20} />
-          {chatUnread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-brand-600 text-white text-[10px] font-bold px-1 leading-none">
-              {chatUnread > 99 ? '99+' : chatUnread}
-            </span>
-          )}
-        </button>
 
         <div className="relative" ref={bellRef}>
           <button

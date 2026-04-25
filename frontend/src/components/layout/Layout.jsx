@@ -9,7 +9,7 @@ import { usersApi } from '../../api/users';
 import { eventsApi } from '../../api/events';
 
 // Pages where GlobalFilterBar should NOT be shown
-const EXCLUDED_PATHS = ['/chat', '/profile', '/users', '/login'];
+const EXCLUDED_PATHS = ['/profile', '/users', '/login'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GlobalFilterBar — Cascading filters: Country → City → Event

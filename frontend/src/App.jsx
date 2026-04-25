@@ -14,7 +14,6 @@ import Users from './pages/Users';
 import History from './pages/History';
 import ProblematicTransfers from './pages/ProblematicTransfers';
 import Profile from './pages/Profile';
-import Chat from './pages/Chat';
 import Map from './pages/Map';
 import CompanyLosses from './pages/CompanyLosses';
 import { transfersApi } from './api/transfers';
@@ -1365,7 +1364,6 @@ export default function App() {
         />
 
         <Route path="profile" element={<Profile />} />
-        <Route path="chat" element={<Chat />} />
         <Route
           path="map"
           element={
