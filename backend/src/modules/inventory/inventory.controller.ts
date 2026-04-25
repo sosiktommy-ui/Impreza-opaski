@@ -132,10 +132,9 @@ export class InventoryController {
   getAllBalances(
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
-    @CurrentUser() user?: AuthenticatedUser,
   ) {
-    const officeId = (user?.role === Role.OFFICE && user.officeId) ? user.officeId : undefined;
-    return this.inventoryService.getAllBalances({ countryId, cityId, officeId });
+    // ADMIN and OFFICE both see system-wide inventory across every country/city/office
+    return this.inventoryService.getAllBalances({ countryId, cityId });
   }
 
   @Get('my')

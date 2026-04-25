@@ -76,13 +76,6 @@ export class InventoryService {
       ];
     }
 
-    const hasFilters = !!(filters?.countryId || filters?.cityId || filters?.officeId);
-    if (!hasFilters) {
-      const cacheKey = 'inventory:all';
-      const cached = await this.redis.get(cacheKey);
-      if (cached) return cached;
-    }
-
     const inventory = await this.prisma.inventory.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
       include: {
@@ -93,9 +86,6 @@ export class InventoryService {
       orderBy: [{ entityType: 'asc' }, { itemType: 'asc' }],
     });
 
-    if (!hasFilters) {
-      await this.redis.set('inventory:all', inventory, CACHE_TTL);
-    }
     return inventory;
   }
 
