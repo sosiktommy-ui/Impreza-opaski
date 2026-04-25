@@ -139,3 +139,83 @@ body {
   align-items: center;
   gap: 3px;
 }
+
+/* ── Map styles ────────────────────────────── */
+@keyframes mapPulse {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+  100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}
+.map-pulse {
+  animation: mapPulse 2s ease-out infinite;
+}
+
+.map-side-panel {
+  animation: slideInFromRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.map-custom-tooltip {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  line-height: 1.4 !important;
+}
+.map-custom-tooltip::before {
+  display: none !important;
+}
+.dark .map-custom-tooltip {
+  background: rgba(26, 26, 36, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f0f0f5 !important;
+}
+
+.map-stock-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.map-stock-tooltip::before {
+  display: none !important;
+}
+
+.map-tooltip-country {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 8px !important;
+  padding: 4px 10px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+}
+.dark .map-tooltip-country {
+  background: rgba(26, 26, 36, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f0f0f5 !important;
+}
+
+/* Override default leaflet styles for cleaner look */
+.leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.03) !important;
+}
+.leaflet-popup-tip {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06) !important;
+}
+.leaflet-popup-close-button {
+  color: #9ca3af !important;
+  font-size: 18px !important;
+  padding: 6px 8px !important;
+}
+.leaflet-popup-close-button:hover {
+  color: #374151 !important;
+}
+.map-popup-modern .leaflet-popup-content-wrapper {
+  border-radius: 16px !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+}
+.map-popup-modern .leaflet-popup-content {
+  margin: 12px 14px !important;
+}

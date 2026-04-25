@@ -174,6 +174,7 @@ export default function Transfers() {
 
       if (Array.isArray(list) && list.length > 0) {
         setOffices(list);
+        setOfficesLoading(false);
         return;
       }
     } catch (err) {

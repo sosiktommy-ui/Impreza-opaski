@@ -82,6 +82,15 @@ export default function Acceptance() {
     loadTransfers();
   }, [activeTab, globalCountryId, globalCityId]);
 
+  // Auto-refresh pending tab every 15 seconds so new transfers appear without manual reload
+  useEffect(() => {
+    if (activeTab !== 'pending') return;
+    const interval = setInterval(() => {
+      loadTransfers();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
   const loadTransfers = async (p = 1) => {
     setLoading(true);
     try {

@@ -767,6 +767,10 @@ export class TransfersService {
             select: { id: true },
           });
           const countryIds = officeCountries.map((c) => c.id);
+          directionConditions.push({
+            receiverType: EntityType.OFFICE,
+            receiverOfficeId: userOfficeId,
+          });
           if (countryIds.length > 0) {
             directionConditions.push(
               { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
@@ -812,13 +816,17 @@ export class TransfersService {
           select: { id: true },
         });
         const countryIds = officeCountries.map((c) => c.id);
+        where.OR = [
+          { senderType: EntityType.OFFICE, senderOfficeId: userOfficeId },
+          { receiverType: EntityType.OFFICE, receiverOfficeId: userOfficeId },
+        ];
         if (countryIds.length > 0) {
-          where.OR = [
+          where.OR.push(
             { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
             { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
             { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
             { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
-          ];
+          );
         }
       }
     }
@@ -958,16 +966,15 @@ export class TransfersService {
         select: { id: true },
       });
       const countryIds = officeCountries.map((c) => c.id);
+      where.OR = [
+        { receiverType: EntityType.OFFICE, receiverOfficeId: entityId },
+        { senderType: EntityType.OFFICE, senderOfficeId: entityId },
+      ];
       if (countryIds.length > 0) {
-        where.OR = [
+        where.OR.push(
           { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
           { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
-          { senderType: EntityType.OFFICE, senderOfficeId: entityId },
-        ];
-      } else {
-        // Office has no assigned countries — only see transfers from this office
-        where.senderType = EntityType.OFFICE;
-        where.senderOfficeId = entityId;
+        );
       }
     } else if (entityType === EntityType.COUNTRY) {
       where.OR = [
