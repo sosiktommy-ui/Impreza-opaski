@@ -68,14 +68,15 @@ export class InventoryService {
         { entityType: 'CITY', city: { countryId: filters.countryId } },
       ];
     } else if (filters?.officeId) {
-      // Get all countries in this office and their cities
+      // Get office warehouse + all countries in this office + their cities
       where.OR = [
+        { entityType: 'OFFICE', officeId: filters.officeId },
         { entityType: 'COUNTRY', country: { officeId: filters.officeId } },
         { entityType: 'CITY', city: { country: { officeId: filters.officeId } } },
       ];
     }
 
-    const hasFilters = !!(filters?.countryId || filters?.cityId);
+    const hasFilters = !!(filters?.countryId || filters?.cityId || filters?.officeId);
     if (!hasFilters) {
       const cacheKey = 'inventory:all';
       const cached = await this.redis.get(cacheKey);
