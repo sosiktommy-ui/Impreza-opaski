@@ -141,6 +141,17 @@ export class NotificationsService {
         });
         userIds.push(...officeUsers.map((u) => u.id));
       }
+    } else if (entityType === 'OFFICE') {
+      // Notify office users assigned to this office entity
+      const officeUsers = await this.prisma.user.findMany({
+        where: {
+          officeId: entityId,
+          role: 'OFFICE',
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      userIds.push(...officeUsers.map((u) => u.id));
     }
 
     // Always notify admins

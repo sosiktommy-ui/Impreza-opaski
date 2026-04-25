@@ -185,8 +185,8 @@ export class TransfersService {
         ? 'Админ'
         : (transfer.senderCity?.name || transfer.senderCountry?.name || 'Unknown');
       const toName = transfer.receiverCity?.name || transfer.receiverCountry?.name || 'Unknown';
-      const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
-      const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+      const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
+      const toEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId || '';
 
       // Fetch creator name for display
       const creator = await this.prisma.user.findUnique({
@@ -387,9 +387,9 @@ export class TransfersService {
         });
         const acceptedByName = acceptor?.displayName || acceptor?.username || 'Unknown';
 
-        const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
+        const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
         const fromEntityType = transfer.senderType;
-        const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+        const toEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId || '';
         const toEntityType = transfer.receiverType;
 
         // Resolve entity names
@@ -450,11 +450,13 @@ export class TransfersService {
       where: { id: transferId },
     });
     if (transfer) {
-      if (transfer.senderType !== EntityType.ADMIN) {
-        const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-        if (senderEntityId) {
-          await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-        }
+      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
+      if (senderEntityId) {
+        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
+      } else if (transfer.senderType === EntityType.ADMIN) {
+        // ADMIN sender (no entityId) — invalidate ADMIN cache so the
+        // returned balance after CANCELLED accept is fresh
+        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
       }
       const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
       if (receiverEntityId) {
@@ -536,7 +538,7 @@ export class TransfersService {
         select: { displayName: true, username: true },
       });
       const rejectedByName = rejector?.displayName || rejector?.username || 'Unknown';
-      const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
+      const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
       const fromEntityType = transfer.senderType;
       let fromEntityName = 'Админ';
       if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
@@ -631,8 +633,8 @@ export class TransfersService {
         where: { id: actorId },
         select: { displayName: true, username: true },
       });
-      const fromEntityId = transfer.senderCityId || transfer.senderCountryId || '';
-      const toEntityId = transfer.receiverCityId || transfer.receiverCountryId || '';
+      const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
+      const toEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId || '';
 
       // Resolve entity names
       let fromEntityName = 'Unknown';
