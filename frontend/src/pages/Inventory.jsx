@@ -191,9 +191,28 @@ export default function Inventory() {
 
   // Group inventory by country for Admin/Office overview
   const countryBreakdown = useMemo(() => {
-    if (!isAdminOrOffice || allInventory.length === 0) return [];
+    if (!isAdminOrOffice) return [];
 
     const countryMap = {};
+
+    // Seed ALL known countries (and their cities) so they appear even with 0 balance
+    countries.forEach((c) => {
+      countryMap[c.id] = {
+        id: c.id,
+        name: c.name,
+        totals: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
+        cities: {},
+      };
+      if (Array.isArray(c.cities)) {
+        c.cities.forEach((city) => {
+          countryMap[c.id].cities[city.id] = {
+            id: city.id,
+            name: city.name,
+            totals: { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 },
+          };
+        });
+      }
+    });
 
     allInventory.forEach((inv) => {
       let countryId = null;
@@ -204,7 +223,6 @@ export default function Inventory() {
         countryName = inv.country.name;
       } else if (inv.entityType === 'CITY' && inv.city) {
         countryId = inv.city.countryId;
-        // We'll resolve the name from countries list
       } else if (inv.entityType === 'OFFICE' || inv.entityType === 'ADMIN') {
         // Admin/Office inventory shown in account breakdown
         return;
@@ -867,7 +885,7 @@ export default function Inventory() {
           )}
 
       {/* ── System Totals (Admin/Office - no country selected) ──────────────── */}
-      {isAdminOrOffice && allInventory.length > 0 && !selectedCountry && (
+      {isAdminOrOffice && !selectedCountry && (
         <div className="space-y-3">
           {/* Total System Balance Card */}
           <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-2xl p-6 shadow-xl shadow-brand-500/20">

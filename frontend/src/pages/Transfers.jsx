@@ -239,9 +239,13 @@ export default function Transfers() {
 
     let receiverType, receiverCountryId, receiverCityId, receiverOfficeId;
 
-    if (user.role === 'ADMIN' && receiverMode === 'office') {
+    if ((user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'office') {
       if (!toOfficeId) {
         setError('Выберите офис-получатель');
+        return;
+      }
+      if (user.role === 'OFFICE' && toOfficeId === user.officeId) {
+        setError('Нельзя отправлять в свой же офис');
         return;
       }
       receiverType = 'OFFICE';
@@ -320,7 +324,7 @@ export default function Transfers() {
 
   // Receiver label for the summary hint
   const receiverLabel = useMemo(() => {
-    if (user.role === 'ADMIN' && receiverMode === 'office') {
+    if ((user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'office') {
       const office = offices.find((o) => o.id === toOfficeId);
       if (office) return `Офис: ${office.name}`;
       return null;
@@ -527,12 +531,12 @@ export default function Transfers() {
         title={user.role === 'CITY' ? 'Новая отправка' : 'Новая отправка'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* ADMIN: toggle between location and office */}
-          {user.role === 'ADMIN' && (
+          {/* ADMIN/OFFICE: toggle between location and office */}
+          {(user.role === 'ADMIN' || user.role === 'OFFICE') && (
             <div className="flex gap-1 bg-surface-secondary rounded-[var(--radius-sm)] p-1">
               {[
                 { key: 'location', label: 'Страна / Город', tooltip: 'Отправить браслеты по стране или городу' },
-                { key: 'office', label: 'Офис', tooltip: 'Отправить браслеты напрямую в офис' },
+                { key: 'office', label: 'Офис', tooltip: 'Отправить браслеты напрямую в другой офис' },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -585,15 +589,17 @@ export default function Transfers() {
             </>
           )}
 
-          {/* ADMIN: office receiver */}
-          {user.role === 'ADMIN' && receiverMode === 'office' && (
+          {/* ADMIN/OFFICE: office receiver */}
+          {(user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'office' && (
             <Select
               label="Офис-получатель"
               value={toOfficeId}
               onChange={(e) => setToOfficeId(e.target.value)}
               options={[
                 { value: '', label: officesLoading ? 'Загрузка...' : offices.length === 0 ? 'Нет офисов' : '— Выберите офис —' },
-                ...offices.map((o) => ({ value: o.id, label: o.name })),
+                ...offices
+                  .filter((o) => !(user.role === 'OFFICE' && o.id === user.officeId))
+                  .map((o) => ({ value: o.id, label: o.name })),
               ]}
             />
           )}
