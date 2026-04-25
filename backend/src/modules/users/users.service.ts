@@ -125,17 +125,9 @@ export class UsersService {
 
     if (params?.role === Role.COUNTRY && params.countryId) {
       where.id = params.countryId;
-    } else if (params?.role === Role.CITY && params.cityId) {
-      // Find which country this city belongs to
-      const city = await this.prisma.city.findUnique({
-        where: { id: params.cityId },
-        select: { countryId: true },
-      });
-      if (city?.countryId) {
-        where.id = city.countryId;
-      }
     }
-    // ADMIN / OFFICE — no filter, return all
+    // ADMIN / OFFICE / CITY — no filter, return all
+    // (CITY needs full list to pick a destination country/city for transfers)
 
     return this.prisma.country.findMany({
       where,

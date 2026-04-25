@@ -144,7 +144,7 @@ export default function Transfers() {
       setBalanceLoading(false);
     }
 
-    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') {
       try {
         const { data } = await usersApi.getCountries();
         const result = data.data || data;
@@ -246,12 +246,16 @@ export default function Transfers() {
       }
       receiverType = 'OFFICE';
       receiverOfficeId = toOfficeId;
-    } else if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+    } else if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') {
       if (!toCountryId) {
         setError('Выберите страну-получателя');
         return;
       }
       if (toCityId) {
+        if (user.role === 'CITY' && toCityId === user.cityId) {
+          setError('Нельзя отправлять в свой же город');
+          return;
+        }
         receiverType = 'CITY';
         receiverCityId = toCityId;
       } else {
@@ -265,9 +269,6 @@ export default function Transfers() {
       }
       receiverType = 'CITY';
       receiverCityId = toCityId;
-    } else if (user.role === 'CITY') {
-      receiverType = 'COUNTRY';
-      receiverCountryId = user.countryId;
     }
 
     const payload = {
@@ -324,7 +325,7 @@ export default function Transfers() {
       if (office) return `Офис: ${office.name}`;
       return null;
     }
-    if (user.role === 'ADMIN' || user.role === 'OFFICE') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') {
       const country = countries.find((c) => c.id === toCountryId);
       const city = cities.find((c) => c.id === toCityId);
       if (city && country) return `${city.name} (${country.name})`;
@@ -333,9 +334,6 @@ export default function Transfers() {
     if (user.role === 'COUNTRY') {
       const city = cities.find((c) => c.id === toCityId);
       if (city) return city.name;
-    }
-    if (user.role === 'CITY') {
-      return user.country?.name || 'Страна';
     }
     return null;
   }, [user.role, receiverMode, toCountryId, toCityId, toOfficeId, countries, cities, offices]);
@@ -378,15 +376,15 @@ export default function Transfers() {
         <div>
           <h2 className="text-xl font-bold text-content-primary flex items-center gap-2">
             <Send size={22} className="text-brand-500" /> 
-            {user.role === 'CITY' ? 'Возврат опасок' : 'Мои отправки'}
+            {user.role === 'CITY' ? 'Отправки' : 'Мои отправки'}
           </h2>
           <p className="text-xs text-content-muted mt-0.5">
-            {user.role === 'CITY' ? 'Возврат браслетов в страну' : 'Отправки от вашего аккаунта'}
+            {user.role === 'CITY' ? 'Отправка браслетов в страну или другой город' : 'Отправки от вашего аккаунта'}
           </p>
         </div>
         {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].includes(user.role) && (
           <Button onClick={openCreate} size="sm">
-            <Plus size={18} /> {user.role === 'CITY' ? 'Вернуть' : 'Новая'}
+            <Plus size={18} /> {user.role === 'CITY' ? 'Отправить' : 'Новая'}
           </Button>
         )}
       </div>
@@ -526,7 +524,7 @@ export default function Transfers() {
       <Modal
         open={showCreate}
         onClose={() => { setShowCreate(false); resetForm(); }}
-        title={user.role === 'CITY' ? 'Возврат опасок' : 'Новая отправка'}
+        title={user.role === 'CITY' ? 'Новая отправка' : 'Новая отправка'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* ADMIN: toggle between location and office */}
@@ -553,8 +551,8 @@ export default function Transfers() {
             </div>
           )}
 
-          {/* ADMIN/OFFICE: country → city (cascading) */}
-          {(user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'location' && (
+          {/* ADMIN/OFFICE/CITY: country → city (cascading) */}
+          {(user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') && receiverMode === 'location' && (
             <>
               <Select
                 label="Страна-получатель"
@@ -613,15 +611,7 @@ export default function Transfers() {
             />
           )}
 
-          {/* CITY: auto-receiver is parent country */}
-          {user.role === 'CITY' && (
-            <div className="flex items-center gap-2 bg-surface-card text-content-secondary rounded-[var(--radius-sm)] px-3 py-2.5">
-              <Send size={14} />
-              <span className="text-sm">
-                Возврат в: <strong>{user.country?.name || 'Страна'}</strong>
-              </span>
-            </div>
-          )}
+          {/* CITY: now uses the same country→city selector as ADMIN/OFFICE above */}
 
           {/* Receiver hint */}
           {receiverLabel && (
@@ -724,7 +714,7 @@ export default function Transfers() {
           )}
 
           <Button type="submit" loading={sending} disabled={exceedsBalance || balanceLoading} className="w-full">
-            <Send size={18} /> {user.role === 'CITY' ? 'Вернуть' : 'Отправить'}
+            <Send size={18} /> {user.role === 'CITY' ? 'Отправить' : 'Отправить'}
           </Button>
         </form>
       </Modal>

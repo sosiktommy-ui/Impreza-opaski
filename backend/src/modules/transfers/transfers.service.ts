@@ -69,23 +69,19 @@ export class TransfersService {
       }
     }
 
-    // CITY can only return bracelets to its own COUNTRY
+    // CITY sender: must have senderCityId. Can send to any COUNTRY or CITY.
     if (input.senderType === EntityType.CITY) {
-      if (input.receiverType !== EntityType.COUNTRY) {
-        throw new BadRequestException('City can only send bracelets back to a country');
-      }
       if (!input.senderCityId) {
         throw new BadRequestException('Sender city ID is required for CITY sender');
       }
-      const senderCity = await this.prisma.city.findUnique({
-        where: { id: input.senderCityId },
-        select: { countryId: true },
-      });
-      if (!senderCity) {
-        throw new BadRequestException('Sender city not found');
+      if (
+        input.receiverType !== EntityType.COUNTRY &&
+        input.receiverType !== EntityType.CITY
+      ) {
+        throw new BadRequestException('City can only send bracelets to a country or another city');
       }
-      if (input.receiverCountryId !== senderCity.countryId) {
-        throw new BadRequestException('City can only return bracelets to its own country');
+      if (input.receiverType === EntityType.CITY && input.receiverCityId === input.senderCityId) {
+        throw new BadRequestException('Cannot send bracelets to the same city');
       }
     }
 

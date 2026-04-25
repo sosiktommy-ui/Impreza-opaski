@@ -102,9 +102,10 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('countryId') countryId?: string,
   ) {
-    // COUNTRY/CITY roles can only see cities in their own country
+    // COUNTRY role can only see cities in its own country.
+    // CITY can pick cities in any country (for outgoing transfers).
     let scopedCountryId = countryId;
-    if (user.role === 'COUNTRY' || user.role === 'CITY') {
+    if (user.role === 'COUNTRY') {
       scopedCountryId = user.countryId ?? undefined;
     }
     return this.usersService.getCities(scopedCountryId);
