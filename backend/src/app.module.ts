@@ -8,6 +8,7 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AccessModule } from './modules/access/access.module';
 import { UsersModule } from './modules/users/users.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
@@ -83,6 +84,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 
     // Feature modules
     AuthModule,
+    AccessModule,
     UsersModule,
     InventoryModule,
     TransfersModule,

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ItemType, EntityType, TransferStatus } from '@prisma/client';
+import { PrismaClient, Role, ItemType, EntityType, TransferStatus, ScopeType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -237,6 +237,15 @@ async function main() {
       displayName: 'Администратор',
     },
   });
+  await prisma.userAccess.create({
+    data: {
+      userId: admin.id,
+      scopeType: ScopeType.GLOBAL,
+      scopeId: null,
+      grantedById: admin.id,
+      notes: 'seed: admin global access',
+    },
+  });
   console.log(`   ✅ dmitryganj / Impreza@Admin2026! (ADMIN)\n`);
 
   // ───── 4b. Create Office ─────
@@ -268,7 +277,7 @@ async function main() {
   ];
   for (const oa of officeAccounts) {
     const password = `${oa.username}_2025!Imp`;
-    await prisma.user.create({
+    const u = await prisma.user.create({
       data: {
         email: `${oa.username}@impreza.io`,
         username: oa.username,
@@ -277,6 +286,15 @@ async function main() {
         role: Role.OFFICE,
         displayName: oa.displayName,
         officeId: officeMap[oa.officeCode],
+      },
+    });
+    await prisma.userAccess.create({
+      data: {
+        userId: u.id,
+        scopeType: ScopeType.OFFICE,
+        scopeId: officeMap[oa.officeCode],
+        grantedById: admin.id,
+        notes: 'seed: office access',
       },
     });
     console.log(`   ✅ ${oa.username} / ${password} → ${oa.displayName}`);
@@ -297,6 +315,15 @@ async function main() {
         role: Role.COUNTRY,
         displayName: c.name,
         countryId: countryMap[c.code],
+      },
+    });
+    await prisma.userAccess.create({
+      data: {
+        userId: user.id,
+        scopeType: ScopeType.COUNTRY,
+        scopeId: countryMap[c.code],
+        grantedById: admin.id,
+        notes: 'seed: country access',
       },
     });
     countryUserMap[c.code] = user.id;
@@ -320,6 +347,15 @@ async function main() {
           displayName: city.name,
           countryId: countryMap[c.code],
           cityId: cityMap[city.slug],
+        },
+      });
+      await prisma.userAccess.create({
+        data: {
+          userId: user.id,
+          scopeType: ScopeType.CITY,
+          scopeId: cityMap[city.slug],
+          grantedById: admin.id,
+          notes: 'seed: city access',
         },
       });
       cityUserMap[city.slug] = user.id;

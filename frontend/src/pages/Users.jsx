@@ -6,7 +6,8 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye } from 'lucide-react';
+import AccessManagerModal from '../components/ui/AccessManagerModal';
+import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
@@ -30,6 +31,7 @@ export default function Users() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [accessUser, setAccessUser] = useState(null);
 
   // Create form
   const [form, setForm] = useState({
@@ -310,6 +312,15 @@ export default function Users() {
                 >
                   <Pencil size={16} />
                 </button>
+                {currentUser?.role === 'ADMIN' && (
+                  <button
+                    onClick={() => setAccessUser(u)}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
+                    title="Управление доступами"
+                  >
+                    <ShieldCheck size={16} />
+                  </button>
+                )}
                 <button
                   onClick={() => { setShowPassword(u.id); setNewPassword(''); setError(''); }}
                   className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
@@ -520,6 +531,14 @@ export default function Users() {
           </Button>
         </div>
       </Modal>
+
+      <AccessManagerModal
+        open={!!accessUser}
+        user={accessUser}
+        offices={offices}
+        countries={countries}
+        onClose={() => setAccessUser(null)}
+      />
     </div>
   );
 }

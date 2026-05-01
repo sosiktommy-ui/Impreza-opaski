@@ -1,13 +1,126 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Bell, LogOut, Sun, Moon, AlertTriangle } from 'lucide-react';
+import { Menu, Bell, LogOut, Sun, Moon, AlertTriangle, Globe, Building2, Map as MapIcon, MapPin, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore, useBadgeStore } from '../../store/useAppStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import NotificationPanel from '../ui/NotificationPanel';
+import { authApi } from '../../api/auth';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
+
+const SCOPE_ICON = {
+  GLOBAL: Globe,
+  OFFICE: Building2,
+  COUNTRY: MapIcon,
+  CITY: MapPin,
+};
+
+const SCOPE_LABEL = {
+  GLOBAL: 'Глобально',
+  OFFICE: 'Офис',
+  COUNTRY: 'Страна',
+  CITY: 'Город',
+};
+
+function ScopePill() {
+  const currentAccess = useAuthStore((s) => s.currentAccess);
+  const switchScope = useAuthStore((s) => s.switchScope);
+  const [open, setOpen] = useState(false);
+  const [accesses, setAccesses] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  if (!currentAccess) return null;
+
+  const Icon = SCOPE_ICON[currentAccess.scopeType] ?? Globe;
+  const targetName = currentAccess.target?.name
+    ?? (currentAccess.scopeType === 'GLOBAL' ? 'Все подразделения' : '—');
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (accesses === null) {
+      setLoading(true);
+      try {
+        const { data } = await authApi.myAccessesScoped();
+        const list = data?.accesses ?? data?.data?.accesses ?? [];
+        setAccesses(list);
+      } catch {
+        setAccesses([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const pick = async (id) => {
+    if (id === currentAccess.id) { setOpen(false); return; }
+    try { await switchScope(id); } catch (err) {
+      console.error('switchScope failed', err);
+      setOpen(false);
+    }
+  };
+
+  const hasAlternatives = (accesses?.length ?? 0) > 1;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius-sm)] border border-edge hover:bg-surface-card-hover text-content-primary text-xs font-medium transition-colors max-w-[220px]"
+        title={`${SCOPE_LABEL[currentAccess.scopeType]}: ${targetName}`}
+      >
+        <Icon size={14} className="text-brand-500 shrink-0" />
+        <span className="truncate">{targetName}</span>
+        <ChevronDown size={12} className="text-content-muted shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 mt-1 w-64 bg-surface-card border border-edge rounded-[var(--radius-md)] shadow-lg z-40 p-1.5">
+          {loading && <div className="text-xs text-content-muted px-2 py-2">Загрузка…</div>}
+          {!loading && accesses && accesses.length === 0 && (
+            <div className="text-xs text-content-muted px-2 py-2">Нет доступных областей</div>
+          )}
+          {!loading && accesses && accesses.length === 1 && (
+            <div className="text-xs text-content-muted px-2 py-2">Других областей нет</div>
+          )}
+          {!loading && hasAlternatives && accesses.map((a) => {
+            const ItemIcon = SCOPE_ICON[a.scopeType] ?? Globe;
+            const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Все подразделения' : '—');
+            const active = a.id === currentAccess.id;
+            return (
+              <button
+                key={a.id}
+                onClick={() => pick(a.id)}
+                disabled={active}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-[var(--radius-sm)] text-left text-sm transition-colors ${
+                  active ? 'bg-brand-500/10 text-brand-500' : 'hover:bg-surface-card-hover text-content-primary'
+                }`}
+              >
+                <ItemIcon size={14} className="shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="truncate font-medium">{name}</div>
+                  <div className="text-[10px] text-content-muted truncate">{SCOPE_LABEL[a.scopeType]}</div>
+                </div>
+                {active && <span className="text-[10px] text-brand-500">текущая</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Header() {
   const { user, logout } = useAuthStore();
@@ -36,6 +149,7 @@ export default function Header() {
           <Menu size={22} />
         </button>
         <h1 className="text-lg font-bold text-brand-500 tracking-tight">IMPREZA</h1>
+        <ScopePill />
       </div>
 
       <div className="flex items-center gap-2">

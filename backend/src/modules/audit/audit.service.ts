@@ -236,4 +236,100 @@ export class AuditService {
       },
     });
   }
+
+  // ----- Phase 2: scope/access events ---------------------------------------
+
+  @OnEvent('auth.scope_selected')
+  async onScopeSelected(payload: {
+    actorId: string;
+    accessId: string;
+    scopeType: string;
+    scopeId: string | null;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.SCOPE_SELECTED,
+      entityType: 'UserAccess',
+      entityId: payload.accessId,
+      metadata: {
+        event: 'auth.scope_selected',
+        scopeType: payload.scopeType,
+        scopeId: payload.scopeId,
+      },
+    });
+  }
+
+  @OnEvent('auth.scope_switched')
+  async onScopeSwitched(payload: {
+    actorId: string;
+    previousAccessId: string | null;
+    accessId: string;
+    scopeType: string;
+    scopeId: string | null;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.SCOPE_SWITCHED,
+      entityType: 'UserAccess',
+      entityId: payload.accessId,
+      metadata: {
+        event: 'auth.scope_switched',
+        previousAccessId: payload.previousAccessId,
+        scopeType: payload.scopeType,
+        scopeId: payload.scopeId,
+      },
+    });
+  }
+
+  @OnEvent('access.granted')
+  async onAccessGranted(payload: {
+    actorId: string;
+    accessId: string;
+    userId: string;
+    scopeType: string;
+    scopeId: string | null;
+    expiresAt?: Date | null;
+    notes?: string | null;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.ACCESS_GRANTED,
+      entityType: 'UserAccess',
+      entityId: payload.accessId,
+      metadata: {
+        event: 'access.granted',
+        userId: payload.userId,
+        scopeType: payload.scopeType,
+        scopeId: payload.scopeId,
+        expiresAt: payload.expiresAt ? payload.expiresAt.toISOString() : null,
+        notes: payload.notes ?? null,
+      },
+    });
+  }
+
+  @OnEvent('access.revoked')
+  async onAccessRevoked(payload: {
+    actorId: string;
+    accessId: string;
+    userId: string;
+    scopeType: string;
+    scopeId: string | null;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.ACCESS_REVOKED,
+      entityType: 'UserAccess',
+      entityId: payload.accessId,
+      metadata: {
+        event: 'access.revoked',
+        userId: payload.userId,
+        scopeType: payload.scopeType,
+        scopeId: payload.scopeId,
+      },
+    });
+  }
 }
