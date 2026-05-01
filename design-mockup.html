@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Impreza — Operations</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0a0d;
+    --surface:   #111116;
+    --surface-2: #16161d;
+    --surface-3: #1d1d27;
+    --border:    #22222c;
+    --border-2:  #2a2a37;
+    --text:      #ececf1;
+    --text-2:    #a1a1aa;
+    --text-3:    #6b6b77;
+    --accent:    #8b5cf6;
+    --accent-2:  #a78bfa;
+    --success:   #22c55e;
+    --warning:   #eab308;
+    --danger:    #ef4444;
+  }
+  [data-theme="light"] {
+    --bg:        #f8f8f5;
+    --surface:   #ffffff;
+    --surface-2: #f4f3ee;
+    --surface-3: #ecebe4;
+    --border:    #e6e4dc;
+    --border-2:  #d8d6cc;
+    --text:      #18181b;
+    --text-2:    #52525b;
+    --text-3:    #a1a1aa;
+    --accent:    #6d28d9;
+    --accent-2:  #7c3aed;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    letter-spacing: -0.005em;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+
+  .surface { background: var(--surface); border: 1px solid var(--border); }
+  .surface-2 { background: var(--surface-2); }
+  .surface-3 { background: var(--surface-3); }
+  .text-2 { color: var(--text-2); }
+  .text-3 { color: var(--text-3); }
+  .border-line { border-color: var(--border); }
+  .border-line-2 { border-color: var(--border-2); }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+  .card-flat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+
+  /* Button */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px;
+    border-radius: 10px; font-weight: 500; font-size: 13.5px; cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s, transform .1s;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-2); }
+  .btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+  .btn-secondary:hover { background: var(--surface-2); border-color: var(--border-2); }
+  .btn-ghost { background: transparent; color: var(--text-2); }
+  .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+  .btn-sm { height: 30px; padding: 0 11px; font-size: 12.5px; border-radius: 8px; }
+  .btn-icon { width: 36px; padding: 0; justify-content: center; }
+  .btn-icon.btn-sm { width: 30px; }
+
+  /* Pill / badge */
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+    border-radius: 6px; font-size: 11.5px; font-weight: 600; line-height: 1.4;
+    white-space: nowrap;
+  }
+  .pill-success { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+  .pill-warning { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+  .pill-danger  { background: color-mix(in srgb, var(--danger)  14%, transparent); color: var(--danger);  }
+  .pill-accent  { background: color-mix(in srgb, var(--accent)  18%, transparent); color: var(--accent-2); }
+  .pill-muted   { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+
+  /* Sidebar */
+  .nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 8px 10px; border-radius: 8px;
+    color: var(--text-2); font-size: 13.5px; font-weight: 500;
+    cursor: pointer; transition: background .12s, color .12s;
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface-2); }
+  .nav-item.active { background: var(--surface-2); color: var(--text); }
+  .nav-item.active .nav-ic { color: var(--accent-2); }
+  .nav-ic { width: 16px; height: 16px; flex-shrink: 0; color: var(--text-3); }
+  .nav-item:hover .nav-ic { color: var(--text-2); }
+
+  /* Inputs */
+  .input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 0 12px; height: 36px; font-size: 13.5px; color: var(--text); width: 100%;
+    transition: border-color .15s, background .15s;
+  }
+  .input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+  .input::placeholder { color: var(--text-3); }
+
+  /* Color dots — small, premium */
+  .swatch { width: 12px; height: 12px; border-radius: 4px; display: inline-block; flex-shrink: 0; }
+  .sw-black { background: linear-gradient(135deg, #2a2a30, #0a0a0d); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.08); }
+  .sw-white { background: linear-gradient(135deg, #ffffff, #d4d4d8); box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.12); }
+  .sw-red   { background: linear-gradient(135deg, #f87171, #dc2626); }
+  .sw-blue  { background: linear-gradient(135deg, #60a5fa, #2563eb); }
+
+  /* Tabs */
+  .seg {
+    display: inline-flex; padding: 3px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 9px; gap: 2px;
+  }
+  .seg-btn {
+    padding: 6px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500;
+    color: var(--text-2); cursor: pointer; transition: all .12s;
+  }
+  .seg-btn:hover { color: var(--text); }
+  .seg-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  [data-theme="dark"] .seg-btn.active { box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+
+  /* Page system */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Sparkline bars */
+  .bar {
+    background: linear-gradient(180deg, var(--accent-2), color-mix(in srgb, var(--accent) 30%, transparent));
+    border-radius: 3px 3px 0 0; min-height: 4px;
+  }
+
+  /* Table rows */
+  .tr { display: grid; align-items: center; padding: 12px 18px; font-size: 13.5px; transition: background .1s; }
+  .tr:hover { background: var(--surface-2); }
+  .tr + .tr { border-top: 1px solid var(--border); }
+  .th { display: grid; align-items: center; padding: 11px 18px;
+        color: var(--text-3); font-size: 11px; text-transform: uppercase;
+        letter-spacing: .06em; font-weight: 600;
+        border-bottom: 1px solid var(--border); background: var(--surface-2); }
+
+  /* Avatar */
+  .avatar {
+    width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center;
+    color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+
+  /* Subtle divider line */
+  .hr { height: 1px; background: var(--border); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 6px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+  /* Demo bar at top */
+  .demo-bar {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+    padding: 4px; display: flex; gap: 2px; align-items: center;
+    box-shadow: 0 4px 20px -4px rgba(0,0,0,0.15);
+  }
+  [data-theme="dark"] .demo-bar { box-shadow: 0 8px 30px -6px rgba(0,0,0,0.5); }
+
+  /* Flag SVG sizing */
+  .flag { width: 20px; height: 14px; border-radius: 3px; flex-shrink: 0; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.15); display: inline-block; vertical-align: middle; overflow: hidden; }
+
+  /* Number ticker emphasis */
+  .num-xl { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+  .num-lg { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; }
+
+  /* KBD */
+  kbd { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 6px;
+        border: 1px solid var(--border-2); border-bottom-width: 2px; border-radius: 4px;
+        background: var(--surface); color: var(--text-2); }
+
+  /* Stepper */
+  .step-dot { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center;
+              font-size: 11px; font-weight: 600; color: var(--text-3);
+              background: var(--surface-2); border: 1px solid var(--border); }
+  .step-dot.done { background: var(--success); color: #fff; border-color: transparent; }
+  .step-dot.active { background: var(--accent); color: #fff; border-color: transparent; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ── Demo controls ──────────────────────────────────── -->
+<div class="demo-bar">
+  <div class="seg" style="border:0; padding:2px;">
+    <button class="seg-btn active" data-page="home" onclick="showPage('home')">Главная</button>
+    <button class="seg-btn" data-page="inventory" onclick="showPage('inventory')">Инвентарь</button>
+    <button class="seg-btn" data-page="transfers" onclick="showPage('transfers')">Переводы</button>
+    <button class="seg-btn" data-page="transfer-new" onclick="showPage('transfer-new')">Новый перевод</button>
+    <button class="seg-btn" data-page="history" onclick="showPage('history')">История</button>
+    <button class="seg-btn" data-page="users" onclick="showPage('users')">Пользователи</button>
+  </div>
+  <div class="hr" style="width:1px; height:22px; background:var(--border); margin: 0 4px;"></div>
+  <button onclick="toggleTheme()" class="btn btn-ghost btn-sm btn-icon" title="Тема">
+    <svg id="theme-icon-moon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+    <svg id="theme-icon-sun" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+  </button>
+</div>
+
+
+<div class="flex min-h-screen">
+
+  <!-- ╔════════════════ SIDEBAR ════════════════╗ -->
+  <aside class="w-[232px] shrink-0 border-r border-line min-h-screen flex flex-col" style="background: var(--surface);">
+
+    <div class="px-4 pt-5 pb-4 flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-lg grid place-items-center text-white font-bold" style="background: linear-gradient(135deg, var(--accent), var(--accent-2)); font-size: 13px;">I</div>
+      <div class="flex-1">
+        <div class="font-semibold text-[14px] tracking-tight">Impreza</div>
+        <div class="mono text-[10px] text-3">Operations</div>
+      </div>
+      <button class="btn btn-ghost btn-sm btn-icon">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+
+    <!-- Workspace switcher -->
+    <div class="px-3 mb-3">
+      <button class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg surface-2 hover:bg-[var(--surface-3)] transition">
+        <span class="flag flag-de"></span>
+        <div class="flex-1 text-left">
+          <div class="text-[12.5px] font-semibold leading-tight">Берлин</div>
+          <div class="text-[10.5px] text-3 leading-tight mt-0.5">Германия · город</div>
+        </div>
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M8 9l4-4 4 4M16 15l-4 4-4-4"/></svg>
+      </button>
+    </div>
+
+    <div class="text-[10px] uppercase tracking-[0.08em] font-semibold text-3 px-4 mb-1.5">Главное</div>
+    <nav class="px-2 space-y-0.5">
+      <a class="nav-item active" data-nav="home" onclick="showPage('home')">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 12L12 4l9 8M5 10v10h14V10"/></svg>
+        <span>Главная</span>
+      </a>
+      <a class="nav-item" data-nav="inventory" onclick="showPage('inventory')">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v10"/></svg>
+        <span>Инвентарь</span>
+        <span class="ml-auto pill pill-muted">12 480</span>
+      </a>
+      <a class="nav-item" data-nav="transfers" onclick="showPage('transfers')">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12"/></svg>
+        <span>Переводы</span>
+        <span class="ml-auto pill pill-warning">3</span>
+      </a>
+      <a class="nav-item">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        <span>Списания</span>
+      </a>
+      <a class="nav-item" data-nav="history" onclick="showPage('history')">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span>История</span>
+      </a>
+    </nav>
+
+    <div class="text-[10px] uppercase tracking-[0.08em] font-semibold text-3 px-4 mb-1.5 mt-5">Управление</div>
+    <nav class="px-2 space-y-0.5">
+      <a class="nav-item" data-nav="users" onclick="showPage('users')">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M17 3.13a4 4 0 010 7.75"/></svg>
+        <span>Пользователи</span>
+      </a>
+      <a class="nav-item">
+        <svg class="nav-ic" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09c0 .66.39 1.26 1 1.51a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.25.61.85 1 1.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>Настройки</span>
+      </a>
+    </nav>
+
+    <div class="mt-auto p-3 border-t border-line">
+      <div class="flex items-center gap-2.5 px-1.5 py-1">
+        <div class="avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent-2));">D</div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[12.5px] font-semibold truncate">Dmitry Ganj</div>
+          <div class="text-[10.5px] text-3 truncate">Глобальный · Admin</div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+
+  <!-- ╔════════════════ MAIN ════════════════╗ -->
+  <div class="flex-1 min-w-0">
+
+    <!-- Top bar -->
+    <header class="border-b border-line h-14 px-7 flex items-center gap-4" style="background: var(--surface);">
+      <h1 id="page-title" class="text-[15px] font-semibold tracking-tight">Главная</h1>
+      <span id="page-sub" class="text-[12.5px] text-3">Сводка по Берлину · 02.05.2026</span>
+
+      <div class="ml-auto flex items-center gap-2">
+        <div class="hidden md:flex items-center gap-2 px-3 h-9 rounded-lg surface-2 border border-line text-[12.5px] text-2">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+          <span>Поиск</span>
+          <kbd class="ml-3">⌘K</kbd>
+        </div>
+        <button class="btn btn-secondary btn-sm btn-icon relative">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full" style="background: var(--danger);"></span>
+        </button>
+      </div>
+    </header>
+
+
+    <!-- ════════════ HOME ════════════ -->
+    <section id="page-home" class="page active">
+      <div class="px-7 py-7 max-w-[1320px] mx-auto space-y-6">
+
+        <!-- Hero stats: 4 swatches -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2 text-[12px] font-semibold text-2"><span class="swatch sw-black"></span>Чёрный</div>
+              <div class="pill pill-success">+ 120</div>
+            </div>
+            <div class="num-xl mono">3 240</div>
+            <div class="flex items-end gap-0.5 h-7 mt-3">
+              <div class="bar flex-1" style="height: 30%"></div>
+              <div class="bar flex-1" style="height: 50%"></div>
+              <div class="bar flex-1" style="height: 40%"></div>
+              <div class="bar flex-1" style="height: 65%"></div>
+              <div class="bar flex-1" style="height: 55%"></div>
+              <div class="bar flex-1" style="height: 75%"></div>
+              <div class="bar flex-1" style="height: 90%"></div>
+            </div>
+          </div>
+
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2 text-[12px] font-semibold text-2"><span class="swatch sw-white"></span>Белый</div>
+              <div class="pill pill-danger">− 60</div>
+            </div>
+            <div class="num-xl mono">2 870</div>
+            <div class="flex items-end gap-0.5 h-7 mt-3">
+              <div class="bar flex-1" style="height: 80%"></div>
+              <div class="bar flex-1" style="height: 75%"></div>
+              <div class="bar flex-1" style="height: 70%"></div>
+              <div class="bar flex-1" style="height: 60%"></div>
+              <div class="bar flex-1" style="height: 55%"></div>
+              <div class="bar flex-1" style="height: 50%"></div>
+              <div class="bar flex-1" style="height: 45%"></div>
+            </div>
+          </div>
+
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2 text-[12px] font-semibold text-2"><span class="swatch sw-red"></span>Красный</div>
+              <div class="pill pill-success">+ 240</div>
+            </div>
+            <div class="num-xl mono">3 120</div>
+            <div class="flex items-end gap-0.5 h-7 mt-3">
+              <div class="bar flex-1" style="height: 35%"></div>
+              <div class="bar flex-1" style="height: 45%"></div>
+              <div class="bar flex-1" style="height: 50%"></div>
+              <div class="bar flex-1" style="height: 60%"></div>
+              <div class="bar flex-1" style="height: 70%"></div>
+              <div class="bar flex-1" style="height: 85%"></div>
+              <div class="bar flex-1" style="height: 100%"></div>
+            </div>
+          </div>
+
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2 text-[12px] font-semibold text-2"><span class="swatch sw-blue"></span>Синий</div>
+              <div class="pill pill-success">+ 80</div>
+            </div>
+            <div class="num-xl mono">3 250</div>
+            <div class="flex items-end gap-0.5 h-7 mt-3">
+              <div class="bar flex-1" style="height: 50%"></div>
+              <div class="bar flex-1" style="height: 55%"></div>
+              <div class="bar flex-1" style="height: 60%"></div>
+              <div class="bar flex-1" style="height: 65%"></div>
+              <div class="bar flex-1" style="height: 70%"></div>
+              <div class="bar flex-1" style="height: 75%"></div>
+              <div class="bar flex-1" style="height: 80%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two cols: feed + side -->
+        <div class="grid lg:grid-cols-3 gap-5">
+
+          <!-- Activity -->
+          <div class="lg:col-span-2 card p-0 overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-line">
+              <div>
+                <h3 class="font-semibold text-[14px]">Последние операции</h3>
+                <p class="text-3 text-[11.5px] mt-0.5">Сегодня · Берлин</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="seg">
+                  <button class="seg-btn active">Все</button>
+                  <button class="seg-btn">Переводы</button>
+                  <button class="seg-btn">Списания</button>
+                </div>
+                <button class="btn btn-ghost btn-sm">Открыть историю</button>
+              </div>
+            </div>
+
+            <ul>
+              <!-- Item 1 -->
+              <li class="flex items-center gap-3 px-5 py-3.5 hover:bg-[var(--surface-2)] transition">
+                <div class="w-8 h-8 rounded-lg grid place-items-center pill-success" style="padding:0;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13.5px]">Перевод принят · <span class="font-semibold">Берлин → Амстердам</span></div>
+                  <div class="text-3 text-[12px] mt-0.5 flex items-center gap-2">
+                    <span class="flex items-center gap-1.5"><span class="swatch sw-blue" style="width:8px;height:8px"></span>120</span>
+                    <span class="flex items-center gap-1.5"><span class="swatch sw-black" style="width:8px;height:8px"></span>60</span>
+                    <span>·</span><span>Иван Соколов</span>
+                  </div>
+                </div>
+                <span class="text-3 text-[12px] mono">14:42</span>
+              </li>
+
+              <li class="flex items-center gap-3 px-5 py-3.5 hover:bg-[var(--surface-2)] border-t border-line transition">
+                <div class="w-8 h-8 rounded-lg grid place-items-center pill-warning" style="padding:0;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13.5px]">Расхождение · <span class="font-semibold">Варшава → Берлин</span></div>
+                  <div class="text-3 text-[12px] mt-0.5 flex items-center gap-2">
+                    <span class="flex items-center gap-1.5"><span class="swatch sw-white" style="width:8px;height:8px"></span>200 → <span class="text-[var(--danger)]">195</span></span>
+                    <span>·</span><span>требует решения</span>
+                  </div>
+                </div>
+                <button class="btn btn-secondary btn-sm">Решить</button>
+                <span class="text-3 text-[12px] mono">12:18</span>
+              </li>
+
+              <li class="flex items-center gap-3 px-5 py-3.5 hover:bg-[var(--surface-2)] border-t border-line transition">
+                <div class="w-8 h-8 rounded-lg grid place-items-center pill-accent" style="padding:0;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13.5px]">Списание · <span class="font-semibold">30 красных</span></div>
+                  <div class="text-3 text-[12px] mt-0.5">Промо · Анна Левицкая</div>
+                </div>
+                <span class="text-3 text-[12px] mono">10:55</span>
+              </li>
+
+              <li class="flex items-center gap-3 px-5 py-3.5 hover:bg-[var(--surface-2)] border-t border-line transition">
+                <div class="w-8 h-8 rounded-lg grid place-items-center pill-muted" style="padding:0;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13.5px]">Поступление со склада · <span class="font-semibold">+ 500 синих</span></div>
+                  <div class="text-3 text-[12px] mt-0.5">Варшава · Артём Денисов</div>
+                </div>
+                <span class="text-3 text-[12px] mono">09:14</span>
+              </li>
+
+              <li class="flex items-center gap-3 px-5 py-3.5 hover:bg-[var(--surface-2)] border-t border-line transition">
+                <div class="w-8 h-8 rounded-lg grid place-items-center pill-success" style="padding:0;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13.5px]">Перевод принят · <span class="font-semibold">Вена → Берлин</span></div>
+                  <div class="text-3 text-[12px] mt-0.5 flex items-center gap-2">
+                    <span class="flex items-center gap-1.5"><span class="swatch sw-red" style="width:8px;height:8px"></span>240</span>
+                    <span>·</span><span>Иван Соколов</span>
+                  </div>
+                </div>
+                <span class="text-3 text-[12px] mono">08:30</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Side -->
+          <div class="space-y-5">
+
+            <!-- Top cities -->
+            <div class="card p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-[13.5px]">Топ городов</h3>
+                <span class="text-3 text-[11.5px]">по обороту</span>
+              </div>
+              <div class="space-y-3.5">
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2 text-[13px]"><span class="flag flag-de"></span>Берлин</div>
+                    <span class="mono text-[12px] text-2">3 480</span>
+                  </div>
+                  <div class="h-1 rounded-full surface-3 overflow-hidden"><div class="h-full" style="width: 92%; background: var(--accent);"></div></div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2 text-[13px]"><span class="flag flag-pl"></span>Варшава</div>
+                    <span class="mono text-[12px] text-2">2 940</span>
+                  </div>
+                  <div class="h-1 rounded-full surface-3 overflow-hidden"><div class="h-full" style="width: 78%; background: var(--accent);"></div></div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2 text-[13px]"><span class="flag flag-nl"></span>Амстердам</div>
+                    <span class="mono text-[12px] text-2">2 110</span>
+                  </div>
+                  <div class="h-1 rounded-full surface-3 overflow-hidden"><div class="h-full" style="width: 56%; background: var(--accent);"></div></div>
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2 text-[13px]"><span class="flag flag-at"></span>Вена</div>
+                    <span class="mono text-[12px] text-2">1 240</span>
+                  </div>
+                  <div class="h-1 rounded-full surface-3 overflow-hidden"><div class="h-full" style="width: 33%; background: var(--accent);"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Upcoming event -->
+            <div class="card p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-[13.5px]">Ближайшее мероприятие</h3>
+                <span class="pill pill-muted mono">aura-tickets</span>
+              </div>
+              <div class="text-[16px] font-semibold tracking-tight">Tommy Cash Tour</div>
+              <div class="text-2 text-[12.5px] mt-0.5 flex items-center gap-2">
+                <span class="flag flag-de"></span>Berlin · Mercedes-Benz Arena
+              </div>
+              <div class="hr my-4"></div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="text-3">Дата</span>
+                <span class="mono">12.05.2026</span>
+              </div>
+              <div class="flex items-center justify-between text-[12px] mt-1.5">
+                <span class="text-3">Готовность инвентаря</span>
+                <span class="mono font-semibold">87 %</span>
+              </div>
+              <div class="h-1 rounded-full surface-3 overflow-hidden mt-2"><div class="h-full rounded-full" style="width: 87%; background: var(--success);"></div></div>
+            </div>
+
+            <!-- Quick action -->
+            <button class="card p-4 w-full text-left flex items-center gap-3 hover:border-line-2 transition">
+              <div class="w-9 h-9 rounded-lg grid place-items-center" style="background: var(--accent); color: #fff;">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="text-[13.5px] font-semibold">Создать перевод</div>
+                <div class="text-3 text-[11.5px]">Между городами или со склада</div>
+              </div>
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ════════════ INVENTORY ════════════ -->
+    <section id="page-inventory" class="page">
+      <div class="px-7 py-7 max-w-[1320px] mx-auto">
+
+        <div class="flex items-center gap-3 mb-5">
+          <div class="seg">
+            <button class="seg-btn active">По городам</button>
+            <button class="seg-btn">По странам</button>
+            <button class="seg-btn">Склад</button>
+          </div>
+          <div class="relative ml-auto" style="width: 280px;">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-3" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input class="input pl-9" placeholder="Поиск города или страны..." />
+          </div>
+          <button class="btn btn-secondary">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+            Фильтр
+          </button>
+          <button class="btn btn-primary">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Поступление
+          </button>
+        </div>
+
+        <div class="card overflow-hidden">
+          <div class="th" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;">
+            <span>Город</span>
+            <span class="flex items-center gap-1.5"><span class="swatch sw-black"></span>Чёрный</span>
+            <span class="flex items-center gap-1.5"><span class="swatch sw-white"></span>Белый</span>
+            <span class="flex items-center gap-1.5"><span class="swatch sw-red"></span>Красный</span>
+            <span class="flex items-center gap-1.5"><span class="swatch sw-blue"></span>Синий</span>
+            <span>Всего</span>
+            <span class="text-right">7 дней</span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;">
+            <span class="flex items-center gap-2.5"><span class="flag flag-de"></span><span class="font-medium">Берлин</span><span class="text-3 text-[12px]">Германия</span></span>
+            <span class="mono">3 240</span><span class="mono">2 870</span><span class="mono">3 120</span><span class="mono">3 250</span>
+            <span class="mono font-semibold">12 480</span>
+            <span class="flex items-end gap-0.5 h-5 justify-end">
+              <span class="bar w-1.5" style="height: 40%"></span><span class="bar w-1.5" style="height: 60%"></span><span class="bar w-1.5" style="height: 50%"></span><span class="bar w-1.5" style="height: 80%"></span><span class="bar w-1.5" style="height: 70%"></span><span class="bar w-1.5" style="height: 95%"></span><span class="bar w-1.5" style="height: 75%"></span>
+            </span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;">
+            <span class="flex items-center gap-2.5"><span class="flag flag-pl"></span><span class="font-medium">Варшава</span><span class="text-3 text-[12px]">Польша</span></span>
+            <span class="mono">2 100</span><span class="mono">2 040</span><span class="mono">1 850</span><span class="mono">2 200</span>
+            <span class="mono font-semibold">8 190</span>
+            <span class="flex items-end gap-0.5 h-5 justify-end">
+              <span class="bar w-1.5" style="height: 50%"></span><span class="bar w-1.5" style="height: 55%"></span><span class="bar w-1.5" style="height: 60%"></span><span class="bar w-1.5" style="height: 50%"></span><span class="bar w-1.5" style="height: 65%"></span><span class="bar w-1.5" style="height: 70%"></span><span class="bar w-1.5" style="height: 60%"></span>
+            </span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;">
+            <span class="flex items-center gap-2.5"><span class="flag flag-nl"></span><span class="font-medium">Амстердам</span><span class="text-3 text-[12px]">Нидерланды</span></span>
+            <span class="mono">1 580</span><span class="mono">1 420</span><span class="mono">1 670</span><span class="mono">1 510</span>
+            <span class="mono font-semibold">6 180</span>
+            <span class="flex items-end gap-0.5 h-5 justify-end">
+              <span class="bar w-1.5" style="height: 70%"></span><span class="bar w-1.5" style="height: 65%"></span><span class="bar w-1.5" style="height: 50%"></span><span class="bar w-1.5" style="height: 45%"></span><span class="bar w-1.5" style="height: 55%"></span><span class="bar w-1.5" style="height: 60%"></span><span class="bar w-1.5" style="height: 50%"></span>
+            </span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;">
+            <span class="flex items-center gap-2.5"><span class="flag flag-at"></span><span class="font-medium">Вена</span><span class="text-3 text-[12px]">Австрия</span></span>
+            <span class="mono">820</span><span class="mono">740</span><span class="mono">680</span><span class="mono">920</span>
+            <span class="mono font-semibold">3 160</span>
+            <span class="flex items-end gap-0.5 h-5 justify-end">
+              <span class="bar w-1.5" style="height: 30%"></span><span class="bar w-1.5" style="height: 40%"></span><span class="bar w-1.5" style="height: 35%"></span><span class="bar w-1.5" style="height: 50%"></span><span class="bar w-1.5" style="height: 45%"></span><span class="bar w-1.5" style="height: 55%"></span><span class="bar w-1.5" style="height: 60%"></span>
+            </span>
+          </div>
+
+          <div class="tr surface-2" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;">
+            <span class="text-3 text-[11px] uppercase tracking-wider font-semibold">Итого</span>
+            <span class="mono font-semibold">7 740</span>
+            <span class="mono font-semibold">7 070</span>
+            <span class="mono font-semibold">7 320</span>
+            <span class="mono font-semibold">7 880</span>
+            <span class="mono font-semibold">30 010</span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ════════════ TRANSFERS ════════════ -->
+    <section id="page-transfers" class="page">
+      <div class="px-7 py-7 max-w-[1320px] mx-auto">
+
+        <div class="flex items-center gap-3 mb-5">
+          <div class="seg">
+            <button class="seg-btn active">Активные · 3</button>
+            <button class="seg-btn">Завершённые</button>
+            <button class="seg-btn">Все</button>
+          </div>
+          <div class="ml-auto flex gap-2">
+            <button class="btn btn-secondary">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              Фильтр
+            </button>
+            <button class="btn btn-primary" onclick="showPage('transfer-new')">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              Новый перевод
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+
+          <!-- Pending -->
+          <div class="card p-5">
+            <div class="flex items-center gap-3">
+              <span class="pill pill-warning">Ожидает</span>
+              <div class="flex-1 flex items-center gap-2.5 text-[14px]">
+                <span class="flex items-center gap-2 font-semibold"><span class="flag flag-pl"></span>Варшава</span>
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                <span class="flex items-center gap-2 font-semibold"><span class="flag flag-de"></span>Берлин</span>
+              </div>
+              <span class="text-3 text-[12px] mono">TR-2418</span>
+            </div>
+            <div class="flex items-center gap-4 mt-4 pt-4 border-t border-line text-[13px]">
+              <div class="flex items-center gap-3">
+                <span class="flex items-center gap-1.5"><span class="swatch sw-black"></span><span class="mono">50</span></span>
+                <span class="flex items-center gap-1.5"><span class="swatch sw-white"></span><span class="mono">200</span></span>
+                <span class="flex items-center gap-1.5"><span class="swatch sw-red"></span><span class="mono">100</span></span>
+                <span class="flex items-center gap-1.5"><span class="swatch sw-blue"></span><span class="mono">75</span></span>
+              </div>
+              <span class="text-3 text-[12px] ml-auto">Создан 2 ч назад · Артём Денисов</span>
+              <button class="btn btn-secondary btn-sm">Отклонить</button>
+              <button class="btn btn-primary btn-sm">Принять</button>
+            </div>
+          </div>
+
+          <!-- Discrepancy -->
+          <div class="card p-5" style="border-color: color-mix(in srgb, var(--warning) 35%, var(--border));">
+            <div class="flex items-center gap-3">
+              <span class="pill pill-warning">Расхождение</span>
+              <div class="flex-1 flex items-center gap-2.5 text-[14px]">
+                <span class="flex items-center gap-2 font-semibold"><span class="flag flag-pl"></span>Варшава</span>
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                <span class="flex items-center gap-2 font-semibold"><span class="flag flag-de"></span>Берлин</span>
+              </div>
+              <span class="text-3 text-[12px] mono">TR-2415</span>
+            </div>
+            <div class="mt-4 pt-4 border-t border-line">
+              <div class="text-3 text-[11.5px] uppercase tracking-wider font-semibold mb-2">Отправлено / Принято</div>
+              <div class="flex items-center gap-4 text-[13px]">
+                <span class="flex items-center gap-1.5"><span class="swatch sw-white"></span>Белый: <span class="mono">200</span> <span class="text-3">→</span> <span class="mono" style="color: var(--danger);">195</span></span>
+                <span class="pill pill-danger">недостача 5</span>
+                <span class="text-3 text-[12px] ml-auto">Час назад · Иван Соколов</span>
+                <button class="btn btn-secondary btn-sm">Списать как утерю</button>
+                <button class="btn btn-primary btn-sm">Решить</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accepted -->
+          <div class="card p-5">
+            <div class="flex items-center gap-3">
+              <span class="pill pill-success">Принят</span>
+              <div class="flex-1 flex items-center gap-2.5 text-[14px]">
+                <span class="flex items-center gap-2 font-semibold"><span class="flag flag-de"></span>Берлин</span>
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                <span class="flex items-center gap-2 font-semibold"><span class="flag flag-nl"></span>Амстердам</span>
+              </div>
+              <span class="text-3 text-[12px] mono">TR-2412</span>
+            </div>
+            <div class="flex items-center gap-4 mt-4 pt-4 border-t border-line text-[13px]">
+              <div class="flex items-center gap-3">
+                <span class="flex items-center gap-1.5"><span class="swatch sw-blue"></span><span class="mono">120</span></span>
+                <span class="flex items-center gap-1.5"><span class="swatch sw-black"></span><span class="mono">60</span></span>
+              </div>
+              <span class="text-3 text-[12px] ml-auto">14 мин назад · Принял: Иван Соколов</span>
+              <button class="btn btn-ghost btn-sm">Открыть</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ════════════ NEW TRANSFER (form) ════════════ -->
+    <section id="page-transfer-new" class="page">
+      <div class="px-7 py-7 max-w-[920px] mx-auto">
+
+        <button class="btn btn-ghost btn-sm mb-4 -ml-2" onclick="showPage('transfers')">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          К списку переводов
+        </button>
+
+        <h2 class="text-[20px] font-semibold tracking-tight mb-1">Новый перевод</h2>
+        <p class="text-2 text-[13px] mb-6">Получатель подтверждает приём — расхождения учитываются автоматически.</p>
+
+        <!-- Stepper -->
+        <div class="flex items-center gap-3 mb-7 text-[12.5px]">
+          <div class="flex items-center gap-2"><span class="step-dot active">1</span><span class="font-medium">Маршрут</span></div>
+          <div class="flex-1 hr"></div>
+          <div class="flex items-center gap-2"><span class="step-dot">2</span><span class="text-2">Количество</span></div>
+          <div class="flex-1 hr"></div>
+          <div class="flex items-center gap-2"><span class="step-dot">3</span><span class="text-2">Подтверждение</span></div>
+        </div>
+
+        <div class="card p-6">
+          <div class="grid sm:grid-cols-2 gap-5 mb-5">
+            <div>
+              <label class="block text-[11.5px] uppercase tracking-wider text-3 font-semibold mb-2">Откуда</label>
+              <button class="input flex items-center gap-2.5 justify-between text-left">
+                <span class="flex items-center gap-2.5"><span class="flag flag-de"></span><span class="font-medium">Берлин</span><span class="text-3 text-[12px]">Германия</span></span>
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+            </div>
+            <div>
+              <label class="block text-[11.5px] uppercase tracking-wider text-3 font-semibold mb-2">Куда</label>
+              <button class="input flex items-center gap-2.5 justify-between text-left">
+                <span class="flex items-center gap-2.5"><span class="flag flag-nl"></span><span class="font-medium">Амстердам</span><span class="text-3 text-[12px]">Нидерланды</span></span>
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="text-3"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <label class="block text-[11.5px] uppercase tracking-wider text-3 font-semibold mb-2.5">Количество браслетов</label>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div class="card-flat p-3.5 flex items-center gap-3">
+              <span class="swatch sw-black" style="width:14px;height:14px;"></span>
+              <span class="flex-1 text-[13.5px] font-medium">Чёрный</span>
+              <span class="text-3 text-[12px]">в наличии 3 240</span>
+              <input type="number" value="0" class="input mono text-right" style="width:90px; height:32px;" />
+            </div>
+            <div class="card-flat p-3.5 flex items-center gap-3">
+              <span class="swatch sw-white" style="width:14px;height:14px;"></span>
+              <span class="flex-1 text-[13.5px] font-medium">Белый</span>
+              <span class="text-3 text-[12px]">в наличии 2 870</span>
+              <input type="number" value="200" class="input mono text-right" style="width:90px; height:32px; border-color: var(--accent);" />
+            </div>
+            <div class="card-flat p-3.5 flex items-center gap-3">
+              <span class="swatch sw-red" style="width:14px;height:14px;"></span>
+              <span class="flex-1 text-[13.5px] font-medium">Красный</span>
+              <span class="text-3 text-[12px]">в наличии 3 120</span>
+              <input type="number" value="0" class="input mono text-right" style="width:90px; height:32px;" />
+            </div>
+            <div class="card-flat p-3.5 flex items-center gap-3">
+              <span class="swatch sw-blue" style="width:14px;height:14px;"></span>
+              <span class="flex-1 text-[13.5px] font-medium">Синий</span>
+              <span class="text-3 text-[12px]">в наличии 3 250</span>
+              <input type="number" value="120" class="input mono text-right" style="width:90px; height:32px; border-color: var(--accent);" />
+            </div>
+          </div>
+
+          <label class="block text-[11.5px] uppercase tracking-wider text-3 font-semibold mb-2 mt-5">Комментарий (необязательно)</label>
+          <input class="input" placeholder="Например: партия для Tommy Cash Tour" />
+
+          <div class="hr my-6"></div>
+
+          <div class="flex items-center justify-between">
+            <div class="text-[13px]">
+              <span class="text-3">Итого:</span>
+              <span class="font-semibold mono ml-2">320 браслетов</span>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-secondary" onclick="showPage('transfers')">Отмена</button>
+              <button class="btn btn-primary">Создать перевод</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ════════════ HISTORY ════════════ -->
+    <section id="page-history" class="page">
+      <div class="px-7 py-7 max-w-[1320px] mx-auto">
+
+        <div class="flex items-center gap-3 mb-5">
+          <div class="relative" style="width: 320px;">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-3" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input class="input pl-9" placeholder="Поиск по описанию, городу, пользователю..." />
+          </div>
+          <button class="btn btn-secondary">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            Сегодня
+          </button>
+          <button class="btn btn-secondary">Все типы</button>
+          <button class="btn btn-secondary">Все пользователи</button>
+          <button class="btn btn-ghost ml-auto">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Экспорт
+          </button>
+        </div>
+
+        <div class="card overflow-hidden">
+          <div class="th" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span>Время</span>
+            <span>Тип</span>
+            <span>Описание</span>
+            <span>Пользователь</span>
+            <span class="text-right">Статус</span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span class="mono text-3 text-[12.5px]">15:42</span>
+            <span class="flex items-center gap-2 text-2"><span class="w-5 h-5 rounded grid place-items-center pill-success" style="padding:0;"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>Перевод</span>
+            <span class="text-2 truncate flex items-center gap-2"><span class="flag flag-de"></span>Берлин <span class="text-3">→</span> <span class="flag flag-nl"></span>Амстердам · 120 синих, 60 чёрных</span>
+            <span class="flex items-center gap-2 text-2"><span class="avatar" style="background: linear-gradient(135deg, #f59e0b, #ea580c); width:22px; height:22px; font-size:10px; border-radius: 5px;">И</span>Иван Соколов</span>
+            <span class="text-right"><span class="pill pill-success">принят</span></span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span class="mono text-3 text-[12.5px]">14:55</span>
+            <span class="flex items-center gap-2 text-2"><span class="w-5 h-5 rounded grid place-items-center pill-warning" style="padding:0;"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/></svg></span>Перевод</span>
+            <span class="text-2 truncate flex items-center gap-2"><span class="flag flag-pl"></span>Варшава <span class="text-3">→</span> <span class="flag flag-de"></span>Берлин · расхождение −5 белых</span>
+            <span class="flex items-center gap-2 text-2"><span class="avatar" style="background: linear-gradient(135deg, #06b6d4, #0891b2); width:22px; height:22px; font-size:10px; border-radius: 5px;">А</span>Артём Денисов</span>
+            <span class="text-right"><span class="pill pill-warning">внимание</span></span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span class="mono text-3 text-[12.5px]">12:30</span>
+            <span class="flex items-center gap-2 text-2"><span class="w-5 h-5 rounded grid place-items-center pill-accent" style="padding:0;"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span>Списание</span>
+            <span class="text-2 truncate">Берлин · 30 красных · промо для рекламы события</span>
+            <span class="flex items-center gap-2 text-2"><span class="avatar" style="background: linear-gradient(135deg, #ec4899, #be185d); width:22px; height:22px; font-size:10px; border-radius: 5px;">А</span>Анна Левицкая</span>
+            <span class="text-right"><span class="pill pill-muted">расход</span></span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span class="mono text-3 text-[12.5px]">10:14</span>
+            <span class="flex items-center gap-2 text-2"><span class="w-5 h-5 rounded grid place-items-center pill-muted" style="padding:0;"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>Поступление</span>
+            <span class="text-2 truncate flex items-center gap-2"><span class="flag flag-pl"></span>Варшава · +500 синих со склада</span>
+            <span class="flex items-center gap-2 text-2"><span class="avatar" style="background: linear-gradient(135deg, #06b6d4, #0891b2); width:22px; height:22px; font-size:10px; border-radius: 5px;">А</span>Артём Денисов</span>
+            <span class="text-right"><span class="pill pill-success">ОК</span></span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span class="mono text-3 text-[12.5px]">09:02</span>
+            <span class="flex items-center gap-2 text-2"><span class="w-5 h-5 rounded grid place-items-center pill-muted" style="padding:0;"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z"/></svg></span>Пользователь</span>
+            <span class="text-2 truncate">Создан «Пользователь 12» · доступ к Вене</span>
+            <span class="flex items-center gap-2 text-2"><span class="avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent-2)); width:22px; height:22px; font-size:10px; border-radius: 5px;">D</span>Dmitry Ganj</span>
+            <span class="text-right"><span class="pill pill-muted">создан</span></span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 110px 130px 1fr 180px 110px;">
+            <span class="mono text-3 text-[12.5px]">08:30</span>
+            <span class="flex items-center gap-2 text-2"><span class="w-5 h-5 rounded grid place-items-center pill-success" style="padding:0;"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>Перевод</span>
+            <span class="text-2 truncate flex items-center gap-2"><span class="flag flag-at"></span>Вена <span class="text-3">→</span> <span class="flag flag-de"></span>Берлин · 240 красных</span>
+            <span class="flex items-center gap-2 text-2"><span class="avatar" style="background: linear-gradient(135deg, #f59e0b, #ea580c); width:22px; height:22px; font-size:10px; border-radius: 5px;">И</span>Иван Соколов</span>
+            <span class="text-right"><span class="pill pill-success">принят</span></span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between mt-4 text-[12.5px] text-3">
+          <span>Показано 6 из 1 248 записей</span>
+          <div class="flex items-center gap-1">
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <button class="btn btn-secondary btn-sm">1</button>
+            <button class="btn btn-ghost btn-sm">2</button>
+            <button class="btn btn-ghost btn-sm">3</button>
+            <span class="px-1">…</span>
+            <button class="btn btn-ghost btn-sm">208</button>
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ════════════ USERS ════════════ -->
+    <section id="page-users" class="page">
+      <div class="px-7 py-7 max-w-[1320px] mx-auto">
+
+        <div class="flex items-center gap-3 mb-5">
+          <div class="seg">
+            <button class="seg-btn active">Все · 12</button>
+            <button class="seg-btn">Активные</button>
+            <button class="seg-btn">Заблокированные</button>
+          </div>
+          <div class="ml-auto flex gap-2">
+            <div class="relative" style="width: 240px;">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-3" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input class="input pl-9" placeholder="Поиск пользователя..." />
+            </div>
+            <button class="btn btn-primary">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              Добавить
+            </button>
+          </div>
+        </div>
+
+        <div class="card overflow-hidden">
+          <div class="th" style="grid-template-columns: 1.5fr 1fr 1.4fr 110px 110px 36px;">
+            <span>Пользователь</span>
+            <span>Роль</span>
+            <span>Доступ</span>
+            <span>Статус</span>
+            <span>Активность</span>
+            <span></span>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 1.5fr 1fr 1.4fr 110px 110px 36px;">
+            <span class="flex items-center gap-2.5">
+              <span class="avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent-2));">D</span>
+              <span><span class="font-medium block leading-tight">Dmitry Ganj</span><span class="text-3 text-[12px]">dmitryganj</span></span>
+            </span>
+            <span><span class="pill pill-accent">Admin</span></span>
+            <span class="text-2 text-[13px]">Глобальный</span>
+            <span><span class="pill pill-success">Активен</span></span>
+            <span class="text-3 text-[12.5px]">сейчас</span>
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 1.5fr 1fr 1.4fr 110px 110px 36px;">
+            <span class="flex items-center gap-2.5">
+              <span class="avatar" style="background: linear-gradient(135deg, #f59e0b, #ea580c);">И</span>
+              <span><span class="font-medium block leading-tight">Иван Соколов</span><span class="text-3 text-[12px]">user_07</span></span>
+            </span>
+            <span><span class="pill pill-muted">Менеджер</span></span>
+            <span class="text-2 text-[13px] flex items-center gap-1.5"><span class="flag flag-de"></span>Берлин<span class="text-3">·</span><span class="flag flag-nl"></span>Амстердам</span>
+            <span><span class="pill pill-success">Активен</span></span>
+            <span class="text-3 text-[12.5px]">5 мин</span>
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 1.5fr 1fr 1.4fr 110px 110px 36px;">
+            <span class="flex items-center gap-2.5">
+              <span class="avatar" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">А</span>
+              <span><span class="font-medium block leading-tight">Артём Денисов</span><span class="text-3 text-[12px]">user_03</span></span>
+            </span>
+            <span><span class="pill pill-muted">Менеджер</span></span>
+            <span class="text-2 text-[13px] flex items-center gap-1.5"><span class="flag flag-pl"></span>Варшава</span>
+            <span><span class="pill pill-success">Активен</span></span>
+            <span class="text-3 text-[12.5px]">22 мин</span>
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 1.5fr 1fr 1.4fr 110px 110px 36px;">
+            <span class="flex items-center gap-2.5">
+              <span class="avatar" style="background: linear-gradient(135deg, #ec4899, #be185d);">А</span>
+              <span><span class="font-medium block leading-tight">Анна Левицкая</span><span class="text-3 text-[12px]">user_11</span></span>
+            </span>
+            <span><span class="pill pill-muted">Менеджер</span></span>
+            <span class="text-2 text-[13px] flex items-center gap-1.5"><span class="flag flag-de"></span>Берлин</span>
+            <span><span class="pill pill-success">Активен</span></span>
+            <span class="text-3 text-[12.5px]">1 ч</span>
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+
+          <div class="tr" style="grid-template-columns: 1.5fr 1fr 1.4fr 110px 110px 36px;">
+            <span class="flex items-center gap-2.5">
+              <span class="avatar" style="background: linear-gradient(135deg, #10b981, #047857);">М</span>
+              <span><span class="font-medium block leading-tight">Михаил Кравец</span><span class="text-3 text-[12px]">user_05</span></span>
+            </span>
+            <span><span class="pill pill-muted">Менеджер</span></span>
+            <span class="text-2 text-[13px] flex items-center gap-1.5"><span class="flag flag-at"></span>Вена</span>
+            <span><span class="pill pill-muted">Не активен</span></span>
+            <span class="text-3 text-[12.5px]">3 дн</span>
+            <button class="btn btn-ghost btn-sm btn-icon"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+
+<!-- ── Inline SVG flags ──────────────────────────────────── -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="f-de" viewBox="0 0 3 2"><rect width="3" height="2" fill="#000"/><rect width="3" y=".667" height=".667" fill="#D00"/><rect width="3" y="1.333" height=".667" fill="#FFCE00"/></symbol>
+    <symbol id="f-pl" viewBox="0 0 8 5"><rect width="8" height="5" fill="#fff"/><rect width="8" y="2.5" height="2.5" fill="#DC143C"/></symbol>
+    <symbol id="f-nl" viewBox="0 0 9 6"><rect width="9" height="2" fill="#AE1C28"/><rect width="9" y="2" height="2" fill="#fff"/><rect width="9" y="4" height="2" fill="#21468B"/></symbol>
+    <symbol id="f-at" viewBox="0 0 9 6"><rect width="9" height="2" fill="#ED2939"/><rect width="9" y="2" height="2" fill="#fff"/><rect width="9" y="4" height="2" fill="#ED2939"/></symbol>
+  </defs>
+</svg>
+
+<style>
+  .flag-de { background: linear-gradient(180deg, #000 0%, #000 33%, #D00 33%, #D00 66%, #FFCE00 66%, #FFCE00 100%); }
+  .flag-pl { background: linear-gradient(180deg, #fff 0%, #fff 50%, #DC143C 50%, #DC143C 100%); }
+  .flag-nl { background: linear-gradient(180deg, #AE1C28 0%, #AE1C28 33%, #fff 33%, #fff 66%, #21468B 66%, #21468B 100%); }
+  .flag-at { background: linear-gradient(180deg, #ED2939 0%, #ED2939 33%, #fff 33%, #fff 66%, #ED2939 66%, #ED2939 100%); }
+</style>
+
+
+<script>
+  const titles = {
+    'home':         { title: 'Главная',        sub: 'Сводка по Берлину · 02.05.2026' },
+    'inventory':    { title: 'Инвентарь',      sub: 'Браслеты по городам · все цвета' },
+    'transfers':    { title: 'Переводы',       sub: 'Активные и завершённые операции' },
+    'transfer-new': { title: 'Новый перевод',  sub: 'Создание перевода между точками' },
+    'history':      { title: 'История',        sub: 'Все события системы · аудит' },
+    'users':        { title: 'Пользователи',   sub: 'Аккаунты и доступы' },
+  };
+
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const el = document.getElementById('page-' + name);
+    if (el) el.classList.add('active');
+
+    document.querySelectorAll('[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+    document.querySelectorAll('[data-nav]').forEach(b => {
+      const matches = b.dataset.nav === name || (name === 'transfer-new' && b.dataset.nav === 'transfers');
+      b.classList.toggle('active', matches);
+    });
+
+    const meta = titles[name] || { title: '', sub: '' };
+    document.getElementById('page-title').textContent = meta.title;
+    document.getElementById('page-sub').textContent = meta.sub;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    document.getElementById('theme-icon-moon').style.display = next === 'dark' ? 'block' : 'none';
+    document.getElementById('theme-icon-sun').style.display  = next === 'dark' ? 'none' : 'block';
+  }
+</script>
+</body>
+</html>
