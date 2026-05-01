@@ -1,8 +1,9 @@
 [build]
-buildCommand = "npm install && npm run build"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "npx serve dist -s -l $PORT"
+startCommand = "node server.js"
 healthcheckPath = "/"
 healthcheckTimeout = 15
 restartPolicyType = "ON_FAILURE"
