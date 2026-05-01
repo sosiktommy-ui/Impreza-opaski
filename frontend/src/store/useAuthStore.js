@@ -129,6 +129,7 @@ export const useAuthStore = create((set, get) => ({
     const token = result.accessToken;
     if (token) ss.setItem(TOKEN_KEY, token);
     if (result.user) ss.setItem(USER_KEY, JSON.stringify(result.user));
+    if (result.access) ss.setItem(ACCESS_KEY, JSON.stringify(result.access));
     window.location.reload();
   },
 

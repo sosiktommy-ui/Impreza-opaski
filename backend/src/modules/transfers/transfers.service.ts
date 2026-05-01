@@ -14,6 +14,8 @@ import {
   EntityType,
   ItemType,
   Prisma,
+  ScopeType,
+  AuditAction,
 } from '@prisma/client';
 import { InventoryService } from '../inventory/inventory.service';
 import { BalancesService } from '../balances/balances.service';
@@ -195,7 +197,6 @@ export class TransfersService {
         where: { id: input.createdBy },
         select: { displayName: true, username: true },
       });
-
       this.eventEmitter.emit('transfer.sent', {
         transferId: transfer.id,
         fromEntityId,
@@ -207,6 +208,20 @@ export class TransfersService {
         items: transfer.items.map((i) => ({ type: i.itemType, quantity: i.quantity })),
         actorId: input.createdBy,
         createdByName: creator?.displayName || creator?.username || 'Unknown',
+      });
+
+      // Phase 7: audit log for personal balance history
+      await this.writeTransferAudit(tx, {
+        action: AuditAction.TRANSFER_SENT,
+        transferId: transfer.id,
+        actorId: input.createdBy,
+        senderType: transfer.senderType,
+        senderEntityId: entityId,
+        senderName: fromName,
+        receiverType: transfer.receiverType,
+        receiverEntityId: toEntityId || null,
+        receiverName: toName,
+        items: transfer.items.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
       });
 
       return transfer;
@@ -435,6 +450,30 @@ export class TransfersService {
           this.eventEmitter.emit('transfer.accepted', eventBase);
         }
 
+        // Phase 7: audit log for personal balance history
+        const auditAction = allZero
+          ? AuditAction.TRANSFER_CANCELLED
+          : hasDiscrepancy
+            ? AuditAction.DISCREPANCY_DETECTED
+            : AuditAction.TRANSFER_ACCEPTED;
+        await this.writeTransferAudit(tx, {
+          action: auditAction,
+          transferId,
+          actorId,
+          senderType: transfer.senderType,
+          senderEntityId: senderEntityId || null,
+          senderName: fromEntityName,
+          receiverType: transfer.receiverType,
+          receiverEntityId: receiverEntityId || null,
+          receiverName: toEntityName,
+          items: (transfer.items || []).map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
+          extra: {
+            received: receivedItems,
+            hasDiscrepancy,
+            allZero,
+          },
+        });
+
         return tx.transfer.findUnique({
           where: { id: transferId },
           include: { items: true, acceptanceRecords: true },
@@ -561,6 +600,30 @@ export class TransfersService {
         actorId,
       });
 
+      // Phase 7: audit log for personal balance history
+      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+      let toEntityName = 'Unknown';
+      if (transfer.receiverType === EntityType.COUNTRY && transfer.receiverCountryId) {
+        const c = await tx.country.findUnique({ where: { id: transfer.receiverCountryId }, select: { name: true } });
+        toEntityName = c?.name || 'Unknown';
+      } else if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
+        const c = await tx.city.findUnique({ where: { id: transfer.receiverCityId }, select: { name: true } });
+        toEntityName = c?.name || 'Unknown';
+      }
+      await this.writeTransferAudit(tx, {
+        action: AuditAction.TRANSFER_REJECTED,
+        transferId,
+        actorId,
+        senderType: transfer.senderType,
+        senderEntityId: senderEntityId || null,
+        senderName: fromEntityName,
+        receiverType: transfer.receiverType,
+        receiverEntityId: receiverEntityId || null,
+        receiverName: toEntityName,
+        items: transfer.items.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
+        extra: { reason },
+      });
+
       // Invalidate sender cache since we returned bracelets
       if (senderEntityId) {
         await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
@@ -671,6 +734,21 @@ export class TransfersService {
         toEntityName,
         actorId,
         cancelledByName: canceller?.displayName || canceller?.username || 'Unknown',
+      });
+
+      // Phase 7: audit log for personal balance history
+      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
+      await this.writeTransferAudit(tx, {
+        action: AuditAction.TRANSFER_CANCELLED,
+        transferId,
+        actorId,
+        senderType: transfer.senderType,
+        senderEntityId: senderEntityId || null,
+        senderName: fromEntityName,
+        receiverType: transfer.receiverType,
+        receiverEntityId: receiverEntityId || null,
+        receiverName: toEntityName,
+        items: transfer.items.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
       });
 
       // Invalidate sender cache since we returned bracelets
@@ -2149,6 +2227,82 @@ export class TransfersService {
 
     if (entityId && (entityType === EntityType.CITY || entityType === EntityType.COUNTRY)) {
       await this.balances.syncFromInventory(tx, entityType, entityId);
+    }
+  }
+
+  /**
+   * Phase 7: write a single AuditLog row for a transfer state change.
+   * Includes affectedUserIds (sender + receiver CITY/COUNTRY users via UserAccess)
+   * so the personal balance history query can find it.
+   */
+  private async writeTransferAudit(
+    tx: Prisma.TransactionClient,
+    params: {
+      action: AuditAction;
+      transferId: string;
+      actorId: string;
+      senderType: EntityType;
+      senderEntityId: string | null;
+      senderName?: string;
+      receiverType: EntityType;
+      receiverEntityId: string | null;
+      receiverName?: string;
+      items: Array<{ itemType: string; quantity: number }>;
+      extra?: Record<string, any>;
+    },
+  ): Promise<void> {
+    const collect = async (
+      entityType: EntityType,
+      entityId: string | null,
+    ): Promise<string[]> => {
+      if (!entityId) return [];
+      let scope: ScopeType | null = null;
+      if (entityType === EntityType.CITY) scope = ScopeType.CITY;
+      else if (entityType === EntityType.COUNTRY) scope = ScopeType.COUNTRY;
+      else return [];
+
+      const now = new Date();
+      const access = await tx.userAccess.findMany({
+        where: {
+          scopeType: scope,
+          scopeId: entityId,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        select: { userId: true },
+      });
+      return access.map((a) => a.userId);
+    };
+
+    try {
+      const senderUserIds = await collect(params.senderType, params.senderEntityId);
+      const receiverUserIds = await collect(params.receiverType, params.receiverEntityId);
+      const affectedUserIds = Array.from(new Set([...senderUserIds, ...receiverUserIds]));
+
+      await tx.auditLog.create({
+        data: {
+          action: params.action,
+          entityType: 'Transfer',
+          entityId: params.transferId,
+          actorId: params.actorId,
+          metadata: {
+            senderType: params.senderType,
+            senderEntityId: params.senderEntityId,
+            senderName: params.senderName ?? null,
+            senderUserIds,
+            receiverType: params.receiverType,
+            receiverEntityId: params.receiverEntityId,
+            receiverName: params.receiverName ?? null,
+            receiverUserIds,
+            affectedUserIds,
+            items: params.items,
+            ...(params.extra || {}),
+          },
+        },
+      });
+    } catch (err) {
+      // Audit must never break the main flow.
+      this.logger.warn(`writeTransferAudit failed: ${(err as Error).message}`);
     }
   }
 

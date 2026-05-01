@@ -277,6 +277,19 @@ export class BalancesService {
           action: { in: ['EXPENSE_CREATED', 'EXPENSE_DELETED'] },
           metadata: { path: ['userId'], equals: targetUserId },
         },
+        {
+          // Phase 7: transfer events (single audit row per transfer with affectedUserIds[])
+          action: {
+            in: [
+              'TRANSFER_SENT',
+              'TRANSFER_ACCEPTED',
+              'TRANSFER_REJECTED',
+              'TRANSFER_CANCELLED',
+              'DISCREPANCY_DETECTED',
+            ],
+          },
+          metadata: { path: ['affectedUserIds'], array_contains: targetUserId },
+        },
       ],
     };
 

@@ -3,6 +3,7 @@ import Modal from './Modal';
 import { balancesApi } from '../../api/balances';
 import {
   TrendingUp, TrendingDown, Sliders, RotateCcw, History as HistoryIcon,
+  Send, CheckCircle2, XCircle, Ban, AlertTriangle,
 } from 'lucide-react';
 
 const COLOR_LABEL = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -17,6 +18,11 @@ const ACTION_META = {
   BALANCE_ADJUSTED: { icon: Sliders, label: 'Корректировка', tone: 'text-amber-500 bg-amber-500/10' },
   EXPENSE_CREATED:  { icon: TrendingDown, label: 'Расход',     tone: 'text-red-500 bg-red-500/10' },
   EXPENSE_DELETED:  { icon: RotateCcw,    label: 'Возврат расхода', tone: 'text-emerald-500 bg-emerald-500/10' },
+  TRANSFER_SENT:        { icon: Send,         label: 'Передача отправлена', tone: 'text-blue-500 bg-blue-500/10' },
+  TRANSFER_ACCEPTED:    { icon: CheckCircle2, label: 'Передача принята',    tone: 'text-emerald-500 bg-emerald-500/10' },
+  TRANSFER_REJECTED:    { icon: XCircle,      label: 'Передача отклонена',  tone: 'text-red-500 bg-red-500/10' },
+  TRANSFER_CANCELLED:   { icon: Ban,          label: 'Передача отменена',   tone: 'text-content-muted bg-surface-secondary' },
+  DISCREPANCY_DETECTED: { icon: AlertTriangle,label: 'Несоответствие',      tone: 'text-amber-500 bg-amber-500/10' },
 };
 
 function formatDate(iso) {
@@ -57,6 +63,37 @@ function renderMeta(action, meta) {
               </span>
             ))}
           </div>
+        )}
+      </div>
+    );
+  }
+  if (
+    action === 'TRANSFER_SENT' ||
+    action === 'TRANSFER_ACCEPTED' ||
+    action === 'TRANSFER_REJECTED' ||
+    action === 'TRANSFER_CANCELLED' ||
+    action === 'DISCREPANCY_DETECTED'
+  ) {
+    const items = Array.isArray(meta.items) ? meta.items : [];
+    return (
+      <div className="space-y-1">
+        {(meta.senderName || meta.receiverName) && (
+          <div className="text-xs text-content-secondary">
+            {meta.senderName || '?'} → {meta.receiverName || '?'}
+          </div>
+        )}
+        {items.length > 0 && (
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            {items.map((it, idx) => (
+              <span key={idx} className="flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${COLOR_DOT[it.itemType] || ''}`} />
+                <span className="tabular-nums">{it.quantity}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        {meta.reason && (
+          <div className="text-xs text-content-muted italic">— {meta.reason}</div>
         )}
       </div>
     );
