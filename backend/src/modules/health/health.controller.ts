@@ -81,9 +81,33 @@ export class HealthController {
       return { error: 'no admins found', allUsers: await this.prisma.user.findMany({ select: { username: true, role: true, email: true } }) };
     }
     await this.prisma.user.updateMany({ where: { role: 'ADMIN' }, data: { passwordHash } });
+
+    // Ensure every admin has at least one active GLOBAL UserAccess (backfill if missing)
+    const granterId = admins[0].id;
+    let grantedCount = 0;
+    for (const adm of admins) {
+      const existing = await this.prisma.userAccess.findFirst({
+        where: { userId: adm.id, scopeType: 'GLOBAL', revokedAt: null },
+      });
+      if (!existing) {
+        await this.prisma.userAccess.create({
+          data: {
+            userId: adm.id,
+            scopeType: 'GLOBAL',
+            scopeId: null,
+            grantedById: granterId,
+            grantedAt: new Date(),
+            notes: 'reset-admin-pw backfill',
+          },
+        });
+        grantedCount += 1;
+      }
+    }
+
     return {
       success: true,
       resetCount: admins.length,
+      grantedCount,
       admins: admins.map(a => ({ username: a.username, email: a.email })),
       newPassword,
     };
