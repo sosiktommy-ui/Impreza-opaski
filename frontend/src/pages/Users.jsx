@@ -7,7 +7,8 @@ import Select from '../components/ui/Select';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import AccessManagerModal from '../components/ui/AccessManagerModal';
-import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck } from 'lucide-react';
+import BalanceAdjustModal from '../components/ui/BalanceAdjustModal';
+import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck, Wallet } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
@@ -32,6 +33,7 @@ export default function Users() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [accessUser, setAccessUser] = useState(null);
+  const [balanceUser, setBalanceUser] = useState(null);
 
   // Create form
   const [form, setForm] = useState({
@@ -267,6 +269,27 @@ export default function Users() {
                   {u.country && ` • ${u.country.name}`}
                   {u.city && ` • ${u.city.name}`}
                 </div>
+                {(u.role === 'CITY' || u.role === 'COUNTRY') && (
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-content-muted">
+                    <span className="font-medium">Баланс:</span>
+                    <span className="flex items-center gap-1" title="Чёрные">
+                      <span className="w-2 h-2 rounded-full bg-zinc-800 dark:bg-zinc-200" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceBlack ?? 0}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Белые">
+                      <span className="w-2 h-2 rounded-full bg-white border border-edge" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceWhite ?? 0}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Красные">
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceRed ?? 0}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Синие">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceBlue ?? 0}</span>
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                 <button
@@ -319,6 +342,15 @@ export default function Users() {
                     title="Управление доступами"
                   >
                     <ShieldCheck size={16} />
+                  </button>
+                )}
+                {(currentUser?.role === 'ADMIN' || currentUser?.role === 'OFFICE') && (u.role === 'CITY' || u.role === 'COUNTRY') && (
+                  <button
+                    onClick={() => setBalanceUser(u)}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-amber-500"
+                    title="Корректировать баланс"
+                  >
+                    <Wallet size={16} />
                   </button>
                 )}
                 <button
@@ -538,6 +570,13 @@ export default function Users() {
         offices={offices}
         countries={countries}
         onClose={() => setAccessUser(null)}
+      />
+
+      <BalanceAdjustModal
+        open={!!balanceUser}
+        user={balanceUser}
+        onClose={() => setBalanceUser(null)}
+        onSuccess={() => loadData()}
       />
     </div>
   );

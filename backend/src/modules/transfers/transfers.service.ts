@@ -16,6 +16,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { InventoryService } from '../inventory/inventory.service';
+import { BalancesService } from '../balances/balances.service';
 import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
 
 export interface SendTransferInput {
@@ -46,6 +47,7 @@ export class TransfersService {
     private readonly redis: RedisService,
     private readonly eventEmitter: EventEmitter2,
     private readonly inventoryService: InventoryService,
+    private readonly balances: BalancesService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -2108,6 +2110,10 @@ export class TransfersService {
       where: { id: inventory.id },
       data: { quantity: inventory.quantity - quantity },
     });
+
+    if (entityId && (entityType === EntityType.CITY || entityType === EntityType.COUNTRY)) {
+      await this.balances.syncFromInventory(tx, entityType, entityId);
+    }
   }
 
   private async creditInventory(
@@ -2139,6 +2145,10 @@ export class TransfersService {
           quantity,
         },
       });
+    }
+
+    if (entityId && (entityType === EntityType.CITY || entityType === EntityType.COUNTRY)) {
+      await this.balances.syncFromInventory(tx, entityType, entityId);
     }
   }
 

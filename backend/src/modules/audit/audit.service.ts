@@ -237,6 +237,35 @@ export class AuditService {
     });
   }
 
+  // ----- Phase 4: personal balance events -----------------------------------
+
+  @OnEvent('balance.adjusted')
+  async onBalanceAdjusted(payload: {
+    actorId: string;
+    userId: string;
+    color: string;
+    delta: number;
+    before: number;
+    after: number;
+    reason?: string;
+  }) {
+    if (!payload.actorId) return;
+    await this.log({
+      actorId: payload.actorId,
+      action: AuditAction.BALANCE_ADJUSTED,
+      entityType: 'User',
+      entityId: payload.userId,
+      metadata: {
+        event: 'balance.adjusted',
+        color: payload.color,
+        delta: payload.delta,
+        before: payload.before,
+        after: payload.after,
+        reason: payload.reason ?? null,
+      },
+    });
+  }
+
   // ----- Phase 2: scope/access events ---------------------------------------
 
   @OnEvent('auth.scope_selected')

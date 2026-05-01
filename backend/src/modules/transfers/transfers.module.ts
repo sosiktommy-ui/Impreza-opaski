@@ -4,6 +4,7 @@ import { TransfersService } from './transfers.service';
 import { TransfersController } from './transfers.controller';
 import { InventoryModule } from '../inventory/inventory.module';
 import { AuthModule } from '../auth/auth.module';
+import { BalancesModule } from '../balances/balances.module';
 
 // CQRS Command Handlers
 import { CreateTransferHandler } from './commands/create-transfer.handler';
@@ -21,7 +22,7 @@ const CommandHandlers = [
 ];
 
 @Module({
-  imports: [CqrsModule, InventoryModule, AuthModule],
+  imports: [CqrsModule, InventoryModule, AuthModule, BalancesModule],
   controllers: [TransfersController],
   providers: [TransfersService, ...CommandHandlers],
   exports: [TransfersService],

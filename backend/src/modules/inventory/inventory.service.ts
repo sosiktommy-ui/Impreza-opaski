@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EntityType, ItemType, CityStatus, Prisma, Role } from '@prisma/client';
+import { BalancesService } from '../balances/balances.service';
 
 const CACHE_TTL = 300; // 5 minutes
 
@@ -19,6 +20,7 @@ export class InventoryService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly balances: BalancesService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -191,6 +193,9 @@ export class InventoryService {
         await this.updateCityStatus(tx, entityId);
       }
 
+      // Mirror inventory into personal user balances (CITY/COUNTRY only)
+      await this.balances.syncFromInventory(tx, entityType, entityId);
+
       // Invalidate cache
       await this.redis.invalidateInventory(entityType, entityId);
 
@@ -290,6 +295,9 @@ export class InventoryService {
       // Update city status
       await this.updateCityStatus(tx, cityId);
 
+      // Sync user personal balances
+      await this.balances.syncFromInventory(tx, EntityType.CITY, cityId);
+
       // Invalidate cache
       await this.redis.invalidateInventory(EntityType.CITY, cityId);
 
@@ -371,6 +379,9 @@ export class InventoryService {
 
       // Delete the expense record
       await tx.expense.delete({ where: { id: expenseId } });
+
+      // Sync user personal balances after restoring stock
+      await this.balances.syncFromInventory(tx, EntityType.CITY, expense.cityId);
 
       // Create audit log
       await tx.auditLog.create({
