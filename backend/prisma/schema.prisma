@@ -436,6 +436,7 @@ model Expense {
   id        String      @id @default(uuid())
   cityId    String      @map("city_id")
   city      City        @relation(fields: [cityId], references: [id])
+  userId    String?     @map("user_id")
   eventName String      @map("event_name")
   eventDate DateTime?   @map("event_date")
   location  String?
@@ -451,6 +452,7 @@ model Expense {
   @@index([cityId])
   @@index([eventDate])
   @@index([createdBy])
+  @@index([userId])
   @@map("expenses")
 }
 

@@ -503,12 +503,20 @@ export default function Expenses() {
                   />
 
                   <div className="flex items-center justify-between text-xs text-content-muted">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className="flex items-center gap-1">
                         <MapPin size={11} />
                         {ex.city?.name || 'Город'}
                       </span>
-                      {ex.createdBy && (
+                      {ex.user && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500 font-medium">
+                          {ex.user.displayName || ex.user.username}
+                          {ex.user.role && (
+                            <span className="text-[10px] opacity-70">({ex.user.role})</span>
+                          )}
+                        </span>
+                      )}
+                      {ex.createdBy && typeof ex.createdBy === 'object' && (
                         <span className="text-content-muted">
                           Добавил: {ex.createdBy.displayName || ex.createdBy.username || 'Неизвестно'}
                         </span>

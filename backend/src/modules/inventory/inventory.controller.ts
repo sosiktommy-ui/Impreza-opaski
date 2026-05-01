@@ -50,6 +50,10 @@ class CreateExpenseDto {
   cityId?: string;
 
   @IsString()
+  @IsOptional()
+  userId?: string;
+
+  @IsString()
   @IsNotEmpty()
   eventName!: string;
 
@@ -170,15 +174,20 @@ export class InventoryController {
   getExpenses(
     @Query('cityId') cityId?: string,
     @Query('countryId') countryId?: string,
+    @Query('userId') userId?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     let scopedCityId = cityId;
     let scopedCountryId = countryId;
+    let scopedUserId = userId;
 
-    if (user?.role === Role.CITY && user.cityId) {
-      scopedCityId = user.cityId;
+    if (user?.role === Role.CITY) {
+      // CITY users see only their own consumed expenses
+      scopedUserId = user.id;
+      scopedCityId = undefined;
+      scopedCountryId = undefined;
     } else if (user?.role === Role.COUNTRY && user.countryId) {
       scopedCountryId = user.countryId;
     }
@@ -186,6 +195,7 @@ export class InventoryController {
     return this.inventoryService.getExpenses({
       cityId: scopedCityId,
       countryId: scopedCountryId,
+      userId: scopedUserId,
       page,
       limit,
     });
@@ -236,9 +246,15 @@ export class InventoryController {
         throw new ForbiddenException('Вы можете добавлять расходы только для своих городов');
       }
     }
+    // Phase 5: «whose balance». CITY/COUNTRY → self by default; ADMIN/OFFICE may pass explicit userId.
+    let consumerUserId: string | null = dto.userId ?? null;
+    if (!consumerUserId && (user.role === Role.CITY || user.role === Role.COUNTRY)) {
+      consumerUserId = user.id;
+    }
     return this.inventoryService.createExpense({
       ...dto,
       cityId: targetCityId,
+      userId: consumerUserId,
       actorId: user.id,
     });
   }

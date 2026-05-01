@@ -224,6 +224,7 @@ export class InventoryService {
 
   async createExpense(params: {
     cityId: string;
+    userId?: string | null;
     eventName: string;
     eventDate?: string;
     location?: string;
@@ -235,7 +236,7 @@ export class InventoryService {
     actorId: string;
   }) {
     const {
-      cityId, eventName, eventDate, location,
+      cityId, userId, eventName, eventDate, location,
       black, white, red, blue, notes, actorId,
     } = params;
 
@@ -277,6 +278,7 @@ export class InventoryService {
       const expense = await tx.expense.create({
         data: {
           cityId,
+          userId: userId ?? null,
           eventName,
           eventDate: eventDate && !isNaN(new Date(eventDate).getTime()) ? new Date(eventDate) : new Date(),
           location: location || null,
@@ -298,6 +300,25 @@ export class InventoryService {
       // Sync user personal balances
       await this.balances.syncFromInventory(tx, EntityType.CITY, cityId);
 
+      // Audit log
+      await tx.auditLog.create({
+        data: {
+          action: 'EXPENSE_CREATED',
+          entityType: 'Expense',
+          entityId: expense.id,
+          actorId,
+          metadata: {
+            eventName,
+            cityId,
+            userId: userId ?? null,
+            black,
+            white,
+            red,
+            blue,
+          },
+        },
+      });
+
       // Invalidate cache
       await this.redis.invalidateInventory(EntityType.CITY, cityId);
 
@@ -313,15 +334,17 @@ export class InventoryService {
   async getExpenses(params: {
     cityId?: string;
     countryId?: string;
+    userId?: string;
     page?: number;
     limit?: number;
   }) {
-    const { cityId, countryId, page = 1, limit = 20 } = params;
+    const { cityId, countryId, userId, page = 1, limit = 20 } = params;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ExpenseWhereInput = {};
     if (cityId) where.cityId = cityId;
     if (countryId) where.city = { countryId };
+    if (userId) where.userId = userId;
 
     const [expenses, total] = await Promise.all([
       this.prisma.expense.findMany({
@@ -343,8 +366,23 @@ export class InventoryService {
       this.prisma.expense.count({ where }),
     ]);
 
+    // Hydrate consumer user info (cheap second query, avoids relation join load)
+    const userIds = Array.from(
+      new Set(expenses.map((e) => e.userId).filter((v): v is string => !!v)),
+    );
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, username: true, displayName: true, role: true },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
     return {
-      data: expenses,
+      data: expenses.map((e) => ({
+        ...e,
+        user: e.userId ? userMap.get(e.userId) ?? null : null,
+      })),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -392,6 +430,8 @@ export class InventoryService {
           actorId,
           metadata: {
             eventName: expense.eventName,
+            cityId: expense.cityId,
+            userId: expense.userId,
             black: expense.black,
             white: expense.white,
             red: expense.red,
