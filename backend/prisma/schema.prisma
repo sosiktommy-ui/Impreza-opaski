@@ -4,7 +4,7 @@
 //
 //  Domain model (in 60 seconds)
 //
-//  Country  ──┬── City (kind: OUTLET | WAREHOUSE)
+//  Country  ──┬── City
 //             │
 //  User       │     UserAccess (GLOBAL | COUNTRY | CITY)
 //   │         └── Inventory  (cityId, color) → count
@@ -14,9 +14,9 @@
 //   └── trail     AuditLog
 //
 //  All inventory mutations go through a single transactional path
-//  (transfer accept / expense create / shortage resolution / warehouse
-//  intake), so balances are never derived from history — they live in
-//  the Inventory table and stay in sync via a Prisma $transaction.
+//  (transfer create / accept / discrepancy resolve / expense create),
+//  so balances are never derived from history — they live in the
+//  Inventory table and stay in sync via a Prisma $transaction.
 //
 // ───────────────────────────────────────────────────────────────────
 
@@ -43,11 +43,6 @@ enum AccessScope {
   GLOBAL // everything (admins)
   COUNTRY // every city in one country
   CITY // one specific city
-}
-
-enum CityKind {
-  OUTLET // regular point of sale
-  WAREHOUSE // central stock pool
 }
 
 enum BraceletColor {
@@ -114,9 +109,8 @@ model Country {
 model City {
   id        String   @id @default(cuid())
   countryId String
-  code      String   @unique // short slug, e.g. "berlin", "warehouse-pl"
+  code      String   @unique // short slug, e.g. "berlin", "warsaw"
   name      String
-  kind      CityKind @default(OUTLET)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -129,7 +123,6 @@ model City {
   accesses     UserAccess[]
 
   @@index([countryId])
-  @@index([kind])
   @@index([isActive])
 }
 
