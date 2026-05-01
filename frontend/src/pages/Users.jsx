@@ -8,7 +8,8 @@ import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
 import AccessManagerModal from '../components/ui/AccessManagerModal';
 import BalanceAdjustModal from '../components/ui/BalanceAdjustModal';
-import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck, Wallet } from 'lucide-react';
+import BalanceHistoryModal from '../components/ui/BalanceHistoryModal';
+import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck, Wallet, History } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
@@ -34,6 +35,7 @@ export default function Users() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [accessUser, setAccessUser] = useState(null);
   const [balanceUser, setBalanceUser] = useState(null);
+  const [historyUser, setHistoryUser] = useState(null);
 
   // Create form
   const [form, setForm] = useState({
@@ -353,6 +355,15 @@ export default function Users() {
                     <Wallet size={16} />
                   </button>
                 )}
+                {(u.role === 'CITY' || u.role === 'COUNTRY') && (
+                  <button
+                    onClick={() => setHistoryUser(u)}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
+                    title="История баланса"
+                  >
+                    <History size={16} />
+                  </button>
+                )}
                 <button
                   onClick={() => { setShowPassword(u.id); setNewPassword(''); setError(''); }}
                   className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
@@ -577,6 +588,13 @@ export default function Users() {
         user={balanceUser}
         onClose={() => setBalanceUser(null)}
         onSuccess={() => loadData()}
+      />
+
+      <BalanceHistoryModal
+        open={!!historyUser}
+        userId={historyUser?.id}
+        title={historyUser ? `История баланса: ${historyUser.displayName || historyUser.username}` : 'История баланса'}
+        onClose={() => setHistoryUser(null)}
       />
     </div>
   );

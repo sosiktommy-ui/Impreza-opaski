@@ -28,6 +28,19 @@ export class BalancesController {
     return this.balancesService.getMine(user.id);
   }
 
+  /** Caller's own balance history. */
+  @Get('me/history')
+  getMyHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.balancesService.getHistory(user.id, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   /** Paginated list of users with personal balances. Admin/Office only. */
   @Get()
   @UseGuards(RolesGuard)
@@ -61,6 +74,21 @@ export class BalancesController {
     // Country users can only see their own country; ADMIN/OFFICE — anything.
     // Cheap guard — full scope check belongs to ScopeAccessGuard (Phase 5+).
     return this.balancesService.getForUser(userId);
+  }
+
+  /** Specific user's balance history. Admin/Office/Country only. */
+  @Get('users/:userId/history')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
+  getUserHistory(
+    @Param('userId') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.balancesService.getHistory(userId, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   /** Manual balance adjustment. Admin/Office only. */

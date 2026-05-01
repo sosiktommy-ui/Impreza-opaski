@@ -248,6 +248,63 @@ export class BalancesService {
     });
   }
 
+  /**
+   * GET /balances/users/:userId/history — timeline of audit events
+   * affecting this user's personal balance.
+   */
+  async getHistory(targetUserId: string, params: { page?: number; limit?: number } = {}) {
+    const page = Math.max(1, params.page ?? 1);
+    const limit = Math.min(200, Math.max(1, params.limit ?? 50));
+    const skip = (page - 1) * limit;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, role: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    // Events touching this user:
+    //  • BALANCE_ADJUSTED on entity=User/userId
+    //  • EXPENSE_CREATED / EXPENSE_DELETED with metadata.userId === userId
+    const where: Prisma.AuditLogWhereInput = {
+      OR: [
+        {
+          action: 'BALANCE_ADJUSTED',
+          entityType: 'User',
+          entityId: targetUserId,
+        },
+        {
+          action: { in: ['EXPENSE_CREATED', 'EXPENSE_DELETED'] },
+          metadata: { path: ['userId'], equals: targetUserId },
+        },
+      ],
+    };
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          actor: { select: { id: true, username: true, displayName: true, role: true } },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((r) => ({
+        id: r.id,
+        action: r.action,
+        createdAt: r.createdAt,
+        actor: r.actor,
+        metadata: r.metadata,
+      })),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
   // ──────────────────────────────────────────────
   // SYNC HOOK (called from inventory.service)
   // ──────────────────────────────────────────────

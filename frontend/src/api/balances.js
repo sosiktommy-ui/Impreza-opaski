@@ -15,4 +15,11 @@ export const balancesApi = {
    *  payload: { userId, color: 'BLACK'|'WHITE'|'RED'|'BLUE', delta, reason }
    */
   adjust: (payload) => api.post('/balances/adjust', payload),
+
+  /** Caller's own balance history. */
+  getMyHistory: (params) => api.get('/balances/me/history', { params }),
+
+  /** Specific user's balance history — admin/office/country. */
+  getUserHistory: (userId, params) =>
+    api.get(`/balances/users/${userId}/history`, { params }),
 };

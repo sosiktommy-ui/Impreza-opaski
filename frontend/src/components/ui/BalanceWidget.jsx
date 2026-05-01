@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { balancesApi } from '../../api/balances';
+import BalanceHistoryModal from './BalanceHistoryModal';
 
 const COLOR_DOTS = {
   black: 'bg-zinc-800 dark:bg-zinc-200',
@@ -25,6 +26,7 @@ export default function BalanceWidget() {
   const eligible = role === 'CITY' || role === 'COUNTRY';
   const [balance, setBalance] = useState(null);
   const [error, setError] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!eligible) return;
@@ -56,17 +58,26 @@ export default function BalanceWidget() {
   ];
 
   return (
-    <div
-      className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] border border-edge bg-surface-card text-xs"
-      title="Ваш личный остаток опасок"
-    >
-      <span className="text-content-muted font-medium">Баланс:</span>
-      {items.map((it) => (
-        <span key={it.key} className="flex items-center gap-1" title={COLOR_LABEL[it.key]}>
-          <span className={`w-2.5 h-2.5 rounded-full ${COLOR_DOTS[it.key]}`} />
-          <span className="font-semibold text-content-primary tabular-nums">{it.value}</span>
-        </span>
-      ))}
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setHistoryOpen(true)}
+        className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] border border-edge bg-surface-card text-xs hover:border-brand-500 hover:bg-brand-500/5 transition-colors cursor-pointer"
+        title="Ваш личный остаток опасок — нажмите для истории"
+      >
+        <span className="text-content-muted font-medium">Баланс:</span>
+        {items.map((it) => (
+          <span key={it.key} className="flex items-center gap-1" title={COLOR_LABEL[it.key]}>
+            <span className={`w-2.5 h-2.5 rounded-full ${COLOR_DOTS[it.key]}`} />
+            <span className="font-semibold text-content-primary tabular-nums">{it.value}</span>
+          </span>
+        ))}
+      </button>
+      <BalanceHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Моя история баланса"
+      />
+    </>
   );
 }
