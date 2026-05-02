@@ -8,7 +8,12 @@ export class SeedService implements OnApplicationBootstrap {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async onApplicationBootstrap() {
+  onApplicationBootstrap() {
+    // Run seed in background so it does NOT block HTTP server startup / healthcheck
+    setImmediate(() => this.runSeed());
+  }
+
+  private async runSeed() {
     try {
       const count = await this.prisma.user.count();
       if (count > 0) {
