@@ -95,4 +95,34 @@ export class InventoryService {
       return { ok: true, cityId: dto.cityId, color: dto.color, newBalance: inv.count };
     });
   }
+
+  async stats(user: AuthUser) {
+    const sc = user.scope;
+    const isGlobal = !sc || sc.scope === 'GLOBAL';
+    const isCountry = sc?.scope === 'COUNTRY';
+    const isCity = sc?.scope === 'CITY';
+
+    const scopedTransferWhere = isGlobal ? {} : {
+      ...(isCountry && sc.countryId ? { fromCountryId: sc.countryId } : {}),
+      ...(isCity && sc.cityId ? { fromCityId: sc.cityId } : {}),
+    };
+    const scopedExpenseWhere = isGlobal ? {} : {
+      ...(isCountry && sc.countryId ? { countryId: sc.countryId } : {}),
+      ...(isCity && sc.cityId ? { cityId: sc.cityId } : {}),
+    };
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [cities, pendingTransfers, discrepancies, expenses] = await Promise.all([
+      this.byCity(user),
+      this.prisma.transfer.count({ where: { status: 'PENDING', ...scopedTransferWhere } }),
+      this.prisma.transfer.count({ where: { status: 'DISCREPANCY', ...scopedTransferWhere } }),
+      this.prisma.expense.count({ where: { createdAt: { gte: monthStart }, ...scopedExpenseWhere } }),
+    ]);
+    const totalBracelets = cities.reduce((s, c) => s + c.total, 0);
+    const totalCities = cities.length;
+    return { totalBracelets, totalCities, pendingTransfers, discrepancies, expensesThisMonth: expenses };
+  }
 }

@@ -10,6 +10,7 @@ const ITEMS = [
   { to: '/expenses', label: 'Расходы', icon: '€', roles: ROLES },
   { to: '/history', label: 'История', icon: '⌛', roles: ROLES },
   { to: '/users', label: 'Сотрудники', icon: '◉', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
+  { to: '/geodata', label: 'География', icon: '◎', roles: ['ADMIN', 'OFFICE'] },
   { to: '/settings', label: 'Настройки', icon: '⚙', roles: ROLES },
 ];
 

@@ -9,6 +9,7 @@ import Expenses from './pages/Expenses';
 import History from './pages/History';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
+import Geodata from './pages/Geodata';
 import { useAuthStore } from './store/useAuthStore';
 
 function RequireAuth({ children }) {
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="history" element={<History />} />
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="geodata" element={<Geodata />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

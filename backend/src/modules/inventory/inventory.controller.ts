@@ -23,6 +23,11 @@ export class InventoryController {
     return this.inv.byCountry(user);
   }
 
+  @Get('stats')
+  stats(@CurrentUser() user: AuthUser) {
+    return this.inv.stats(user);
+  }
+
   @Roles(Role.ADMIN, Role.OFFICE)
   @Post('intake')
   intake(@Body() dto: IntakeDto, @CurrentUser() actor: AuthUser) {
