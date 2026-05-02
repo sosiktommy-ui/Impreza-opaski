@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { SeedService } from './common/seed/seed.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CountriesModule } from './modules/countries/countries.module';
@@ -27,5 +28,6 @@ import { HealthModule } from './modules/health/health.module';
     EventsModule,
     HealthModule,
   ],
+  providers: [SeedService],
 })
 export class AppModule {}
