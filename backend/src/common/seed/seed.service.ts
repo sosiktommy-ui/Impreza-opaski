@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { execSync } from 'child_process';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 
@@ -14,6 +15,18 @@ export class SeedService implements OnApplicationBootstrap {
   }
 
   private async runSeed() {
+    try {
+      // Apply schema changes (safe to run on already-up-to-date DB)
+      this.logger.log('Running prisma db push…');
+      execSync('npx prisma db push --skip-generate --accept-data-loss', {
+        cwd: process.cwd(),
+        stdio: 'inherit',
+        timeout: 60_000,
+      });
+      this.logger.log('Schema up to date.');
+    } catch (e) {
+      this.logger.warn(`prisma db push failed (non-fatal): ${(e as Error)?.message ?? String(e)}`);
+    }
     try {
       const count = await this.prisma.user.count();
       if (count > 0) {
