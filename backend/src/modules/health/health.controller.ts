@@ -11,6 +11,11 @@ export class HealthController {
     private readonly config: ConfigService,
   ) {}
 
+  @Get()
+  health() {
+    return { ok: true, ts: Date.now() };
+  }
+
   @Get('ping')
   ping() {
     return { ok: true, ts: Date.now() };
