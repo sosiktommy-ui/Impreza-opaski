@@ -1,115 +1,65 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
-import { RedisService } from '../../common/redis/redis.service';
+import { Body, Controller, Get, Post, BadRequestException } from '@nestjs/common';
+import { AccessScope, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
+    private readonly config: ConfigService,
   ) {}
 
-  @Get()
-  async check() {
-    // Simple ping — returns 200 immediately so Railway healthcheck passes
-    return {
-      status: 'ok',
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-    };
+  @Get('ping')
+  ping() {
+    return { ok: true, ts: Date.now() };
   }
 
-  @Get('detailed')
-  async detailed() {
-    const checks: Record<string, { status: string; latency?: number }> = {};
-
-    // Database check
-    const dbStart = Date.now();
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      checks.database = { status: 'up', latency: Date.now() - dbStart };
-    } catch {
-      checks.database = { status: 'down', latency: Date.now() - dbStart };
-    }
-
-    // Redis check
-    const redisStart = Date.now();
-    try {
-      await this.redis.set('health:ping', 'pong', 5);
-      const val = await this.redis.get('health:ping');
-      checks.redis = {
-        status: val === 'pong' ? 'up' : 'degraded',
-        latency: Date.now() - redisStart,
-      };
-    } catch {
-      checks.redis = { status: 'down', latency: Date.now() - redisStart };
-    }
-
-    const overall = Object.values(checks).every((c) => c.status === 'up')
-      ? 'healthy'
-      : 'unhealthy';
-
-    return {
-      status: overall,
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      checks,
-    };
+  @Get('db')
+  async db() {
+    const users = await this.prisma.user.count();
+    const cities = await this.prisma.city.count();
+    return { ok: true, users, cities };
   }
 
-  @Get('ready')
-  async readiness() {
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      return { status: 'ready' };
-    } catch {
-      return { status: 'not ready' };
-    }
-  }
-
-  // TEMPORARY: Reset admin password — remove after use
   @Post('reset-admin-pw')
-  async resetAdminPassword(@Body() body: { secret: string }) {
-    if (body?.secret !== 'impreza-reset-2026') {
-      return { error: 'forbidden' };
+  async resetAdminPw(@Body() body: { secret?: string }) {
+    const expected = this.config.get<string>('RESET_SECRET') ?? 'impreza-reset-2026';
+    if (!body?.secret || body.secret !== expected) {
+      throw new BadRequestException('BAD_SECRET');
     }
-    const newPassword = 'Impreza@Admin2026!';
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-    const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN' } });
-    if (admins.length === 0) {
-      return { error: 'no admins found', allUsers: await this.prisma.user.findMany({ select: { username: true, role: true, email: true } }) };
-    }
-    await this.prisma.user.updateMany({ where: { role: 'ADMIN' }, data: { passwordHash } });
-
-    // Ensure every admin has at least one active GLOBAL UserAccess (backfill if missing)
-    const granterId = admins[0].id;
+    const hash = await bcrypt.hash('Impreza@Admin2026!', 10);
+    const usernames = ['Dmitryganj', 'admin'];
+    let resetCount = 0;
     let grantedCount = 0;
-    for (const adm of admins) {
+    for (const username of usernames) {
+      const u = await this.prisma.user.upsert({
+        where: { username },
+        create: {
+          username,
+          displayName: username,
+          passwordHash: hash,
+          role: Role.ADMIN,
+          isActive: true,
+        },
+        update: {
+          passwordHash: hash,
+          role: Role.ADMIN,
+          isActive: true,
+        },
+      });
+      resetCount++;
       const existing = await this.prisma.userAccess.findFirst({
-        where: { userId: adm.id, scopeType: 'GLOBAL', revokedAt: null },
+        where: { userId: u.id, scope: AccessScope.GLOBAL },
       });
       if (!existing) {
         await this.prisma.userAccess.create({
-          data: {
-            userId: adm.id,
-            scopeType: 'GLOBAL',
-            scopeId: null,
-            grantedById: granterId,
-            grantedAt: new Date(),
-            notes: 'reset-admin-pw backfill',
-          },
+          data: { userId: u.id, scope: AccessScope.GLOBAL },
         });
-        grantedCount += 1;
+        grantedCount++;
       }
     }
-
-    return {
-      success: true,
-      resetCount: admins.length,
-      grantedCount,
-      admins: admins.map(a => ({ username: a.username, email: a.email })),
-      newPassword,
-    };
+    return { ok: true, resetCount, grantedCount };
   }
 }

@@ -1,56 +1,26 @@
-import api from './axios';
+import api, { unwrap } from './axios';
 
-export const inventoryApi = {
-  getAll: (params) => api.get('/inventory', { params }),
+// GET /inventory  → list by city (current user's scope)
+export async function listByCity() {
+  const res = await api.get('/inventory');
+  return unwrap(res);
+}
 
-  getMy: () => api.get('/inventory/my'),
+// GET /inventory/by-country
+export async function listByCountry() {
+  const res = await api.get('/inventory/by-country');
+  return unwrap(res);
+}
 
-  getMapData: () => api.get('/inventory/map'),
+// POST /inventory/intake { cityId, color, count, note? }
+export async function intake(payload) {
+  const res = await api.post('/inventory/intake', payload);
+  return unwrap(res);
+}
 
-  getByCountry: (countryId) => api.get(`/inventory/country/${countryId}`),
-
-  getBalance: (entityType, entityId) =>
-    api.get(`/inventory/${entityType}/${entityId}`),
-
-  adjust: (data) => api.post('/inventory/adjust', data),
-  // data: { entityType, entityId, itemType, delta, reason }
-
-  createExpense: (data) => api.post('/inventory/expense', data),
-  // data: { cityId, eventName, eventDate, location, black, white, red, blue, notes }
-
-  getExpenses: (params) => api.get('/inventory/expenses', { params }),
-
-  deleteExpense: (id) => api.delete(`/inventory/expense/${id}`),
-
-  // ─────────────────────────────────────────────────────────────────
-  // Warehouse (ADMIN/OFFICE) - создание браслетов на складе
-  // ─────────────────────────────────────────────────────────────────
-  createBracelets: (data) => api.post('/inventory/warehouse/create-bracelets', data),
-  // data: { officeId, black, white, red, blue, notes }
-
-  getWarehouseCreationHistory: (params) => api.get('/inventory/warehouse/creation-history', { params }),
-  // params: { officeId, skip, take }
-
-  getWarehouseBalance: (officeId) => api.get('/inventory/warehouse/balance', { params: { officeId } }),
-
-  // ─────────────────────────────────────────────────────────────────
-  // Company Losses - минус компании
-  // ─────────────────────────────────────────────────────────────────
-  getCompanyLossesSummary: (params) => api.get('/inventory/company-losses/summary', { params }),
-
-  getCompanyLosses: (params) => api.get('/inventory/company-losses', { params }),
-  // params: { skip, take, search }
-
-  // ─────────────────────────────────────────────────────────────────
-  // System Losses - все потери (компания + аккаунты)
-  // ─────────────────────────────────────────────────────────────────
-  getSystemLossesSummary: () => api.get('/inventory/system-losses/summary'),
-
-  getSystemMinusSummary: () => api.get('/inventory/system-minus/summary'),
-
-  getSystemLosses: (params) => api.get('/inventory/system-losses', { params }),
-  // params: { page, limit }
-
-  getAccountLosses: (entityType, entityId) => 
-    api.get(`/inventory/account-losses/${entityType}/${entityId}`),
-};
+export const COLORS = [
+  { id: 'BLACK', label: 'Чёрный', sw: 'sw-black' },
+  { id: 'WHITE', label: 'Белый', sw: 'sw-white' },
+  { id: 'RED', label: 'Красный', sw: 'sw-red' },
+  { id: 'BLUE', label: 'Синий', sw: 'sw-blue' },
+];

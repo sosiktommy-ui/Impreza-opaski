@@ -1,111 +1,31 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { BullModule } from '@nestjs/bullmq';
-import { CqrsModule } from '@nestjs/cqrs';
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './common/prisma/prisma.module';
-import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { AccessModule } from './modules/access/access.module';
-import { BalancesModule } from './modules/balances/balances.module';
 import { UsersModule } from './modules/users/users.module';
+import { CountriesModule } from './modules/countries/countries.module';
+import { CitiesModule } from './modules/cities/cities.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
-import { AuditModule } from './modules/audit/audit.module';
-import { HealthModule } from './modules/health/health.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
+import { HistoryModule } from './modules/history/history.module';
 import { EventsModule } from './modules/events/events.module';
-import { ProfileModule } from './modules/profile/profile.module';
-import { ChatModule } from './modules/chat/chat.module';
-import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
-    // Config
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '../.env',
-    }),
-
-    // Rate limiting
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 1000,
-        limit: 10,
-      },
-      {
-        name: 'medium',
-        ttl: 10000,
-        limit: 50,
-      },
-      {
-        name: 'long',
-        ttl: 60000,
-        limit: 100,
-      },
-    ]),
-
-    // Events
-    EventEmitterModule.forRoot({
-      wildcard: true,
-      delimiter: '.',
-      maxListeners: 20,
-    }),
-
-    // Queue (BullMQ)
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => {
-        const redisUrl = configService.get<string>('REDIS_URL', 'redis://localhost:6379');
-        const url = new URL(redisUrl);
-        return {
-          connection: {
-            host: url.hostname,
-            port: parseInt(url.port, 10) || 6379,
-            password: url.password || undefined,
-            maxRetriesPerRequest: null,
-            lazyConnect: true,
-          },
-        };
-      },
-      inject: [ConfigService],
-    }),
-
-    // CQRS
-    CqrsModule,
-
-    // Database
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../.env'] }),
     PrismaModule,
-
-    // Cache
-    RedisModule,
-
-    // Feature modules
     AuthModule,
-    AccessModule,
-    BalancesModule,
     UsersModule,
+    CountriesModule,
+    CitiesModule,
     InventoryModule,
     TransfersModule,
-    NotificationsModule,
-    AuditModule,
-    HealthModule,
+    ExpensesModule,
+    HistoryModule,
     EventsModule,
-    ProfileModule,
-    ChatModule,
-  ],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    HealthModule,
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
-  }
-}
+export class AppModule {}

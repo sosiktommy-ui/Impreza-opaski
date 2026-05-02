@@ -1,181 +1,85 @@
-import { NavLink, useLocation } from 'react-router-dom';
-import {
-  LayoutGrid,
-  Truck,
-  PackageCheck,
-  ShieldAlert,
-  Receipt,
-  Warehouse,
-  SlidersHorizontal,
-  X,
-  CircleUserRound,
-  ClockArrowUp,
-  PanelLeftClose,
-  PanelLeft,
-  MapPinned,
-  Clock,
-  BarChart3,
-  TrendingDown,
-} from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useAppStore, useBadgeStore } from '../../store/useAppStore';
-import { useEffect } from 'react';
-import { transfersApi } from '../../api/transfers';
-import { inventoryApi } from '../../api/inventory';
 
-const MENU_TOOLTIPS = {
-  '/': 'Общая сводка и статистика',
-  '/transfers': 'Исходящие трансферы браслетов',
-  '/acceptance': 'Входящие трансферы ожидающие подтверждения',
-  '/problematic': 'Трансферы с расхождением в количестве',
-  '/pending': 'Трансферы ожидающие ответа получателя',
-  '/expenses': 'Расход браслетов на мероприятиях',
-  '/company-losses': 'Потерянные браслеты и инциденты',
-  '/balance': 'Остатки браслетов по странам и городам',
-  '/map': 'Географическое распределение браслетов',
-  '/history': 'Все трансферы и операции',
-  '/statistics': 'Аналитика и отчётность',
-  '/users': 'Управление пользователями и настройки',
-  '/profile': 'Ваш профиль и настройки аккаунта',
-};
+const ROLES = ['ADMIN', 'OFFICE', 'COUNTRY', 'MANAGER'];
 
-const allLinks = [
-  { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/transfers', icon: Truck, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'incoming' },
-  { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'problematic' },
-  { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
-  { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/company-losses', icon: TrendingDown, label: 'Минус компании', labelCountry: 'Потери страны', labelCity: 'Мои потери', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'companyLoss' },
-  { to: '/balance', icon: Warehouse, label: 'Баланс', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
-  { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/statistics', icon: BarChart3, label: 'Статистика', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/users', icon: SlidersHorizontal, label: 'Настройки', roles: ['ADMIN', 'OFFICE'], badgeKey: null },
-  { to: '/profile', icon: CircleUserRound, label: 'Профиль', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+const ITEMS = [
+  { to: '/', label: 'Обзор', icon: '◇', roles: ROLES, end: true },
+  { to: '/inventory', label: 'Склад', icon: '▦', roles: ROLES },
+  { to: '/transfers', label: 'Передачи', icon: '⇄', roles: ROLES },
+  { to: '/expenses', label: 'Расходы', icon: '€', roles: ROLES },
+  { to: '/history', label: 'История', icon: '⌛', roles: ROLES },
+  { to: '/users', label: 'Сотрудники', icon: '◉', roles: ['ADMIN', 'OFFICE', 'COUNTRY'] },
+  { to: '/settings', label: 'Настройки', icon: '⚙', roles: ROLES },
 ];
 
 export default function Sidebar() {
-  const { user } = useAuthStore();
-  const { sidebarOpen, closeSidebar, sidebarCollapsed, toggleCollapsed } = useAppStore();
-  const { pendingCount, problematicCount, incomingCount, companyLossCount, refreshCounts } = useBadgeStore();
+  const { user, currentAccess, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const role = user?.role;
 
-  useEffect(() => {
-    // Initial fetch and polling for badge counts
-    refreshCounts(transfersApi, inventoryApi);
-    const badgeInterval = setInterval(() => refreshCounts(transfersApi, inventoryApi), 30000);
-    return () => {
-      clearInterval(badgeInterval);
-    };
-  }, []);
+  function onLogout() {
+    logout();
+    navigate('/login', { replace: true });
+  }
 
-  const links = allLinks.filter((l) => l.roles.includes(user?.role));
-
-  // Get badge count for a link
-  const getBadge = (badgeKey) => {
-    switch (badgeKey) {
-      case 'incoming': return incomingCount > 0 ? incomingCount : null;
-      case 'problematic': return problematicCount > 0 ? problematicCount : null;
-      case 'pending': return pendingCount > 0 ? pendingCount : null;
-      case 'companyLoss': return companyLossCount > 0 ? companyLossCount : null;
-      default: return null;
-    }
-  };
-
-  // Get badge color class
-  const getBadgeColor = (badgeKey) => {
-    switch (badgeKey) {
-      case 'problematic': return 'bg-amber-500';
-      case 'pending': return 'bg-orange-500';
-      case 'incoming': return 'bg-emerald-500';
-      case 'companyLoss': return 'bg-red-500';
-      default: return 'bg-brand-600';
-    }
-  };
-
-  const navContent = (collapsed) => (
-    <nav className="flex flex-col gap-1 p-2">
-      {links.map(({ to, icon: Icon, label, labelCity, labelCountry, badgeKey }) => {
-        const badge = getBadge(badgeKey);
-        const badgeColor = getBadgeColor(badgeKey);
-        const displayLabel = user?.role === 'CITY' && labelCity ? labelCity
-          : user?.role === 'COUNTRY' && labelCountry ? labelCountry
-          : label;
-        return (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={closeSidebar}
-            title={MENU_TOOLTIPS[to] || displayLabel}
-            className={({ isActive }) =>
-              `group relative flex items-center ${collapsed ? 'justify-center' : ''} gap-3 ${collapsed ? 'px-2' : 'px-3'} py-2.5 rounded-lg text-sm font-medium transition-all duration-200
-              ${isActive
-                ? 'bg-brand-600/15 text-brand-500 shadow-sm shadow-brand-600/10'
-                : 'text-content-secondary hover:bg-surface-card-hover hover:text-content-primary hover:translate-x-0.5'
-              }`
-            }
-            end={to === '/'}
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && !collapsed && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-brand-500 rounded-r-full" />
-                )}
-                <Icon size={20} strokeWidth={isActive ? 2 : 1.6} className="flex-shrink-0 transition-all" />
-                {!collapsed && <span className="flex-1 truncate">{displayLabel}</span>}
-                {!collapsed && badge && (
-                  <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full ${badgeColor} text-white text-2xs font-bold px-1.5 animate-pulse`}>
-                    {badge}
-                  </span>
-                )}
-                {collapsed && badge && (
-                  <span className={`absolute top-1 right-1 w-2.5 h-2.5 ${badgeColor} rounded-full ring-2 ring-surface-secondary`} />
-                )}
-              </>
-            )}
-          </NavLink>
-        );
-      })}
-    </nav>
-  );
+  const items = ITEMS.filter((i) => i.roles.includes(role));
 
   return (
-    <>
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden animate-fadeIn">
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={closeSidebar} />
-          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-surface-secondary shadow-lg z-50 flex flex-col animate-slideInRight">
-            <div className="flex items-center justify-between px-4 h-14 border-b border-edge">
-              <span className="font-bold text-brand-500 tracking-tight">IMPREZA</span>
-              <button
-                onClick={closeSidebar}
-                className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            {navContent(false)}
-          </aside>
+    <aside
+      className="hidden md:flex flex-col w-[240px] shrink-0 h-screen sticky top-0 border-r"
+      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+    >
+      <div className="px-5 py-5 flex items-center gap-2.5">
+        <div
+          className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+          style={{ background: 'var(--accent)' }}
+        >
+          <span className="text-white font-bold">I</span>
         </div>
-      )}
+        <div>
+          <div className="text-[14px] font-semibold leading-tight">Impreza</div>
+          <div className="text-[10px] uppercase tracking-wider text-text-3 mono">
+            {currentAccess?.scope === 'GLOBAL'
+              ? 'Global'
+              : currentAccess?.cityName || currentAccess?.countryName || '—'}
+          </div>
+        </div>
+      </div>
 
-      {/* Desktop sidebar */}
-      <aside className={`hidden lg:flex lg:flex-col ${sidebarCollapsed ? 'lg:w-16' : 'lg:w-60'} lg:border-r lg:border-edge bg-surface-secondary min-h-0 transition-all duration-200`}>
-        <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} px-3 h-10`}>
-          {!sidebarCollapsed && (
-            <span className="text-2xs font-semibold text-content-muted uppercase tracking-widest">Меню</span>
-          )}
-          <button
-            onClick={toggleCollapsed}
-            className="p-1 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted transition-colors"
-            title={sidebarCollapsed ? 'Развернуть' : 'Свернуть'}
-          >
-            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          </button>
+      <nav className="px-3 flex-1 overflow-y-auto">
+        <div className="text-[10px] uppercase tracking-wider text-text-3 px-3 mb-2 mt-2 font-semibold">
+          Меню
         </div>
-        {navContent(sidebarCollapsed)}
-      </aside>
-    </>
+        <div className="space-y-0.5">
+          {items.map((it) => (
+            <NavLink
+              key={it.to}
+              to={it.to}
+              end={it.end}
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            >
+              <span className="text-[15px] w-5 text-center text-text-3">{it.icon}</span>
+              <span>{it.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      </nav>
+
+      <div
+        className="p-3 border-t"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        <div className="px-3 py-2">
+          <div className="text-[13px] font-semibold leading-tight truncate">
+            {user?.displayName || user?.username}
+          </div>
+          <div className="text-[11px] text-text-3 mono mt-0.5">{role}</div>
+        </div>
+        <button onClick={onLogout} className="btn btn-ghost btn-block btn-sm mt-1">
+          Выйти
+        </button>
+      </div>
+    </aside>
   );
 }

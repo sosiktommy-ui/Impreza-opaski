@@ -34,8 +34,9 @@ datasource db {
 // ╚═══════════════════════════════════════════════════════════════╝
 
 enum Role {
-  ADMIN // global, full power
-  OFFICE // country-level operations
+  ADMIN // global, full power, account management
+  OFFICE // global ops, no account management
+  COUNTRY // full ops within assigned country/countries; cannot self-reset password
   MANAGER // city-level operations
 }
 

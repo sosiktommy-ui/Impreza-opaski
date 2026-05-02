@@ -1,313 +1,216 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
-import { Role, Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AccessScope, AuditAction, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuthUser } from '../../common/auth/auth.types';
+import {
+  AccessDto,
+  CreateUserDto,
+  ReplaceAccessesDto,
+  UpdateUserDto,
+} from './dto/users.dto';
+
+function validateAccessesForRole(role: Role, accesses: AccessDto[]) {
+  if (accesses.length === 0) throw new BadRequestException('NO_ACCESSES');
+
+  if (role === Role.ADMIN || role === Role.OFFICE) {
+    if (accesses.length !== 1 || accesses[0].scope !== AccessScope.GLOBAL) {
+      throw new BadRequestException('ADMIN_OFFICE_REQUIRES_GLOBAL');
+    }
+  }
+  if (role === Role.COUNTRY) {
+    for (const a of accesses) {
+      if (a.scope !== AccessScope.COUNTRY || !a.countryId) {
+        throw new BadRequestException('COUNTRY_REQUIRES_COUNTRY_SCOPE');
+      }
+    }
+  }
+  if (role === Role.MANAGER) {
+    for (const a of accesses) {
+      if (a.scope !== AccessScope.CITY || !a.cityId) {
+        throw new BadRequestException('MANAGER_REQUIRES_CITY_SCOPE');
+      }
+    }
+  }
+}
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
-
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(params: {
-    role?: Role;
-    countryId?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    const { role, countryId, search, page = 1, limit = 50 } = params;
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.UserWhereInput = {};
-
-    if (role) where.role = role;
-    if (countryId) where.countryId = countryId;
-    if (search) {
-      where.OR = [
-        { username: { contains: search, mode: 'insensitive' } },
-        { displayName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    const [users, total] = await Promise.all([
-      this.prisma.user.findMany({
-        where,
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          role: true,
-          displayName: true,
-          isActive: true,
-          officeId: true,
-          countryId: true,
-          cityId: true,
-          office: { select: { id: true, name: true, code: true } },
-          country: { select: { id: true, name: true, code: true } },
-          city: { select: { id: true, name: true, slug: true } },
-          balanceBlack: true,
-          balanceWhite: true,
-          balanceRed: true,
-          balanceBlue: true,
-          balanceVersion: true,
-          createdAt: true,
-        },
-        orderBy: [{ role: 'asc' }, { displayName: 'asc' }],
-        skip,
-        take: limit,
-      }),
-      this.prisma.user.count({ where }),
-    ]);
-
-    return {
-      data: users,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+  async list() {
+    const users = await this.prisma.user.findMany({
+      include: { accesses: { include: { country: true, city: true } } },
+      orderBy: [{ role: 'asc' }, { username: 'asc' }],
+    });
+    return users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      role: u.role,
+      isActive: u.isActive,
+      lastLoginAt: u.lastLoginAt,
+      createdAt: u.createdAt,
+      accesses: u.accesses.map((a) => ({
+        id: a.id,
+        scope: a.scope,
+        countryId: a.countryId,
+        cityId: a.cityId,
+        countryName: a.country?.name ?? null,
+        cityName: a.city?.name ?? null,
+      })),
+    }));
   }
 
   async findById(id: string) {
-    const user = await this.prisma.user.findUnique({
+    const u = await this.prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        displayName: true,
-        isActive: true,
-        officeId: true,
-        countryId: true,
-        cityId: true,
-        office: { select: { id: true, name: true, code: true } },
-        country: { select: { id: true, name: true, code: true } },
-        city: { select: { id: true, name: true, slug: true } },
-        createdAt: true,
-        updatedAt: true,
-      },
+      include: { accesses: { include: { country: true, city: true } } },
     });
-
-    if (!user) throw new NotFoundException(`User ${id} not found`);
-    return user;
+    if (!u) throw new NotFoundException('USER_NOT_FOUND');
+    return u;
   }
 
-  async update(id: string, data: { displayName?: string; isActive?: boolean; email?: string }) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException(`User ${id} not found`);
+  async create(dto: CreateUserDto, actor: AuthUser) {
+    validateAccessesForRole(dto.role, dto.accesses);
+    const exists = await this.prisma.user.findUnique({ where: { username: dto.username } });
+    if (exists) throw new ConflictException('USERNAME_TAKEN');
 
-    if (data.email) {
-      const existing = await this.prisma.user.findFirst({
-        where: { email: data.email, id: { not: id } },
-      });
-      if (existing) throw new ConflictException('Email already in use');
-    }
+    const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    return this.prisma.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        displayName: true,
-        isActive: true,
-        officeId: true,
-        countryId: true,
-        cityId: true,
-      },
-    });
-  }
-
-  async getCountries(params?: { role?: Role; countryId?: string; cityId?: string }) {
-    const where: Prisma.CountryWhereInput = {};
-
-    if (params?.role === Role.COUNTRY && params.countryId) {
-      where.id = params.countryId;
-    }
-    // ADMIN / OFFICE / CITY — no filter, return all
-    // (CITY needs full list to pick a destination country/city for transfers)
-
-    return this.prisma.country.findMany({
-      where,
-      include: {
-        office: { select: { id: true, name: true, code: true } },
-        cities: {
-          orderBy: { name: 'asc' },
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username: dto.username,
+          displayName: dto.displayName,
+          passwordHash,
+          role: dto.role,
+          accesses: {
+            create: dto.accesses.map((a) => ({
+              scope: a.scope,
+              countryId: a.countryId ?? null,
+              cityId: a.cityId ?? null,
+            })),
+          },
         },
-      },
-      orderBy: { name: 'asc' },
-    });
-  }
-
-  async getOffices() {
-    // Ensure every OFFICE-role user has an Office entity
-    const officeUsers = await this.prisma.user.findMany({
-      where: { role: Role.OFFICE, isActive: true },
-      select: { id: true, username: true, displayName: true, officeId: true },
-    });
-
-    for (const u of officeUsers) {
-      if (!u.officeId) {
-        const code = `office-${u.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-        const name = u.displayName || u.username;
-
-        // Create Office entity and link user
-        const office = await this.prisma.office.upsert({
-          where: { code },
-          create: { name, code },
-          update: {},
-        });
-        await this.prisma.user.update({
-          where: { id: u.id },
-          data: { officeId: office.id },
-        });
-        this.logger.log(`Auto-created Office "${name}" (${code}) for user ${u.username}`);
-      }
-    }
-
-    return this.prisma.office.findMany({
-      include: {
-        countries: {
-          select: { id: true, name: true, code: true },
-          orderBy: { name: 'asc' },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
-  }
-
-  async getCities(countryId?: string) {
-    const where: Prisma.CityWhereInput = {};
-    if (countryId) where.countryId = countryId;
-
-    return this.prisma.city.findMany({
-      where,
-      include: {
-        country: { select: { id: true, name: true, code: true } },
-      },
-      orderBy: { name: 'asc' },
-    });
-  }
-
-  async createUser(data: {
-    username: string;
-    password: string;
-    email?: string;
-    role: Role;
-    displayName: string;
-    officeId?: string;
-    countryId?: string;
-    cityId?: string;
-  }) {
-    // Check username uniqueness
-    const existingUsername = await this.prisma.user.findUnique({
-      where: { username: data.username },
-    });
-    if (existingUsername) throw new ConflictException('Username already exists');
-
-    // Check email uniqueness (if provided)
-    if (data.email) {
-      const existingEmail = await this.prisma.user.findFirst({
-        where: { email: data.email },
+        include: { accesses: true },
       });
-      if (existingEmail) throw new ConflictException('Email already in use');
-    }
-
-    if (data.password.length < 6) {
-      throw new BadRequestException('Password must be at least 6 characters');
-    }
-
-    const passwordHash = await bcrypt.hash(data.password, 12);
-
-    const user = await this.prisma.user.create({
-      data: {
-        username: data.username,
-        passwordHash,
-        passwordVisible: data.password,
-        email: data.email || null,
-        role: data.role,
-        displayName: data.displayName,
-        officeId: data.officeId || null,
-        countryId: data.countryId || null,
-        cityId: data.cityId || null,
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        displayName: true,
-        isActive: true,
-        officeId: true,
-        countryId: true,
-        cityId: true,
-        createdAt: true,
-      },
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.USER_CREATED,
+          userId: actor.id,
+          entityType: 'User',
+          entityId: created.id,
+          payload: { username: dto.username, role: dto.role, accesses: dto.accesses as object },
+        },
+      });
+      return created;
     });
-
-    this.logger.log(`User created: ${user.username} (${user.role})`);
-    return user;
   }
 
-  async deleteUser(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException(`User ${id} not found`);
+  async update(id: string, dto: UpdateUserDto, actor: AuthUser) {
+    const target = await this.findById(id);
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: {
+          displayName: dto.displayName ?? undefined,
+          isActive: dto.isActive ?? undefined,
+          role: dto.role ?? undefined,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.USER_UPDATED,
+          userId: actor.id,
+          entityType: 'User',
+          entityId: id,
+          payload: { before: { displayName: target.displayName, isActive: target.isActive, role: target.role }, after: dto as object },
+        },
+      });
+      return updated;
+    });
+  }
 
-    if (user.role === Role.ADMIN) {
-      // Don't allow deleting the last admin
-      const adminCount = await this.prisma.user.count({ where: { role: Role.ADMIN } });
-      if (adminCount <= 1) {
-        throw new BadRequestException('Cannot delete the last admin user');
+  async softDelete(id: string, actor: AuthUser) {
+    if (id === actor.id) throw new BadRequestException('CANNOT_DELETE_SELF');
+    await this.findById(id);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { isActive: false } });
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.USER_DELETED,
+          userId: actor.id,
+          entityType: 'User',
+          entityId: id,
+          payload: {},
+        },
+      });
+      return { ok: true };
+    });
+  }
+
+  async resetPassword(id: string, newPassword: string, actor: AuthUser) {
+    await this.findById(id);
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { passwordHash } });
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.USER_UPDATED,
+          userId: actor.id,
+          entityType: 'User',
+          entityId: id,
+          payload: { passwordReset: true },
+        },
+      });
+      return { ok: true };
+    });
+  }
+
+  async replaceAccesses(id: string, dto: ReplaceAccessesDto, actor: AuthUser) {
+    const target = await this.findById(id);
+    validateAccessesForRole(target.role, dto.accesses);
+    return this.prisma.$transaction(async (tx) => {
+      const oldAccesses = await tx.userAccess.findMany({ where: { userId: id } });
+      await tx.userAccess.deleteMany({ where: { userId: id } });
+      const created = [];
+      for (const a of dto.accesses) {
+        created.push(
+          await tx.userAccess.create({
+            data: {
+              userId: id,
+              scope: a.scope,
+              countryId: a.countryId ?? null,
+              cityId: a.cityId ?? null,
+            },
+          }),
+        );
       }
-    }
-
-    // Delete related data first
-    await this.prisma.refreshToken.deleteMany({ where: { userId: id } });
-    await this.prisma.notification.deleteMany({ where: { userId: id } });
-
-    await this.prisma.user.delete({ where: { id } });
-    this.logger.log(`User deleted: ${user.username}`);
-    return { success: true, message: `User ${user.username} deleted` };
-  }
-
-  async resetPassword(id: string, newPassword: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException(`User ${id} not found`);
-
-    if (newPassword.length < 6) {
-      throw new BadRequestException('Password must be at least 6 characters');
-    }
-
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-
-    await this.prisma.user.update({
-      where: { id },
-      data: { passwordHash, passwordVisible: newPassword },
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.ACCESS_REVOKED,
+          userId: actor.id,
+          entityType: 'User',
+          entityId: id,
+          payload: { revoked: oldAccesses.length },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.ACCESS_GRANTED,
+          userId: actor.id,
+          entityType: 'User',
+          entityId: id,
+          payload: { granted: dto.accesses as object },
+        },
+      });
+      return created;
     });
-
-    // Revoke all refresh tokens
-    await this.prisma.refreshToken.updateMany({
-      where: { userId: id, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-
-    this.logger.log(`Password reset for user: ${user.username}`);
-    return { success: true, message: `Password reset for ${user.username}` };
-  }
-
-  async getPassword(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: { id: true, username: true, displayName: true, passwordVisible: true },
-    });
-    if (!user) throw new NotFoundException(`User ${id} not found`);
-    return { password: user.passwordVisible || null };
   }
 }

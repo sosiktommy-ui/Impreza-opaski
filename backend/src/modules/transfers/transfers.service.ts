@@ -1,2329 +1,375 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Logger,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
-import { RedisService } from '../../common/redis/redis.service';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-  TransferStatus,
-  EntityType,
-  ItemType,
-  Prisma,
-  ScopeType,
   AuditAction,
+  ExpenseKind,
+  Role,
+  TransferStatus,
 } from '@prisma/client';
-import { InventoryService } from '../inventory/inventory.service';
-import { BalancesService } from '../balances/balances.service';
-import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
-
-export interface SendTransferInput {
-  senderType: EntityType;
-  senderOfficeId?: string;
-  senderCountryId?: string;
-  senderCityId?: string;
-  receiverType: EntityType;
-  receiverOfficeId?: string;
-  receiverCountryId?: string;
-  receiverCityId?: string;
-  items: Array<{ itemType: ItemType; quantity: number }>;
-  notes?: string;
-  createdBy: string;
-}
-
-export interface AcceptanceItem {
-  itemType: ItemType;
-  receivedQuantity: number;
-}
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuthUser } from '../../common/auth/auth.types';
+import { canAccessCity, requireCityAccess, visibleCityIds } from '../../common/auth/scope.util';
+import { generateTransferCode } from '../../common/util/transfer-code';
+import {
+  AcceptTransferDto,
+  CreateTransferDto,
+  TransferListQueryDto,
+} from './dto/transfers.dto';
 
 @Injectable()
 export class TransfersService {
-  private readonly logger = new Logger(TransfersService.name);
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
-    private readonly eventEmitter: EventEmitter2,
-    private readonly inventoryService: InventoryService,
-    private readonly balances: BalancesService,
-  ) {}
+  private async loadFull(id: string) {
+    const t = await this.prisma.transfer.findUnique({
+      where: { id },
+      include: {
+        lines: true,
+        fromCity: { include: { country: true } },
+        toCity: { include: { country: true } },
+        createdBy: { select: { id: true, username: true, displayName: true, role: true } },
+        acceptedBy: { select: { id: true, username: true, displayName: true, role: true } },
+      },
+    });
+    if (!t) throw new NotFoundException('TRANSFER_NOT_FOUND');
+    return t;
+  }
 
-  // ──────────────────────────────────────────────
-  // SEND TRANSFER (create + send in one step)
-  // Admin creates bracelets from nothing (no inventory deduction)
-  // Country/City deducts from own inventory
-  // ──────────────────────────────────────────────
-
-  async sendTransfer(input: SendTransferInput) {
-    if (this.isSameEntity(input)) {
-      throw new BadRequestException('Cannot send to yourself');
+  async list(user: AuthUser, q: TransferListQueryDto) {
+    const allowedCities = await visibleCityIds(this.prisma, user);
+    const where: any = {};
+    if (q.status) where.status = q.status;
+    if (q.fromCityId) where.fromCityId = q.fromCityId;
+    if (q.toCityId) where.toCityId = q.toCityId;
+    if (allowedCities !== null) {
+      where.OR = [
+        { fromCityId: { in: allowedCities } },
+        { toCityId: { in: allowedCities } },
+      ];
     }
+    const items = await this.prisma.transfer.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        lines: true,
+        fromCity: { include: { country: true } },
+        toCity: { include: { country: true } },
+        createdBy: { select: { id: true, username: true, displayName: true } },
+        acceptedBy: { select: { id: true, username: true, displayName: true } },
+      },
+    });
+    return items;
+  }
 
-    if (!input.items || input.items.length === 0) {
-      throw new BadRequestException('At least one item is required');
+  async byId(user: AuthUser, id: string) {
+    const t = await this.loadFull(id);
+    const fromOk = await canAccessCity(this.prisma, user, t.fromCityId);
+    const toOk = await canAccessCity(this.prisma, user, t.toCityId);
+    if (!fromOk && !toOk) throw new ForbiddenException('NO_TRANSFER_ACCESS');
+    return t;
+  }
+
+  async create(dto: CreateTransferDto, actor: AuthUser) {
+    if (dto.fromCityId === dto.toCityId)
+      throw new BadRequestException('FROM_AND_TO_MUST_DIFFER');
+    await requireCityAccess(this.prisma, actor, dto.fromCityId);
+
+    const fromCity = await this.prisma.city.findUnique({ where: { id: dto.fromCityId } });
+    const toCity = await this.prisma.city.findUnique({ where: { id: dto.toCityId } });
+    if (!fromCity || !toCity) throw new NotFoundException('CITY_NOT_FOUND');
+
+    // dedupe colors
+    const seen = new Set<string>();
+    for (const l of dto.lines) {
+      if (seen.has(l.color)) throw new BadRequestException('DUPLICATE_COLOR_IN_LINES');
+      seen.add(l.color);
     }
-
-    for (const item of input.items) {
-      if (item.quantity <= 0) {
-        throw new BadRequestException(`Quantity must be positive for ${item.itemType}`);
-      }
-    }
-
-    // CITY sender: must have senderCityId. Can send to any COUNTRY or CITY.
-    if (input.senderType === EntityType.CITY) {
-      if (!input.senderCityId) {
-        throw new BadRequestException('Sender city ID is required for CITY sender');
-      }
-      if (
-        input.receiverType !== EntityType.COUNTRY &&
-        input.receiverType !== EntityType.CITY
-      ) {
-        throw new BadRequestException('City can only send bracelets to a country or another city');
-      }
-      if (input.receiverType === EntityType.CITY && input.receiverCityId === input.senderCityId) {
-        throw new BadRequestException('Cannot send bracelets to the same city');
-      }
-    }
-
-    const isAdminSender = input.senderType === EntityType.ADMIN;
 
     return this.prisma.$transaction(async (tx) => {
-      // Check balance for ALL senders (including ADMIN)
-      // This prevents sending more bracelets than available in inventory
-      const entityId = input.senderType === EntityType.ADMIN
-        ? null // ADMIN uses entityType: ADMIN with null IDs
-        : input.senderType === EntityType.OFFICE
-        ? (input.senderOfficeId || null)
-        : input.senderType === EntityType.COUNTRY
-        ? (input.senderCountryId || null)
-        : (input.senderCityId || null);
-
-      // Collect full balance for error message
-      const fullBalance: Record<string, number> = {};
-      for (const itemType of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
-        fullBalance[itemType] = await this.getEntityBalance(
-          tx,
-          input.senderType,
-          entityId,
-          itemType as any,
-        );
-      }
-
-      for (const item of input.items) {
-        const balance = fullBalance[item.itemType];
-        if (balance < item.quantity) {
-          // Russian error message with full balance
-          throw new BadRequestException(
-            `Недостаточно браслетов. Баланс: Ч:${fullBalance.BLACK} Б:${fullBalance.WHITE} К:${fullBalance.RED} С:${fullBalance.BLUE}`,
+      // decrement sender balances atomically
+      for (const l of dto.lines) {
+        const inv = await tx.inventory.findUnique({
+          where: { cityId_color: { cityId: dto.fromCityId, color: l.color } },
+        });
+        const current = inv?.count ?? 0;
+        if (current < l.sentCount) {
+          throw new ConflictException(
+            `INSUFFICIENT_BALANCE:${l.color}:have=${current}:need=${l.sentCount}`,
           );
         }
+        await tx.inventory.upsert({
+          where: { cityId_color: { cityId: dto.fromCityId, color: l.color } },
+          create: { cityId: dto.fromCityId, color: l.color, count: -l.sentCount },
+          update: { count: { decrement: l.sentCount } },
+        });
       }
 
-      // DEDUCT from sender immediately when transfer is created
-      // This "freezes" the bracelets - they're no longer available to sender
-      for (const item of input.items) {
-        await this.deductInventory(
-          tx,
-          input.senderType,
-          entityId,
-          item.itemType,
-          item.quantity,
-        );
+      // create transfer + lines
+      let code = generateTransferCode();
+      for (let i = 0; i < 5; i++) {
+        const dup = await tx.transfer.findUnique({ where: { code } });
+        if (!dup) break;
+        code = generateTransferCode();
       }
-      this.logger.log(`Transfer created: Deducted from sender ${input.senderType} (${entityId || 'ADMIN'}): ${JSON.stringify(input.items)}`);
-
       const transfer = await tx.transfer.create({
         data: {
-          senderType: input.senderType,
-          senderOfficeId: input.senderOfficeId || null,
-          senderCountryId: input.senderCountryId || null,
-          senderCityId: input.senderCityId || null,
-          receiverType: input.receiverType,
-          receiverOfficeId: input.receiverOfficeId || null,
-          receiverCountryId: input.receiverCountryId || null,
-          receiverCityId: input.receiverCityId || null,
-          status: TransferStatus.SENT,
-          createdBy: input.createdBy,
-          sentAt: new Date(),
-          notes: input.notes || null,
-          items: {
-            create: input.items.map((item) => ({
-              itemType: item.itemType,
-              quantity: item.quantity,
-            })),
+          code,
+          fromCityId: dto.fromCityId,
+          toCityId: dto.toCityId,
+          status: TransferStatus.PENDING,
+          comment: dto.comment ?? null,
+          createdById: actor.id,
+          lines: {
+            create: dto.lines.map((l) => ({ color: l.color, sentCount: l.sentCount })),
           },
         },
-        include: {
-          items: true,
-          senderOffice: { select: { id: true, name: true, code: true } },
-          senderCountry: { select: { id: true, name: true, code: true } },
-          senderCity: { select: { id: true, name: true, slug: true } },
-          receiverOffice: { select: { id: true, name: true, code: true } },
-          receiverCountry: { select: { id: true, name: true, code: true } },
-          receiverCity: { select: { id: true, name: true, slug: true } },
+        include: { lines: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.TRANSFER_CREATED,
+          userId: actor.id,
+          entityType: 'Transfer',
+          entityId: transfer.id,
+          payload: {
+            code: transfer.code,
+            fromCityId: dto.fromCityId,
+            fromCityName: fromCity.name,
+            fromCountryId: fromCity.countryId,
+            toCityId: dto.toCityId,
+            toCityName: toCity.name,
+            toCountryId: toCity.countryId,
+            lines: dto.lines as object,
+          },
         },
-      });
-
-      // No sender cache to invalidate (inventory not changed on send)
-
-      // Invalidate sender cache since we deducted inventory
-      if (entityId) {
-        await this.redis.invalidateInventory(input.senderType, entityId);
-      } else if (input.senderType === EntityType.ADMIN) {
-        // ADMIN has no entityId but may have inventory cache
-        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
-      }
-
-      await this.storeDomainEvent(transfer.id, 'TransferSent', {
-        transfer,
-        actorId: input.createdBy,
-      });
-
-      this.logger.log(`Transfer ${transfer.id} created and sent`);
-
-      const fromName = transfer.senderType === EntityType.ADMIN
-        ? 'Админ'
-        : (transfer.senderCity?.name || transfer.senderCountry?.name || 'Unknown');
-      const toName = transfer.receiverCity?.name || transfer.receiverCountry?.name || 'Unknown';
-      const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
-      const toEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId || '';
-
-      // Fetch creator name for display
-      const creator = await this.prisma.user.findUnique({
-        where: { id: input.createdBy },
-        select: { displayName: true, username: true },
-      });
-      this.eventEmitter.emit('transfer.sent', {
-        transferId: transfer.id,
-        fromEntityId,
-        fromEntityType: transfer.senderType,
-        fromEntityName: fromName,
-        toEntityId,
-        toEntityType: transfer.receiverType,
-        toEntityName: toName,
-        items: transfer.items.map((i) => ({ type: i.itemType, quantity: i.quantity })),
-        actorId: input.createdBy,
-        createdByName: creator?.displayName || creator?.username || 'Unknown',
-      });
-
-      // Phase 7: audit log for personal balance history
-      await this.writeTransferAudit(tx, {
-        action: AuditAction.TRANSFER_SENT,
-        transferId: transfer.id,
-        actorId: input.createdBy,
-        senderType: transfer.senderType,
-        senderEntityId: entityId,
-        senderName: fromName,
-        receiverType: transfer.receiverType,
-        receiverEntityId: toEntityId || null,
-        receiverName: toName,
-        items: transfer.items.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
       });
 
       return transfer;
     });
   }
 
-  // ──────────────────────────────────────────────
-  // ACCEPT TRANSFER — Blind Acceptance Flow
-  // (SENT → ACCEPTED or DISCREPANCY_FOUND)
-  // Receiver submits what they counted WITHOUT seeing sent quantities
-  // ──────────────────────────────────────────────
+  async accept(id: string, dto: AcceptTransferDto, actor: AuthUser) {
+    const t = await this.loadFull(id);
+    if (t.status !== TransferStatus.PENDING)
+      throw new ConflictException(`TRANSFER_NOT_PENDING:${t.status}`);
+    await requireCityAccess(this.prisma, actor, t.toCityId);
 
-  async acceptTransfer(
-    transferId: string,
-    receivedItems: AcceptanceItem[],
-    actorId: string,
-  ) {
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        const transfer = await tx.transfer.findUnique({
-          where: { id: transferId },
-          include: { items: true },
+    const sentByColor = new Map(t.lines.map((l) => [l.color, l.sentCount]));
+    let hasShortage = false;
+    for (const r of dto.lines) {
+      const sent = sentByColor.get(r.color);
+      if (sent === undefined) throw new BadRequestException(`UNKNOWN_COLOR:${r.color}`);
+      if (r.receivedCount > sent) throw new BadRequestException(`RECEIVED_GT_SENT:${r.color}`);
+      if (r.receivedCount < sent) hasShortage = true;
+    }
+    if (dto.lines.length !== t.lines.length) {
+      throw new BadRequestException('LINE_COUNT_MISMATCH');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const r of dto.lines) {
+        await tx.transferLine.update({
+          where: { transferId_color: { transferId: t.id, color: r.color } },
+          data: { receivedCount: r.receivedCount },
         });
+      }
 
-        if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-        if (transfer.status !== TransferStatus.SENT) {
-          throw new ConflictException(
-            `Cannot accept transfer in status ${transfer.status}. Must be SENT.`,
-          );
-        }
-
-        // Build a map of sent quantities by item type
-        const sentMap = new Map<ItemType, number>();
-        for (const item of transfer.items) {
-          sentMap.set(item.itemType, item.quantity);
-        }
-
-        // Validate that received items match the transfer's item types
-        for (const ri of receivedItems) {
-          if (!sentMap.has(ri.itemType)) {
-            throw new BadRequestException(
-              `Item type ${ri.itemType} was not in this transfer`,
-            );
-          }
-        }
-
-        // Check all sent item types are covered
-        for (const [itemType] of sentMap) {
-          if (!receivedItems.find((ri) => ri.itemType === itemType)) {
-            throw new BadRequestException(
-              `You must report received quantity for ${itemType}`,
-            );
-          }
-        }
-
-        // Create acceptance records & check for discrepancies
-        let hasDiscrepancy = false;
-        const records: Array<{
-          itemType: ItemType;
-          sentQuantity: number;
-          receivedQuantity: number;
-          discrepancy: number;
-        }> = [];
-
-        for (const ri of receivedItems) {
-          const sentQty = sentMap.get(ri.itemType)!;
-          const disc = sentQty - ri.receivedQuantity;
-          if (disc !== 0) hasDiscrepancy = true;
-
-          records.push({
-            itemType: ri.itemType,
-            sentQuantity: sentQty,
-            receivedQuantity: ri.receivedQuantity,
-            discrepancy: disc,
-          });
-
-          await tx.acceptanceRecord.create({
-            data: {
-              transferId,
-              itemType: ri.itemType,
-              sentQuantity: sentQty,
-              receivedQuantity: ri.receivedQuantity,
-              discrepancy: disc,
-              acceptedById: actorId,
-            },
+      if (!hasShortage) {
+        // ACCEPTED: credit receiver in full
+        for (const l of t.lines) {
+          await tx.inventory.upsert({
+            where: { cityId_color: { cityId: t.toCityId, color: l.color } },
+            create: { cityId: t.toCityId, color: l.color, count: l.sentCount },
+            update: { count: { increment: l.sentCount } },
           });
         }
-
-        const newStatus = hasDiscrepancy
-          ? TransferStatus.DISCREPANCY_FOUND
-          : TransferStatus.ACCEPTED;
-
-        // If all received quantities are zero → treat as CANCELLED (nothing received)
-        const allZero = receivedItems.every((ri) => ri.receivedQuantity === 0);
-        const finalStatus = allZero ? TransferStatus.CANCELLED : newStatus;
-
-        // Optimistic lock via version
-        const lockResult = await tx.transfer.updateMany({
-          where: {
-            id: transferId,
-            version: transfer.version,
-            status: TransferStatus.SENT,
-          },
+        await tx.transfer.update({
+          where: { id: t.id },
           data: {
-            status: finalStatus,
+            status: TransferStatus.ACCEPTED,
+            acceptedById: actor.id,
             acceptedAt: new Date(),
-            version: transfer.version + 1,
           },
         });
-
-        if (lockResult.count === 0) {
-          throw new ConflictException(
-            'Transfer was modified by another process. Please retry.',
-          );
-        }
-
-        // BALANCE LOGIC (sender was already deducted on send!):
-        // - CANCELLED (all zero) → Return all bracelets to sender
-        // - DISCREPANCY_FOUND → Wait for admin resolution
-        // - ACCEPTED → Credit receiver (sender already deducted)
-        const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-        const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-        
-        if (finalStatus === TransferStatus.CANCELLED) {
-          // All zeros — return bracelets to sender (they were deducted on send)
-          for (const item of transfer.items) {
-            await this.creditInventory(
-              tx,
-              transfer.senderType,
-              senderEntityId,
-              item.itemType,
-              item.quantity,
-            );
-          }
-          this.logger.log(`Transfer ${transferId} CANCELLED (all zeros): Returned ${transfer.items.length} items to sender`);
-        } else if (finalStatus === TransferStatus.DISCREPANCY_FOUND) {
-          // Nothing happens to balances — frozen until admin resolves
-          // Sender's bracelets are still "in transit" (deducted but not credited anywhere)
-          this.logger.log(`Transfer ${transferId} DISCREPANCY: Balances frozen until resolution`);
-        } else {
-          // ACCEPTED: Credit receiver only (sender was already deducted on send)
-          for (const ri of receivedItems) {
-            if (ri.receivedQuantity > 0) {
-              await this.creditInventory(
-                tx,
-                transfer.receiverType,
-                receiverEntityId,
-                ri.itemType,
-                ri.receivedQuantity,
-              );
-            }
-          }
-          this.logger.log(`Transfer ${transferId} ACCEPTED: Credited ${JSON.stringify(receivedItems)} to receiver`);
-        }
-
-        // Update city status for low stock / zero stock notifications
-        if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
-          await this.inventoryService.updateCityStatus(tx, transfer.senderCityId);
-        }
-        if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
-          await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
-        }
-
-        await this.storeDomainEvent(transferId, 'TransferAccepted', {
-          previousStatus: TransferStatus.SENT,
-          newStatus: finalStatus,
-          actorId,
-          records,
-          hasDiscrepancy,
-          allZero,
-        });
-
-        this.logger.log(`Transfer ${transferId} ${finalStatus}`);
-
-        // Fetch names for event payloads
-        const acceptor = await tx.user.findUnique({
-          where: { id: actorId },
-          select: { displayName: true, username: true },
-        });
-        const acceptedByName = acceptor?.displayName || acceptor?.username || 'Unknown';
-
-        const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
-        const fromEntityType = transfer.senderType;
-        const toEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId || '';
-        const toEntityType = transfer.receiverType;
-
-        // Resolve entity names
-        let fromEntityName = 'Админ';
-        if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
-          const c = await tx.country.findUnique({ where: { id: transfer.senderCountryId }, select: { name: true } });
-          fromEntityName = c?.name || 'Unknown';
-        } else if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
-          const c = await tx.city.findUnique({ where: { id: transfer.senderCityId }, select: { name: true } });
-          fromEntityName = c?.name || 'Unknown';
-        }
-        let toEntityName = 'Unknown';
-        if (transfer.receiverType === EntityType.COUNTRY && transfer.receiverCountryId) {
-          const c = await tx.country.findUnique({ where: { id: transfer.receiverCountryId }, select: { name: true } });
-          toEntityName = c?.name || 'Unknown';
-        } else if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
-          const c = await tx.city.findUnique({ where: { id: transfer.receiverCityId }, select: { name: true } });
-          toEntityName = c?.name || 'Unknown';
-        }
-
-        const eventBase = {
-          transferId,
-          fromEntityId,
-          fromEntityType,
-          fromEntityName,
-          toEntityId,
-          toEntityType,
-          toEntityName,
-          actorId,
-          acceptedByName,
-        };
-
-        if (allZero) {
-          this.eventEmitter.emit('transfer.cancelled', eventBase);
-        } else if (hasDiscrepancy) {
-          this.eventEmitter.emit('transfer.discrepancy', {
-            ...eventBase,
-            records,
-          });
-        } else {
-          this.eventEmitter.emit('transfer.accepted', eventBase);
-        }
-
-        // Phase 7: audit log for personal balance history
-        const auditAction = allZero
-          ? AuditAction.TRANSFER_CANCELLED
-          : hasDiscrepancy
-            ? AuditAction.DISCREPANCY_DETECTED
-            : AuditAction.TRANSFER_ACCEPTED;
-        await this.writeTransferAudit(tx, {
-          action: auditAction,
-          transferId,
-          actorId,
-          senderType: transfer.senderType,
-          senderEntityId: senderEntityId || null,
-          senderName: fromEntityName,
-          receiverType: transfer.receiverType,
-          receiverEntityId: receiverEntityId || null,
-          receiverName: toEntityName,
-          items: (transfer.items || []).map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
-          extra: {
-            received: receivedItems,
-            hasDiscrepancy,
-            allZero,
-          },
-        });
-
-        return tx.transfer.findUnique({
-          where: { id: transferId },
-          include: { items: true, acceptanceRecords: true },
-        });
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        timeout: 10000,
-      },
-    );
-
-    // Invalidate caches AFTER the transaction commits
-    // so that getBalance never caches stale pre-commit zeros
-    const transfer = await this.prisma.transfer.findUnique({
-      where: { id: transferId },
-    });
-    if (transfer) {
-      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-      } else if (transfer.senderType === EntityType.ADMIN) {
-        // ADMIN sender (no entityId) — invalidate ADMIN cache so the
-        // returned balance after CANCELLED accept is fresh
-        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
-      }
-      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-      if (receiverEntityId) {
-        await this.redis.invalidateInventory(transfer.receiverType, receiverEntityId);
-      }
-    }
-
-    return result;
-  }
-
-  // ──────────────────────────────────────────────
-  // REJECT TRANSFER
-  // ──────────────────────────────────────────────
-
-  async rejectTransfer(
-    transferId: string,
-    reason: string,
-    actorId: string,
-  ) {
-    if (!reason || reason.trim().length === 0) {
-      throw new BadRequestException('Rejection reason is required');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const transfer = await tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true },
-      });
-
-      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-      if (transfer.status !== TransferStatus.SENT) {
-        throw new BadRequestException(
-          `Cannot reject transfer in status ${transfer.status}. Must be SENT.`,
-        );
-      }
-
-      await tx.transfer.update({
-        where: { id: transferId },
-        data: {
-          status: TransferStatus.REJECTED,
-          version: transfer.version + 1,
-        },
-      });
-
-      await tx.transferRejection.create({
-        data: {
-          transferId,
-          reason: reason.trim(),
-          rejectedBy: actorId,
-        },
-      });
-
-      // RETURN bracelets to sender — they were deducted on send
-      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-      for (const item of transfer.items) {
-        await this.creditInventory(
-          tx,
-          transfer.senderType,
-          senderEntityId,
-          item.itemType,
-          item.quantity,
-        );
-      }
-      this.logger.log(`Transfer ${transferId} REJECTED: Returned ${transfer.items.map(i => `${i.itemType}:${i.quantity}`).join(', ')} to sender`);
-
-      await this.storeDomainEvent(transferId, 'TransferRejected', {
-        previousStatus: TransferStatus.SENT,
-        newStatus: TransferStatus.REJECTED,
-        reason,
-        actorId,
-      });
-
-      this.logger.log(`Transfer ${transferId} REJECTED: ${reason}`);
-
-      // Resolve names for event
-      const rejector = await tx.user.findUnique({
-        where: { id: actorId },
-        select: { displayName: true, username: true },
-      });
-      const rejectedByName = rejector?.displayName || rejector?.username || 'Unknown';
-      const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
-      const fromEntityType = transfer.senderType;
-      let fromEntityName = 'Админ';
-      if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
-        const c = await tx.country.findUnique({ where: { id: transfer.senderCountryId }, select: { name: true } });
-        fromEntityName = c?.name || 'Unknown';
-      } else if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
-        const c = await tx.city.findUnique({ where: { id: transfer.senderCityId }, select: { name: true } });
-        fromEntityName = c?.name || 'Unknown';
-      }
-
-      this.eventEmitter.emit('transfer.rejected', {
-        transferId,
-        fromEntityId,
-        fromEntityType,
-        fromEntityName,
-        rejectedByName,
-        reason,
-        actorId,
-      });
-
-      // Phase 7: audit log for personal balance history
-      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-      let toEntityName = 'Unknown';
-      if (transfer.receiverType === EntityType.COUNTRY && transfer.receiverCountryId) {
-        const c = await tx.country.findUnique({ where: { id: transfer.receiverCountryId }, select: { name: true } });
-        toEntityName = c?.name || 'Unknown';
-      } else if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
-        const c = await tx.city.findUnique({ where: { id: transfer.receiverCityId }, select: { name: true } });
-        toEntityName = c?.name || 'Unknown';
-      }
-      await this.writeTransferAudit(tx, {
-        action: AuditAction.TRANSFER_REJECTED,
-        transferId,
-        actorId,
-        senderType: transfer.senderType,
-        senderEntityId: senderEntityId || null,
-        senderName: fromEntityName,
-        receiverType: transfer.receiverType,
-        receiverEntityId: receiverEntityId || null,
-        receiverName: toEntityName,
-        items: transfer.items.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
-        extra: { reason },
-      });
-
-      // Invalidate sender cache since we returned bracelets
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-      } else if (transfer.senderType === EntityType.ADMIN) {
-        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
-      }
-
-      return tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true, rejection: true },
-      });
-    });
-  }
-
-  // ──────────────────────────────────────────────
-  // CANCEL TRANSFER
-  // ──────────────────────────────────────────────
-
-  async cancelTransfer(transferId: string, actorId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const transfer = await tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true },
-      });
-
-      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-      if (transfer.status === TransferStatus.ACCEPTED || transfer.status === TransferStatus.DISCREPANCY_FOUND) {
-        throw new BadRequestException('Cannot cancel an accepted transfer');
-      }
-
-      if (
-        transfer.status === TransferStatus.REJECTED ||
-        transfer.status === TransferStatus.CANCELLED
-      ) {
-        throw new BadRequestException(
-          `Transfer is already ${transfer.status}`,
-        );
-      }
-
-      // RETURN bracelets to sender — they were deducted on send
-      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-      for (const item of transfer.items) {
-        await this.creditInventory(
-          tx,
-          transfer.senderType,
-          senderEntityId,
-          item.itemType,
-          item.quantity,
-        );
-      }
-      this.logger.log(`Transfer ${transferId} CANCELLED: Returned ${transfer.items.map(i => `${i.itemType}:${i.quantity}`).join(', ')} to sender`);
-
-      await tx.transfer.update({
-        where: { id: transferId },
-        data: {
-          status: TransferStatus.CANCELLED,
-          version: transfer.version + 1,
-        },
-      });
-
-      await this.storeDomainEvent(transferId, 'TransferCancelled', {
-        previousStatus: transfer.status,
-        newStatus: TransferStatus.CANCELLED,
-        actorId,
-      });
-
-      this.logger.log(`Transfer ${transferId} CANCELLED`);
-
-      // Resolve names for event
-      const canceller = await tx.user.findUnique({
-        where: { id: actorId },
-        select: { displayName: true, username: true },
-      });
-      const fromEntityId = transfer.senderOfficeId || transfer.senderCityId || transfer.senderCountryId || '';
-      const toEntityId = transfer.receiverOfficeId || transfer.receiverCityId || transfer.receiverCountryId || '';
-
-      // Resolve entity names
-      let fromEntityName = 'Unknown';
-      if (transfer.senderType === EntityType.COUNTRY && transfer.senderCountryId) {
-        const c = await tx.country.findUnique({ where: { id: transfer.senderCountryId }, select: { name: true } });
-        fromEntityName = c?.name || 'Unknown';
-      } else if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
-        const c = await tx.city.findUnique({ where: { id: transfer.senderCityId }, select: { name: true } });
-        fromEntityName = c?.name || 'Unknown';
-      } else if (transfer.senderType === EntityType.OFFICE && transfer.senderOfficeId) {
-        const o = await tx.office.findUnique({ where: { id: transfer.senderOfficeId }, select: { name: true } });
-        fromEntityName = o?.name || 'Склад';
-      } else if (transfer.senderType === EntityType.ADMIN) {
-        fromEntityName = 'Склад';
-      }
-      let toEntityName = 'Unknown';
-      if (transfer.receiverType === EntityType.COUNTRY && transfer.receiverCountryId) {
-        const c = await tx.country.findUnique({ where: { id: transfer.receiverCountryId }, select: { name: true } });
-        toEntityName = c?.name || 'Unknown';
-      } else if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
-        const c = await tx.city.findUnique({ where: { id: transfer.receiverCityId }, select: { name: true } });
-        toEntityName = c?.name || 'Unknown';
-      }
-
-      this.eventEmitter.emit('transfer.cancelled', {
-        transferId,
-        fromEntityId,
-        fromEntityType: transfer.senderType,
-        fromEntityName,
-        toEntityId,
-        toEntityType: transfer.receiverType,
-        toEntityName,
-        actorId,
-        cancelledByName: canceller?.displayName || canceller?.username || 'Unknown',
-      });
-
-      // Phase 7: audit log for personal balance history
-      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-      await this.writeTransferAudit(tx, {
-        action: AuditAction.TRANSFER_CANCELLED,
-        transferId,
-        actorId,
-        senderType: transfer.senderType,
-        senderEntityId: senderEntityId || null,
-        senderName: fromEntityName,
-        receiverType: transfer.receiverType,
-        receiverEntityId: receiverEntityId || null,
-        receiverName: toEntityName,
-        items: transfer.items.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
-      });
-
-      // Invalidate sender cache since we returned bracelets
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-      } else if (transfer.senderType === EntityType.ADMIN) {
-        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
-      }
-
-      return tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true },
-      });
-    });
-  }
-
-  // ──────────────────────────────────────────────
-  // QUERIES
-  // ──────────────────────────────────────────────
-
-  async findAll(params: {
-    status?: TransferStatus;
-    page?: number;
-    limit?: number;
-    direction?: 'sent' | 'received';
-    countryId?: string;
-    cityId?: string;
-    userRole?: string;
-    userId?: string;
-    userCountryId?: string;
-    userCityId?: string;
-    userOfficeId?: string;
-  }) {
-    const {
-      status,
-      page = 1,
-      limit = 20,
-      direction,
-      countryId,
-      cityId,
-      userRole,
-      userId,
-      userCountryId,
-      userCityId,
-      userOfficeId,
-    } = params;
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.TransferWhereInput = {};
-
-    if (status) where.status = status;
-
-    // Explicit country/city filter from global filters (takes priority over RBAC scope)
-    if (cityId) {
-      where.AND = [
-        ...(Array.isArray((where as any).AND) ? (where as any).AND : []),
-        { OR: [
-          { senderCityId: cityId },
-          { receiverCityId: cityId },
-        ]},
-      ];
-    } else if (countryId) {
-      where.AND = [
-        ...(Array.isArray((where as any).AND) ? (where as any).AND : []),
-        { OR: [
-          { senderCountryId: countryId },
-          { receiverCountryId: countryId },
-          { senderCity: { countryId } },
-          { receiverCity: { countryId } },
-        ]},
-      ];
-    }
-
-    // Direction filter: 'sent' = user is sender, 'received' = user is receiver
-    if (direction && userRole) {
-      const directionConditions: Prisma.TransferWhereInput[] = [];
-
-      if (direction === 'sent') {
-        if (userRole === 'ADMIN') {
-          directionConditions.push({ senderType: EntityType.ADMIN, createdBy: userId });
-        } else if (userRole === 'OFFICE' && userOfficeId) {
-          directionConditions.push({ senderType: EntityType.OFFICE, senderOfficeId: userOfficeId });
-        } else if (userRole === 'COUNTRY' && userCountryId) {
-          directionConditions.push({ senderType: EntityType.COUNTRY, senderCountryId: userCountryId });
-        } else if (userRole === 'CITY' && userCityId) {
-          directionConditions.push({ senderType: EntityType.CITY, senderCityId: userCityId });
-        }
-      } else if (direction === 'received') {
-        if (userRole === 'ADMIN') {
-          // Admin sees all incoming
-        } else if (userRole === 'OFFICE' && userOfficeId) {
-          const officeCountries = await this.prisma.country.findMany({
-            where: { officeId: userOfficeId },
-            select: { id: true },
-          });
-          const countryIds = officeCountries.map((c) => c.id);
-          directionConditions.push({
-            receiverType: EntityType.OFFICE,
-            receiverOfficeId: userOfficeId,
-          });
-          if (countryIds.length > 0) {
-            directionConditions.push(
-              { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
-              { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
-            );
-          }
-        } else if (userRole === 'COUNTRY' && userCountryId) {
-          directionConditions.push(
-            { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
-            { receiverType: EntityType.CITY, receiverCity: { countryId: userCountryId } },
-          );
-        } else if (userRole === 'CITY' && userCityId) {
-          directionConditions.push({ receiverType: EntityType.CITY, receiverCityId: userCityId });
-        }
-      }
-
-      if (directionConditions.length > 0) {
-        where.OR = directionConditions;
-      }
-    } else {
-      // No direction filter — apply standard RBAC scope
-      if (userRole === 'COUNTRY' && userCountryId) {
-        where.OR = [
-          { senderType: EntityType.COUNTRY, senderCountryId: userCountryId },
-          { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
-          {
-            senderType: EntityType.CITY,
-            senderCity: { countryId: userCountryId },
-          },
-          {
-            receiverType: EntityType.CITY,
-            receiverCity: { countryId: userCountryId },
-          },
-        ];
-      } else if (userRole === 'CITY' && userCityId) {
-        where.OR = [
-          { senderType: EntityType.CITY, senderCityId: userCityId },
-          { receiverType: EntityType.CITY, receiverCityId: userCityId },
-        ];
-      } else if (userRole === 'OFFICE' && userOfficeId) {
-        const officeCountries = await this.prisma.country.findMany({
-          where: { officeId: userOfficeId },
-          select: { id: true },
-        });
-        const countryIds = officeCountries.map((c) => c.id);
-        where.OR = [
-          { senderType: EntityType.OFFICE, senderOfficeId: userOfficeId },
-          { receiverType: EntityType.OFFICE, receiverOfficeId: userOfficeId },
-        ];
-        if (countryIds.length > 0) {
-          where.OR.push(
-            { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
-            { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
-            { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
-            { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
-          );
-        }
-      }
-    }
-
-    const includeRelations = {
-      items: true,
-      rejection: true,
-      acceptanceRecords: {
-        include: {
-          acceptedBy: { select: { id: true, displayName: true, username: true, role: true } },
-        },
-      },
-      senderOffice: { select: { id: true, name: true, code: true } },
-      senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-      senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
-      receiverOffice: { select: { id: true, name: true, code: true } },
-      receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-      receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
-    };
-
-    const [transfers, total] = await Promise.all([
-      this.prisma.transfer.findMany({
-        where,
-        include: includeRelations,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.transfer.count({ where }),
-    ]);
-
-    // Enrich with creator info
-    const creatorIds = [...new Set(transfers.map((t) => t.createdBy))];
-    const creators = await this.prisma.user.findMany({
-      where: { id: { in: creatorIds } },
-      select: { id: true, displayName: true, username: true, role: true },
-    });
-    const creatorsMap = new Map(creators.map((c) => [c.id, c]));
-
-    const enriched = transfers.map((t) => ({
-      ...t,
-      createdByUser: creatorsMap.get(t.createdBy) || null,
-    }));
-
-    return {
-      data: enriched,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
-
-  async findById(transferId: string, currentUser?: { role: string; countryId?: string | null; cityId?: string | null }) {
-    const transfer = await this.prisma.transfer.findUnique({
-      where: { id: transferId },
-      include: {
-        items: true,
-        rejection: true,
-        acceptanceRecords: {
-          include: {
-            acceptedBy: { select: { id: true, displayName: true, username: true, role: true } },
-          },
-        },
-        senderOffice: { select: { id: true, name: true, code: true } },
-      senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
-      receiverOffice: { select: { id: true, name: true, code: true } },
-        receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
-      },
-    });
-
-    if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-    // RBAC scope check: COUNTRY/CITY can only view transfers involving their scope
-    if (currentUser) {
-      const { role, countryId: uCountry, cityId: uCity } = currentUser;
-      if (role === 'COUNTRY' && uCountry) {
-        const involves =
-          transfer.senderCountryId === uCountry ||
-          transfer.receiverCountryId === uCountry;
-        if (!involves) throw new ForbiddenException('No access to this transfer');
-      } else if (role === 'CITY' && uCity) {
-        const involves =
-          transfer.senderCityId === uCity ||
-          transfer.receiverCityId === uCity;
-        if (!involves) throw new ForbiddenException('No access to this transfer');
-      }
-    }
-
-    // Enrich with creator info
-    const creator = await this.prisma.user.findUnique({
-      where: { id: transfer.createdBy },
-      select: { id: true, displayName: true, username: true, role: true },
-    });
-    const enrichedTransfer = { ...transfer, createdByUser: creator || null };
-
-    // Blind acceptance: if transfer is SENT and current user is the receiver,
-    // hide the sent quantities (they should only enter what they received)
-    if (
-      currentUser &&
-      enrichedTransfer.status === TransferStatus.SENT &&
-      this.isReceiver(enrichedTransfer, currentUser)
-    ) {
-      return {
-        ...enrichedTransfer,
-        items: enrichedTransfer.items.map((item) => ({
-          ...item,
-          quantity: undefined, // hide sent quantity from receiver
-        })),
-      };
-    }
-
-    return enrichedTransfer;
-  }
-
-  async getPendingIncoming(params: {
-    entityType: EntityType;
-    entityId: string;
-    userRole: string;
-  }) {
-    const { entityType, entityId, userRole } = params;
-
-    const where: Prisma.TransferWhereInput = {
-      status: TransferStatus.SENT,
-    };
-
-    if (userRole === 'ADMIN') {
-      // Admin sees all pending
-    } else if (userRole === 'OFFICE') {
-      // Office sees pending for countries/cities assigned to their office
-      const officeCountries = await this.prisma.country.findMany({
-        where: { officeId: entityId },
-        select: { id: true },
-      });
-      const countryIds = officeCountries.map((c) => c.id);
-      where.OR = [
-        { receiverType: EntityType.OFFICE, receiverOfficeId: entityId },
-        { senderType: EntityType.OFFICE, senderOfficeId: entityId },
-      ];
-      if (countryIds.length > 0) {
-        where.OR.push(
-          { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
-          { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
-        );
-      }
-    } else if (entityType === EntityType.COUNTRY) {
-      where.OR = [
-        { receiverType: EntityType.COUNTRY, receiverCountryId: entityId },
-        {
-          receiverType: EntityType.CITY,
-          receiverCity: { countryId: entityId },
-        },
-      ];
-    } else if (entityType === EntityType.CITY) {
-      where.receiverType = EntityType.CITY;
-      where.receiverCityId = entityId;
-    }
-
-    return this.prisma.transfer.findMany({
-      where,
-      include: {
-        items: true,
-        senderOffice: { select: { id: true, name: true, code: true } },
-      senderCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        senderCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
-      receiverOffice: { select: { id: true, name: true, code: true } },
-        receiverCountry: { select: { id: true, name: true, code: true, latitude: true, longitude: true } },
-        receiverCity: { select: { id: true, name: true, slug: true, latitude: true, longitude: true, country: { select: { id: true, name: true } } } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  // ──────────────────────────────────────────────
-  // PROBLEMATIC TRANSFERS (DISCREPANCY_FOUND)
-  // ──────────────────────────────────────────────
-
-  async findProblematic(params: {
-    page?: number;
-    limit?: number;
-    countryId?: string;
-    cityId?: string;
-    userRole?: string;
-    userCountryId?: string;
-    userCityId?: string;
-    userOfficeId?: string;
-  }) {
-    const { page = 1, limit = 20, countryId, cityId, userRole, userCountryId, userCityId, userOfficeId } = params;
-    const skip = (page - 1) * limit;
-
-    this.logger.log(`=== findProblematic START ===`);
-    this.logger.log(`Params: ${JSON.stringify(params)}`);
-
-    const where: Prisma.TransferWhereInput = {
-      status: TransferStatus.DISCREPANCY_FOUND,
-    };
-
-    this.logger.log(`Base where: status = DISCREPANCY_FOUND`);
-
-    // Explicit country/city filter from global filters
-    if (cityId) {
-      where.AND = [
-        { OR: [
-          { senderCityId: cityId },
-          { receiverCityId: cityId },
-        ]},
-      ];
-    } else if (countryId) {
-      where.AND = [
-        { OR: [
-          { senderCountryId: countryId },
-          { receiverCountryId: countryId },
-          { senderCity: { countryId } },
-          { receiverCity: { countryId } },
-        ]},
-      ];
-    }
-
-    // RBAC scope
-    if (userRole === 'COUNTRY' && userCountryId) {
-      where.OR = [
-        { senderType: EntityType.COUNTRY, senderCountryId: userCountryId },
-        { receiverType: EntityType.COUNTRY, receiverCountryId: userCountryId },
-        { senderType: EntityType.CITY, senderCity: { countryId: userCountryId } },
-        { receiverType: EntityType.CITY, receiverCity: { countryId: userCountryId } },
-      ];
-    } else if (userRole === 'CITY' && userCityId) {
-      where.OR = [
-        { senderType: EntityType.CITY, senderCityId: userCityId },
-        { receiverType: EntityType.CITY, receiverCityId: userCityId },
-      ];
-    } else if (userRole === 'OFFICE' && userOfficeId) {
-      // OFFICE sees transfers for countries assigned to their office
-      const officeCountries = await this.prisma.country.findMany({
-        where: { officeId: userOfficeId },
-        select: { id: true },
-      });
-      const countryIds = officeCountries.map((c) => c.id);
-      if (countryIds.length > 0) {
-        where.OR = [
-          { senderType: EntityType.COUNTRY, senderCountryId: { in: countryIds } },
-          { receiverType: EntityType.COUNTRY, receiverCountryId: { in: countryIds } },
-          { senderType: EntityType.CITY, senderCity: { countryId: { in: countryIds } } },
-          { receiverType: EntityType.CITY, receiverCity: { countryId: { in: countryIds } } },
-        ];
-      }
-    }
-
-    const includeRelations = {
-      items: true,
-      acceptanceRecords: {
-        include: {
-          acceptedBy: { select: { id: true, displayName: true, username: true, role: true } },
-        },
-      },
-      senderOffice: { select: { id: true, name: true, code: true } },
-          senderCountry: { select: { id: true, name: true, code: true } },
-      senderCity: { select: { id: true, name: true, slug: true, country: { select: { id: true, name: true } } } },
-          receiverOffice: { select: { id: true, name: true, code: true } },
-      receiverCountry: { select: { id: true, name: true, code: true } },
-      receiverCity: { select: { id: true, name: true, slug: true, country: { select: { id: true, name: true } } } },
-    };
-
-    const [transfers, total] = await Promise.all([
-      this.prisma.transfer.findMany({
-        where,
-        include: includeRelations,
-        orderBy: { acceptedAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.transfer.count({ where }),
-    ]);
-
-    this.logger.log(`=== findProblematic RESULTS ===`);
-    this.logger.log(`Total count: ${total}`);
-    this.logger.log(`Transfers returned: ${transfers.length}`);
-    this.logger.log(`Transfer IDs: ${transfers.map(t => t.id).join(', ')}`);
-
-    // Enrich with creator info
-    const creatorIds = [...new Set(transfers.map((t) => t.createdBy))];
-    const creators = await this.prisma.user.findMany({
-      where: { id: { in: creatorIds } },
-      select: { id: true, displayName: true, username: true, role: true },
-    });
-    const creatorsMap = new Map(creators.map((c) => [c.id, c]));
-
-    const enriched = transfers.map((t) => ({
-      ...t,
-      createdByUser: creatorsMap.get(t.createdBy) || null,
-    }));
-
-    return {
-      data: enriched,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
-
-  // ──────────────────────────────────────────────
-  // STATISTICS
-  // ──────────────────────────────────────────────
-
-  async getStats(params: {
-    period: 'week' | 'month' | 'quarter' | 'year';
-    countryId?: string;
-    cityId?: string;
-    userRole?: string;
-    userCountryId?: string;
-    userCityId?: string;
-    userOfficeId?: string;
-  }) {
-    const { period, countryId, cityId, userRole, userCountryId, userCityId, userOfficeId } = params;
-
-    // Calculate date range for current and previous periods
-    const now = new Date();
-    let startDate: Date;
-    let prevStartDate: Date;
-    switch (period) {
-      case 'week': {
-        const ms = 7 * 24 * 60 * 60 * 1000;
-        startDate = new Date(now.getTime() - ms);
-        prevStartDate = new Date(now.getTime() - ms * 2);
-        break;
-      }
-      case 'quarter': {
-        startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-        break;
-      }
-      case 'year': {
-        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        prevStartDate = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-        break;
-      }
-      default: {
-        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 2, now.getDate());
-      }
-    }
-
-    // Build scope filter helper (reusable)
-    const buildScopeOR = async (): Promise<Prisma.TransferWhereInput['OR'] | undefined> => {
-      if (cityId) {
-        return [{ senderCityId: cityId }, { receiverCityId: cityId }];
-      } else if (countryId) {
-        return [
-          { senderCountryId: countryId }, { receiverCountryId: countryId },
-          { senderCity: { countryId } }, { receiverCity: { countryId } },
-        ];
-      } else if (userRole === 'CITY' && userCityId) {
-        return [{ senderCityId: userCityId }, { receiverCityId: userCityId }];
-      } else if (userRole === 'COUNTRY' && userCountryId) {
-        return [
-          { senderCountryId: userCountryId }, { receiverCountryId: userCountryId },
-          { senderCity: { countryId: userCountryId } }, { receiverCity: { countryId: userCountryId } },
-        ];
-      } else if (userRole === 'OFFICE' && userOfficeId) {
-        const officeCountries = await this.prisma.country.findMany({
-          where: { officeId: userOfficeId }, select: { id: true },
-        });
-        const ids = officeCountries.map((c) => c.id);
-        if (ids.length > 0) {
-          return [
-            { senderCountryId: { in: ids } }, { receiverCountryId: { in: ids } },
-            { senderCity: { countryId: { in: ids } } }, { receiverCity: { countryId: { in: ids } } },
-          ];
-        }
-      }
-      return undefined;
-    };
-
-    const scopeOR = await buildScopeOR();
-    const baseWhere: Prisma.TransferWhereInput = { createdAt: { gte: startDate } };
-    if (scopeOR) baseWhere.OR = scopeOR;
-
-    const prevWhere: Prisma.TransferWhereInput = { createdAt: { gte: prevStartDate, lt: startDate } };
-    if (scopeOR) prevWhere.OR = scopeOR;
-
-    // ── Parallel fetch: counts + all transfers + prev period count ──
-    const [
-      totalTransfers,
-      acceptedTransfers,
-      discrepancyTransfers,
-      cancelledTransfers,
-      allTransfers,
-      prevTransferCount,
-    ] = await Promise.all([
-      this.prisma.transfer.count({ where: baseWhere }),
-      this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.ACCEPTED } }),
-      this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.DISCREPANCY_FOUND } }),
-      this.prisma.transfer.count({ where: { ...baseWhere, status: TransferStatus.CANCELLED } }),
-      this.prisma.transfer.findMany({
-        where: baseWhere,
-        include: {
-          items: true,
-          senderCountry: { select: { name: true } },
-          senderCity: { select: { name: true, country: { select: { name: true, id: true } } } },
-          receiverCountry: { select: { name: true } },
-          receiverCity: { select: { name: true, country: { select: { name: true, id: true } } } },
-        },
-      }),
-      this.prisma.transfer.count({ where: prevWhere }),
-    ]);
-
-    // ── Bracelet totals ──
-    let totalBlack = 0, totalWhite = 0, totalRed = 0, totalBlue = 0;
-    for (const t of allTransfers) {
-      for (const item of t.items) {
-        switch (item.itemType) {
-          case 'BLACK': totalBlack += item.quantity; break;
-          case 'WHITE': totalWhite += item.quantity; break;
-          case 'RED': totalRed += item.quantity; break;
-          case 'BLUE': totalBlue += item.quantity; break;
-        }
-      }
-    }
-
-    // ── Transfer trend by date with status breakdown ──
-    const trendMap = new Map<string, { sent: number; accepted: number; problematic: number; black: number; white: number; red: number; blue: number }>();
-    for (const t of allTransfers) {
-      const dateKey = t.createdAt.toISOString().split('T')[0];
-      if (!trendMap.has(dateKey)) trendMap.set(dateKey, { sent: 0, accepted: 0, problematic: 0, black: 0, white: 0, red: 0, blue: 0 });
-      const day = trendMap.get(dateKey)!;
-      day.sent++;
-      if (t.status === TransferStatus.ACCEPTED) day.accepted++;
-      if (t.status === TransferStatus.DISCREPANCY_FOUND) day.problematic++;
-      for (const item of t.items) {
-        const key = item.itemType.toLowerCase() as 'black' | 'white' | 'red' | 'blue';
-        day[key] += item.quantity;
-      }
-    }
-    const transfersByDay = Array.from(trendMap.entries())
-      .map(([date, d]) => ({ date, ...d }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // ── Users stats ──
-    const userWhere: Prisma.UserWhereInput = { isActive: true };
-    if (cityId) userWhere.cityId = cityId;
-    else if (countryId) userWhere.OR = [{ countryId }, { city: { countryId } }];
-    else if (userCityId) userWhere.cityId = userCityId;
-    else if (userCountryId) userWhere.OR = [{ countryId: userCountryId }, { city: { countryId: userCountryId } }];
-    const totalUsers = await this.prisma.user.count({ where: userWhere });
-
-    // Active users = distinct createdBy in this period
-    const activeUserIds = new Set(allTransfers.map((t) => t.createdBy));
-
-    // ── Events count ──
-    const eventWhere: Prisma.ExpenseWhereInput = { createdAt: { gte: startDate } };
-    if (cityId) eventWhere.cityId = cityId;
-    else if (countryId) eventWhere.city = { countryId };
-    else if (userCityId) eventWhere.cityId = userCityId;
-    else if (userCountryId) eventWhere.city = { countryId: userCountryId };
-    const totalEvents = await this.prisma.expense.count({ where: eventWhere });
-
-    // ── Country/city balance counts ──
-    const inventoryAll = await this.prisma.inventory.findMany({
-      where: { quantity: { gt: 0 } },
-      select: { entityType: true, countryId: true, cityId: true },
-    });
-    const activeCountryIds = new Set<string>();
-    const activeCityIds = new Set<string>();
-    for (const inv of inventoryAll) {
-      if (inv.entityType === 'COUNTRY' && inv.countryId) activeCountryIds.add(inv.countryId);
-      if (inv.entityType === 'CITY' && inv.cityId) activeCityIds.add(inv.cityId);
-    }
-
-    // ── Warehouse creation totals ──
-    let totalCreated = 0;
-    if ((this.prisma as any).warehouseCreation) {
-      const creations = await (this.prisma as any).warehouseCreation.findMany({
-        where: { createdAt: { gte: startDate } },
-        select: { totalAmount: true },
-      });
-      totalCreated = creations.reduce((s: number, c: any) => s + (c.totalAmount || 0), 0);
-    }
-
-    // ── Company losses (scoped) ──
-    const lossWhere: any = { resolvedAt: { gte: startDate } };
-    if (cityId) {
-      lossWhere.transfer = { OR: [{ senderCityId: cityId }, { receiverCityId: cityId }] };
-    } else if (countryId) {
-      lossWhere.transfer = { OR: [
-        { senderCountryId: countryId }, { receiverCountryId: countryId },
-        { senderCity: { countryId } }, { receiverCity: { countryId } },
-      ] };
-    } else if (userCityId) {
-      lossWhere.transfer = { OR: [{ senderCityId: userCityId }, { receiverCityId: userCityId }] };
-    } else if (userCountryId) {
-      lossWhere.transfer = { OR: [
-        { senderCountryId: userCountryId }, { receiverCountryId: userCountryId },
-        { senderCity: { countryId: userCountryId } }, { receiverCity: { countryId: userCountryId } },
-      ] };
-    }
-    const companyLosses = await (this.prisma as any).companyLoss.findMany({
-      where: lossWhere,
-      include: { transfer: { select: {
-        senderCountryId: true, receiverCountryId: true,
-        senderCity: { select: { countryId: true, country: { select: { name: true } } } },
-        receiverCity: { select: { countryId: true, country: { select: { name: true } } } },
-        senderCountry: { select: { name: true } },
-        receiverCountry: { select: { name: true } },
-      } } },
-    });
-    const totalLoss = companyLosses.reduce((s: number, l: any) => s + (l.totalAmount || 0), 0);
-
-    // ── Loss by day ──
-    const lossDayMap = new Map<string, { black: number; white: number; red: number; blue: number }>();
-    for (const l of companyLosses as any[]) {
-      const dateKey = (l.resolvedAt || l.createdAt)?.toISOString?.()?.split('T')[0];
-      if (!dateKey) continue;
-      if (!lossDayMap.has(dateKey)) lossDayMap.set(dateKey, { black: 0, white: 0, red: 0, blue: 0 });
-      const d = lossDayMap.get(dateKey)!;
-      d.black += l.black || 0;
-      d.white += l.white || 0;
-      d.red += l.red || 0;
-      d.blue += l.blue || 0;
-    }
-    const lossByDay = Array.from(lossDayMap.entries())
-      .map(([date, d]) => ({ date, ...d }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // ── Loss by country ──
-    const lossCountryMap = new Map<string, { country: string; black: number; white: number; red: number; blue: number; total: number }>();
-    for (const l of companyLosses as any[]) {
-      const transfer = l.transfer;
-      const cName = transfer?.senderCountry?.name || transfer?.senderCity?.country?.name
-                  || transfer?.receiverCountry?.name || transfer?.receiverCity?.country?.name || 'Неизвестно';
-      if (!lossCountryMap.has(cName)) lossCountryMap.set(cName, { country: cName, black: 0, white: 0, red: 0, blue: 0, total: 0 });
-      const c = lossCountryMap.get(cName)!;
-      c.black += l.black || 0;
-      c.white += l.white || 0;
-      c.red += l.red || 0;
-      c.blue += l.blue || 0;
-      c.total += l.totalAmount || 0;
-    }
-    const lossByCountry = Array.from(lossCountryMap.values()).sort((a, b) => b.total - a.total);
-
-    // ── Top countries by balance (scoped) ──
-    // CITY: empty (no subordinates). COUNTRY: only own country. ADMIN/OFFICE: all.
-    let topCountries: { name: string; balance: number }[] = [];
-    if (userRole !== 'CITY') {
-      const countryBalWhere: any = { entityType: 'COUNTRY', countryId: { not: null } };
-      if (userRole === 'COUNTRY' && userCountryId) {
-        countryBalWhere.countryId = userCountryId;
-      }
-      const countryBalances = await this.prisma.inventory.groupBy({
-        by: ['countryId'],
-        where: countryBalWhere,
-        _sum: { quantity: true },
-      });
-      const countryNames = await this.prisma.country.findMany({ select: { id: true, name: true } });
-      const countryNameMap = new Map(countryNames.map((c) => [c.id, c.name]));
-      topCountries = countryBalances
-        .map((c) => ({ name: countryNameMap.get(c.countryId!) || 'N/A', balance: c._sum.quantity || 0 }))
-        .sort((a, b) => b.balance - a.balance)
-        .slice(0, 10);
-    }
-
-    // ── Top cities by balance (scoped) ──
-    // CITY: only own city. COUNTRY: only cities in own country. ADMIN/OFFICE: all.
-    const cityBalWhere: any = { entityType: 'CITY', cityId: { not: null } };
-    if (userRole === 'CITY' && userCityId) {
-      cityBalWhere.cityId = userCityId;
-    } else if (userRole === 'COUNTRY' && userCountryId) {
-      const myCities = await this.prisma.city.findMany({ where: { countryId: userCountryId }, select: { id: true } });
-      cityBalWhere.cityId = { in: myCities.map((c) => c.id) };
-    }
-    const cityBalances = await this.prisma.inventory.groupBy({
-      by: ['cityId'],
-      where: cityBalWhere,
-      _sum: { quantity: true },
-    });
-    const cityDetails = await this.prisma.city.findMany({
-      select: { id: true, name: true, country: { select: { name: true } } },
-    });
-    const cityMap = new Map(cityDetails.map((c) => [c.id, { name: c.name, country: c.country.name }]));
-    const topCities = cityBalances
-      .map((c) => {
-        const info = cityMap.get(c.cityId!) || { name: 'N/A', country: 'N/A' };
-        return { name: info.name, country: info.country, balance: c._sum.quantity || 0 };
-      })
-      .sort((a, b) => b.balance - a.balance)
-      .slice(0, 10);
-
-    // ── Color distribution (scoped) ──
-    const colorDistWhere: any = { entityType: { not: 'ADMIN' } };
-    if (userRole === 'CITY' && userCityId) {
-      colorDistWhere.entityType = 'CITY';
-      colorDistWhere.cityId = userCityId;
-    } else if (userRole === 'COUNTRY' && userCountryId) {
-      const myCityIds = await this.prisma.city.findMany({ where: { countryId: userCountryId }, select: { id: true } });
-      colorDistWhere.OR = [
-        { entityType: 'COUNTRY', countryId: userCountryId },
-        { entityType: 'CITY', cityId: { in: myCityIds.map((c) => c.id) } },
-      ];
-      delete colorDistWhere.entityType;
-    }
-    const colorDist = await this.prisma.inventory.groupBy({
-      by: ['itemType'],
-      where: colorDistWhere,
-      _sum: { quantity: true },
-    });
-    const colorDistribution: Record<string, number> = { black: 0, white: 0, red: 0, blue: 0 };
-    for (const c of colorDist) {
-      colorDistribution[c.itemType.toLowerCase()] = c._sum.quantity || 0;
-    }
-
-    // ── Top users by activity ──
-    const userActivityMap = new Map<string, { sent: number; received: number; problematic: number }>();
-    for (const t of allTransfers) {
-      const uid = t.createdBy;
-      if (!userActivityMap.has(uid)) userActivityMap.set(uid, { sent: 0, received: 0, problematic: 0 });
-      const u = userActivityMap.get(uid)!;
-      u.sent++;
-      if (t.status === TransferStatus.DISCREPANCY_FOUND) u.problematic++;
-    }
-    // Count received (acceptedAt means someone accepted)
-    const acceptedInPeriod = allTransfers.filter((t) => t.status === TransferStatus.ACCEPTED && t.acceptedAt);
-    // We don't have acceptedBy on Transfer, so count by receiver entity
-    const topUserIds = Array.from(userActivityMap.entries())
-      .sort((a, b) => b[1].sent - a[1].sent)
-      .slice(0, 10)
-      .map(([id]) => id);
-    const topUserDetails = topUserIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: topUserIds } },
-          select: { id: true, displayName: true, username: true, role: true },
-        })
-      : [];
-    const userDetailMap = new Map(topUserDetails.map((u) => [u.id, u]));
-    const topUsers = topUserIds.map((id) => {
-      const info = userDetailMap.get(id);
-      const act = userActivityMap.get(id)!;
-      return {
-        name: info?.displayName || info?.username || 'N/A',
-        role: info?.role || 'N/A',
-        sent: act.sent,
-        received: 0,
-        problematic: act.problematic,
-      };
-    });
-
-    // ── Average accept time (hours) ──
-    const acceptedWithTime = allTransfers.filter((t) => t.acceptedAt && t.createdAt);
-    let avgAcceptTime = 0;
-    if (acceptedWithTime.length > 0) {
-      const totalHours = acceptedWithTime.reduce((sum, t) => {
-        return sum + (new Date(t.acceptedAt!).getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60);
-      }, 0);
-      avgAcceptTime = Math.round((totalHours / acceptedWithTime.length) * 10) / 10;
-    }
-
-    // ── Previous period comparison ──
-    const transferChange = prevTransferCount > 0
-      ? Math.round(((totalTransfers - prevTransferCount) / prevTransferCount) * 100)
-      : totalTransfers > 0 ? 100 : 0;
-
-    return {
-      summary: {
-        totalTransfers,
-        totalBracelets: totalBlack + totalWhite + totalRed + totalBlue,
-        activeUsers: activeUserIds.size,
-        totalUsers,
-        activeCountries: activeCountryIds.size,
-        activeCities: activeCityIds.size,
-        totalCreated,
-        totalLoss,
-        totalEvents,
-        transferChange,
-      },
-      statusBreakdown: {
-        accepted: acceptedTransfers,
-        discrepancy: discrepancyTransfers,
-        cancelled: cancelledTransfers,
-        pending: totalTransfers - acceptedTransfers - discrepancyTransfers - cancelledTransfers,
-      },
-      braceletBreakdown: {
-        black: totalBlack,
-        white: totalWhite,
-        red: totalRed,
-        blue: totalBlue,
-      },
-      colorDistribution,
-      transfersByDay,
-      lossByDay,
-      lossByCountry,
-      topCountries,
-      topCities,
-      topUsers,
-      avgAcceptTime,
-      userRole: userRole || 'ADMIN',
-      period,
-      startDate: startDate.toISOString(),
-      endDate: now.toISOString(),
-    };
-  }
-
-  // ──────────────────────────────────────────────
-  // RESOLVE DISCREPANCY (Admin/Office only)
-  // Supports: ACCEPT_SENDER, ACCEPT_RECEIVER, ACCEPT_COMPROMISE
-  // Creates CompanyLoss record when there's a loss
-  // ──────────────────────────────────────────────
-
-  async resolveDiscrepancy(
-    transferId: string,
-    dto: ResolveDiscrepancyDto,
-    actorId: string,
-  ) {
-    const { resolutionType, compromiseValues, notes } = dto;
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      const transfer = await tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { 
-          items: true, 
-          acceptanceRecords: true,
-          senderOffice: { select: { name: true } },
-          senderCountry: { select: { name: true } },
-          senderCity: { select: { name: true } },
-          receiverOffice: { select: { name: true } },
-          receiverCountry: { select: { name: true } },
-          receiverCity: { select: { name: true } },
-        },
-      });
-
-      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-      if (transfer.status !== TransferStatus.DISCREPANCY_FOUND) {
-        throw new ConflictException(
-          `Transfer is in status ${transfer.status}, expected DISCREPANCY_FOUND`,
-        );
-      }
-
-      // Calculate sent and received totals by color
-      const sentByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-      const receivedByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-
-      for (const item of transfer.items) {
-        sentByColor[item.itemType] = item.quantity;
-      }
-      for (const record of transfer.acceptanceRecords) {
-        receivedByColor[record.itemType] = record.receivedQuantity;
-      }
-
-      // Get sender/receiver names for CompanyLoss record
-      const senderName = transfer.senderType === EntityType.ADMIN 
-        ? 'ADMIN' 
-        : transfer.senderOffice?.name || transfer.senderCountry?.name || transfer.senderCity?.name || 'Unknown';
-      const senderCityName = transfer.senderCity?.name || null;
-      const receiverName = transfer.receiverOffice?.name || transfer.receiverCountry?.name || transfer.receiverCity?.name || 'Unknown';
-      const receiverCityName = transfer.receiverCity?.name || null;
-
-      // Calculate final values based on resolution type
-      let finalByColor: Record<string, number> = { ...receivedByColor }; // default to receiver
-      let lossBlack = 0, lossWhite = 0, lossRed = 0, lossBlue = 0;
-      const totalSent = Object.values(sentByColor).reduce((a, b) => a + b, 0);
-      const totalReceived = Object.values(receivedByColor).reduce((a, b) => a + b, 0);
-
-      // Use string values for comparison since resolutionType comes from DTO
-      const resType = resolutionType as string;
-
-      if (resType === 'ACCEPT_SENDER') {
-        // Trust sender: receiver gets what sender sent
-        // Shortage goes to RECEIVER (they claim to have received less)
-        finalByColor = { ...sentByColor };
-        lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
-        lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
-        lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
-        lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
-      } else if (resType === 'ACCEPT_RECEIVER') {
-        // Trust receiver: receiver gets what they reported
-        // Shortage goes to SENDER (they claim to have sent more)
-        finalByColor = { ...receivedByColor };
-        lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
-        lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
-        lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
-        lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
-      } else if (resType === 'ACCEPT_COMPROMISE') {
-        if (!compromiseValues) {
-          throw new BadRequestException('Compromise values are required for ACCEPT_COMPROMISE resolution');
-        }
-        // Validate compromise values don't exceed sent quantities
-        for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
-          const key = color.toLowerCase() as 'black' | 'white' | 'red' | 'blue';
-          if (compromiseValues[key] > sentByColor[color]) {
-            throw new BadRequestException(
-              `Компромиссное значение для ${color} (${compromiseValues[key]}) не может превышать отправленное (${sentByColor[color]})`,
-            );
-          }
-        }
-        // Custom values - shortage split between both
-        finalByColor = {
-          BLACK: compromiseValues.black,
-          WHITE: compromiseValues.white,
-          RED: compromiseValues.red,
-          BLUE: compromiseValues.blue,
-        };
-        lossBlack = Math.max(0, sentByColor.BLACK - compromiseValues.black);
-        lossWhite = Math.max(0, sentByColor.WHITE - compromiseValues.white);
-        lossRed = Math.max(0, sentByColor.RED - compromiseValues.red);
-        lossBlue = Math.max(0, sentByColor.BLUE - compromiseValues.blue);
-      } else if (resType === 'ACCEPT_AS_IS') {
-        // Nobody blamed: receiver gets what they reported
-        // Difference goes to COMPANY LOSS (no individual shortage)
-        finalByColor = { ...receivedByColor };
-        lossBlack = Math.max(0, sentByColor.BLACK - receivedByColor.BLACK);
-        lossWhite = Math.max(0, sentByColor.WHITE - receivedByColor.WHITE);
-        lossRed = Math.max(0, sentByColor.RED - receivedByColor.RED);
-        lossBlue = Math.max(0, sentByColor.BLUE - receivedByColor.BLUE);
-      } else if (resType === 'CANCEL_TRANSFER') {
-        // Cancel transfer: nothing credited to receiver, entire sent amount is company loss
-        finalByColor = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-        lossBlack = sentByColor.BLACK;
-        lossWhite = sentByColor.WHITE;
-        lossRed = sentByColor.RED;
-        lossBlue = sentByColor.BLUE;
-      }
-
-      const totalLoss = lossBlack + lossWhite + lossRed + lossBlue;
-
-      // BALANCE CHANGES:
-      // Sender was already deducted when transfer was created.
-      // Now we need to:
-      // - Credit receiver with final values
-      // - For CANCEL_TRANSFER: Return all to sender (no receiver credit)
-      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-      const receiverEntityId = transfer.receiverOfficeId || transfer.receiverCountryId || transfer.receiverCityId;
-      
-      if (resType === 'CANCEL_TRANSFER') {
-        // Return ALL bracelets to sender (they were deducted on send)
-        for (const [colorStr, quantity] of Object.entries(sentByColor)) {
-          if (quantity > 0) {
-            await this.creditInventory(
-              tx,
-              transfer.senderType,
-              senderEntityId,
-              colorStr as ItemType,
-              quantity,
-            );
-          }
-        }
-        this.logger.log(`Transfer ${transferId} CANCEL_TRANSFER: Returned ${JSON.stringify(sentByColor)} to sender`);
-      } else {
-        // Credit receiver with final values (based on resolution)
-        for (const [colorStr, quantity] of Object.entries(finalByColor)) {
-          if (quantity > 0) {
-            await this.creditInventory(
-              tx,
-              transfer.receiverType,
-              receiverEntityId,
-              colorStr as ItemType,
-              quantity,
-            );
-          }
-        }
-        this.logger.log(`Transfer ${transferId} resolved: Credited ${JSON.stringify(finalByColor)} to receiver`);
-      }
-
-      // Update city statuses
-      if (transfer.senderType === EntityType.CITY && transfer.senderCityId) {
-        await this.inventoryService.updateCityStatus(tx, transfer.senderCityId);
-      }
-      if (transfer.receiverType === EntityType.CITY && transfer.receiverCityId) {
-        await this.inventoryService.updateCityStatus(tx, transfer.receiverCityId);
-      }
-
-      // Create Shortage records based on resolution type
-      // - ACCEPT_SENDER: Shortage assigned to RECEIVER (receiver claimed less)
-      // - ACCEPT_RECEIVER: Shortage assigned to SENDER (sender claimed more)
-      // - ACCEPT_COMPROMISE: Shortage split between BOTH
-      // - ACCEPT_AS_IS: NO shortage (company loss only)
-      // - CANCEL_TRANSFER: NO shortage (company loss only)
-      if (totalLoss > 0 && resType !== 'CANCEL_TRANSFER' && resType !== 'ACCEPT_AS_IS') {
-        if (resType === 'ACCEPT_SENDER') {
-          // Receiver is blamed - they claim to have received less than sender sent
-          await (tx as any).shortage.create({
-            data: {
-              entityType: transfer.receiverType,
-              officeId: transfer.receiverOfficeId,
-              countryId: transfer.receiverCountryId,
-              cityId: transfer.receiverCityId,
-              transferId: transfer.id,
-              black: lossBlack,
-              white: lossWhite,
-              red: lossRed,
-              blue: lossBlue,
-              totalAmount: totalLoss,
-              reason: 'RECEIVER_BLAMED',
-              resolutionType,
-              resolvedBy: actorId,
-              notes: notes || null,
-            },
-          });
-          this.logger.log(`Shortage created for RECEIVER (${receiverName}) on transfer ${transferId}: ${totalLoss} bracelets`);
-        } else if (resType === 'ACCEPT_RECEIVER') {
-          // Sender is blamed - they claim to have sent more than receiver got
-          await (tx as any).shortage.create({
-            data: {
-              entityType: transfer.senderType,
-              officeId: transfer.senderOfficeId,
-              countryId: transfer.senderCountryId,
-              cityId: transfer.senderCityId,
-              transferId: transfer.id,
-              black: lossBlack,
-              white: lossWhite,
-              red: lossRed,
-              blue: lossBlue,
-              totalAmount: totalLoss,
-              reason: 'SENDER_BLAMED',
-              resolutionType,
-              resolvedBy: actorId,
-              notes: notes || null,
-            },
-          });
-          this.logger.log(`Shortage created for SENDER (${senderName}) on transfer ${transferId}: ${totalLoss} bracelets`);
-        } else if (resType === 'ACCEPT_COMPROMISE') {
-          // COMPROMISE: Both parties get 100% of the loss recorded (not 50/50!)
-          // Each is held responsible for the full discrepancy amount
-
-          // Shortage for sender (100% of loss)
-          await (tx as any).shortage.create({
-            data: {
-              entityType: transfer.senderType,
-              officeId: transfer.senderOfficeId,
-              countryId: transfer.senderCountryId,
-              cityId: transfer.senderCityId,
-              transferId: transfer.id,
-              black: lossBlack,
-              white: lossWhite,
-              red: lossRed,
-              blue: lossBlue,
-              totalAmount: totalLoss,
-              reason: 'SPLIT_LOSS',
-              resolutionType,
-              resolvedBy: actorId,
-              notes: `Компромисс: полная сумма недостачи (отправитель). ${notes || ''}`.trim(),
-            },
-          });
-
-          // Shortage for receiver (100% of loss)
-          await (tx as any).shortage.create({
-            data: {
-              entityType: transfer.receiverType,
-              officeId: transfer.receiverOfficeId,
-              countryId: transfer.receiverCountryId,
-              cityId: transfer.receiverCityId,
-              transferId: transfer.id,
-              black: lossBlack,
-              white: lossWhite,
-              red: lossRed,
-              blue: lossBlue,
-              totalAmount: totalLoss,
-              reason: 'SPLIT_LOSS',
-              resolutionType,
-              resolvedBy: actorId,
-              notes: `Компромисс: полная сумма недостачи (получатель). ${notes || ''}`.trim(),
-            },
-          });
-
-          this.logger.log(`Shortage (100% each) for SENDER (${senderName}: ${totalLoss}) and RECEIVER (${receiverName}: ${totalLoss}) on transfer ${transferId}`);
-        }
-      }
-
-      // Create CompanyLoss record ONLY for ACCEPT_AS_IS and CANCEL_TRANSFER
-      // Other resolution types create shortages on individuals, not company loss
-      if (totalLoss > 0 && (resType === 'ACCEPT_AS_IS' || resType === 'CANCEL_TRANSFER')) {
-        await (tx as any).companyLoss.create({
+        await tx.auditLog.create({
           data: {
-            transferId: transfer.id,
-            black: lossBlack,
-            white: lossWhite,
-            red: lossRed,
-            blue: lossBlue,
-            totalAmount: totalLoss,
-            resolutionType,
-            resolvedBy: actorId,
-            senderName,
-            senderCity: senderCityName,
-            receiverName,
-            receiverCity: receiverCityName,
-            originalSent: totalSent,
-            originalReceived: totalReceived,
-            notes: notes || null,
+            action: AuditAction.TRANSFER_ACCEPTED,
+            userId: actor.id,
+            entityType: 'Transfer',
+            entityId: t.id,
+            payload: {
+              code: t.code,
+              fromCityId: t.fromCityId,
+              toCityId: t.toCityId,
+              lines: dto.lines as object,
+            },
           },
         });
-
-        this.logger.log(`CompanyLoss created for transfer ${transferId}: ${totalLoss} bracelets lost`);
-      }
-
-      // Update transfer status to ACCEPTED
-      await tx.transfer.update({
-        where: { id: transferId },
-        data: { status: TransferStatus.ACCEPTED, version: transfer.version + 1 },
-      });
-
-      this.logger.log(`Discrepancy resolved: ${transferId} → ACCEPTED via ${resolutionType}`);
-
-      await this.storeDomainEvent(transferId, 'DiscrepancyResolved', {
-        resolutionType,
-        actorId,
-        totalLoss,
-        compromiseValues,
-      });
-
-      return tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true, acceptanceRecords: true },
-      });
-    });
-
-    // Emit event for audit logging AFTER transaction commits
-    const items = await this.prisma.transferItem.findMany({ where: { transferId } });
-    const acceptanceRecords = await this.prisma.acceptanceRecord.findMany({ where: { transferId } });
-    const sentMap: Record<string, number> = {};
-    const receivedMap: Record<string, number> = {};
-    let auditTotalLoss = 0;
-    for (const i of items) sentMap[i.itemType] = i.quantity;
-    for (const r of acceptanceRecords) receivedMap[r.itemType] = r.receivedQuantity;
-    for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE']) {
-      auditTotalLoss += Math.max(0, (sentMap[color] || 0) - (receivedMap[color] || 0));
-    }
-
-    this.eventEmitter.emit('discrepancy.resolved', {
-      transferId,
-      actorId,
-      resolutionType,
-      totalLoss: auditTotalLoss,
-      sentByColor: sentMap,
-      receivedByColor: receivedMap,
-      notes,
-    });
-
-    // Invalidate caches AFTER the transaction commits
-    const resolvedTransfer = await this.prisma.transfer.findUnique({
-      where: { id: transferId },
-    });
-    if (resolvedTransfer) {
-      if (resolvedTransfer.senderType !== EntityType.ADMIN) {
-        const senderEntityId = resolvedTransfer.senderOfficeId || resolvedTransfer.senderCountryId || resolvedTransfer.senderCityId;
-        if (senderEntityId) {
-          await this.redis.invalidateInventory(resolvedTransfer.senderType, senderEntityId as string);
-        }
-      }
-      const receiverEntityId = resolvedTransfer.receiverOfficeId || resolvedTransfer.receiverCountryId || resolvedTransfer.receiverCityId;
-      if (receiverEntityId) {
-        await this.redis.invalidateInventory(resolvedTransfer.receiverType, receiverEntityId as string);
-      }
-    }
-
-    return result;
-  }
-
-  // ──────────────────────────────────────────────
-  // EDIT TRANSFER (Admin only, 2FA required)
-  // Only SENT transfers can be edited.
-  // Adjusts sender inventory based on quantity delta.
-  // ──────────────────────────────────────────────
-
-  async editTransfer(
-    transferId: string,
-    newItems: Array<{ itemType: ItemType; quantity: number }>,
-    actorId: string,
-    notes?: string,
-  ) {
-    const result = await this.prisma.$transaction(async (tx) => {
-      const transfer = await tx.transfer.findUnique({
-        where: { id: transferId },
-        include: {
-          items: true,
-          senderOffice: { select: { name: true } },
-          senderCountry: { select: { name: true } },
-          senderCity: { select: { name: true } },
-          receiverOffice: { select: { name: true } },
-          receiverCountry: { select: { name: true } },
-          receiverCity: { select: { name: true } },
-        },
-      });
-
-      if (!transfer) throw new NotFoundException(`Transfer ${transferId} not found`);
-
-      if (transfer.status !== TransferStatus.SENT) {
-        throw new BadRequestException(
-          `Можно редактировать только отправки в статусе SENT. Текущий статус: ${transfer.status}`,
-        );
-      }
-
-      // Build old quantities map
-      const oldByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-      for (const item of transfer.items) {
-        oldByColor[item.itemType] = item.quantity;
-      }
-
-      // Build new quantities map
-      const newByColor: Record<string, number> = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-      for (const item of newItems) {
-        if (item.quantity <= 0) {
-          throw new BadRequestException(`Количество должно быть положительным для ${item.itemType}`);
-        }
-        newByColor[item.itemType] = item.quantity;
-      }
-
-      // Check that at least one item has quantity > 0
-      const totalNew = Object.values(newByColor).reduce((a, b) => a + b, 0);
-      if (totalNew === 0) {
-        throw new BadRequestException('Трансфер должен содержать хотя бы один браслет');
-      }
-
-      // Calculate deltas and adjust sender inventory
-      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-
-      // First pass: check if sender has enough balance for increases
-      const fullBalance: Record<string, number> = {};
-      for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
-        fullBalance[color] = await this.getEntityBalance(
-          tx,
-          transfer.senderType,
-          senderEntityId,
-          color as any,
-        );
-      }
-
-      for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
-        const delta = newByColor[color] - oldByColor[color];
-        if (delta > 0 && fullBalance[color] < delta) {
-          throw new BadRequestException(
-            `Недостаточно браслетов у отправителя для увеличения. Баланс: Ч:${fullBalance.BLACK} Б:${fullBalance.WHITE} К:${fullBalance.RED} С:${fullBalance.BLUE}`,
-          );
-        }
-      }
-
-      // Second pass: apply deltas
-      for (const color of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
-        const delta = newByColor[color] - oldByColor[color];
-        if (delta > 0) {
-          // Increase: deduct more from sender
-          await this.deductInventory(tx, transfer.senderType, senderEntityId, color as any, delta);
-        } else if (delta < 0) {
-          // Decrease: return excess to sender
-          await this.creditInventory(tx, transfer.senderType, senderEntityId, color as any, Math.abs(delta));
-        }
-      }
-
-      // Update transfer items: delete old, create new
-      await tx.transferItem.deleteMany({ where: { transferId } });
-      const itemsToCreate = Object.entries(newByColor)
-        .filter(([_, qty]) => qty > 0)
-        .map(([itemType, quantity]) => ({
-          transferId,
-          itemType: itemType as ItemType,
-          quantity,
-        }));
-      await tx.transferItem.createMany({ data: itemsToCreate });
-
-      // Update notes if provided
-      if (notes !== undefined) {
-        await tx.transfer.update({
-          where: { id: transferId },
-          data: { version: transfer.version + 1, notes: notes || transfer.notes },
-        });
       } else {
+        // DISCREPANCY: do not move balances yet, wait for /resolve
         await tx.transfer.update({
-          where: { id: transferId },
-          data: { version: transfer.version + 1 },
+          where: { id: t.id },
+          data: {
+            status: TransferStatus.DISCREPANCY,
+            acceptedById: actor.id,
+            acceptedAt: new Date(),
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: AuditAction.TRANSFER_DISCREPANCY,
+            userId: actor.id,
+            entityType: 'Transfer',
+            entityId: t.id,
+            payload: {
+              code: t.code,
+              fromCityId: t.fromCityId,
+              toCityId: t.toCityId,
+              lines: dto.lines as object,
+            },
+          },
         });
       }
-
-      // Store domain event
-      await this.storeDomainEvent(transferId, 'TransferEdited', {
-        actorId,
-        oldItems: oldByColor,
-        newItems: newByColor,
-        notes,
-      });
-
-      this.logger.log(`Transfer ${transferId} EDITED by ${actorId}: ${JSON.stringify(oldByColor)} → ${JSON.stringify(newByColor)}`);
-
-      return tx.transfer.findUnique({
-        where: { id: transferId },
-        include: { items: true },
-      });
+      return tx.transfer.findUnique({ where: { id: t.id }, include: { lines: true } });
     });
+  }
 
-    // Emit event for audit logging
-    this.eventEmitter.emit('transfer.edited', {
-      transferId,
-      actorId,
-      oldItems: (await this.prisma.domainEvent.findFirst({
-        where: { aggregateId: transferId, eventType: 'TransferEdited' },
-        orderBy: { version: 'desc' },
-      }))?.payload,
-      notes,
-    });
+  async resolve(id: string, actor: AuthUser) {
+    const t = await this.loadFull(id);
+    if (t.status !== TransferStatus.DISCREPANCY)
+      throw new ConflictException(`NOT_DISCREPANCY:${t.status}`);
+    await requireCityAccess(this.prisma, actor, t.toCityId);
 
-    // Invalidate sender cache
-    const transfer = await this.prisma.transfer.findUnique({ where: { id: transferId } });
-    if (transfer) {
-      const senderEntityId = transfer.senderOfficeId || transfer.senderCountryId || transfer.senderCityId;
-      if (senderEntityId) {
-        await this.redis.invalidateInventory(transfer.senderType, senderEntityId);
-      } else if (transfer.senderType === EntityType.ADMIN) {
-        await this.redis.invalidateInventory(EntityType.ADMIN, 'admin');
+    return this.prisma.$transaction(async (tx) => {
+      for (const l of t.lines) {
+        const received = l.receivedCount ?? 0;
+        if (received > 0) {
+          await tx.inventory.upsert({
+            where: { cityId_color: { cityId: t.toCityId, color: l.color } },
+            create: { cityId: t.toCityId, color: l.color, count: received },
+            update: { count: { increment: received } },
+          });
+        }
+        const shortage = l.sentCount - received;
+        if (shortage > 0) {
+          const exp = await tx.expense.create({
+            data: {
+              cityId: t.fromCityId,
+              color: l.color,
+              count: shortage,
+              kind: ExpenseKind.SHORTAGE,
+              reason: `Transfer ${t.code} discrepancy`,
+              createdById: actor.id,
+              transferId: t.id,
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              action: AuditAction.EXPENSE_CREATED,
+              userId: actor.id,
+              entityType: 'Expense',
+              entityId: exp.id,
+              payload: {
+                cityId: t.fromCityId,
+                countryId: t.fromCity.countryId,
+                color: l.color,
+                count: shortage,
+                kind: ExpenseKind.SHORTAGE,
+                transferId: t.id,
+                transferCode: t.code,
+              },
+            },
+          });
+        }
       }
-    }
-
-    return result;
-  }
-
-  // ──────────────────────────────────────────────
-  // INTERNAL HELPERS
-  // ──────────────────────────────────────────────
-
-  private isReceiver(
-    transfer: { receiverType: EntityType; receiverCountryId: string | null; receiverCityId: string | null },
-    user: { role: string; countryId?: string | null; cityId?: string | null },
-  ): boolean {
-    if (user.role === 'COUNTRY' && transfer.receiverType === EntityType.COUNTRY) {
-      return transfer.receiverCountryId === user.countryId;
-    }
-    if (user.role === 'CITY' && transfer.receiverType === EntityType.CITY) {
-      return transfer.receiverCityId === user.cityId;
-    }
-    return false;
-  }
-
-  private isSameEntity(input: SendTransferInput): boolean {
-    if (input.senderType === input.receiverType) {
-      if (input.senderType === EntityType.COUNTRY) {
-        return input.senderCountryId === input.receiverCountryId;
-      }
-      if (input.senderType === EntityType.CITY) {
-        return input.senderCityId === input.receiverCityId;
-      }
-    }
-    return false;
-  }
-
-  private async getEntityBalance(
-    tx: Prisma.TransactionClient,
-    entityType: EntityType,
-    entityId: string | null,
-    itemType: ItemType,
-  ): Promise<number> {
-    const where: Prisma.InventoryWhereInput = { entityType, itemType };
-    if (entityType === EntityType.OFFICE) where.officeId = entityId;
-    if (entityType === EntityType.COUNTRY) where.countryId = entityId;
-    if (entityType === EntityType.CITY) where.cityId = entityId;
-
-    const inventory = await tx.inventory.findFirst({ where });
-    return inventory?.quantity ?? 0;
-  }
-
-  private async deductInventory(
-    tx: Prisma.TransactionClient,
-    entityType: EntityType,
-    entityId: string | null,
-    itemType: ItemType,
-    quantity: number,
-  ): Promise<void> {
-    const where: Prisma.InventoryWhereInput = { entityType, itemType };
-    if (entityType === EntityType.OFFICE) where.officeId = entityId;
-    if (entityType === EntityType.COUNTRY) where.countryId = entityId;
-    if (entityType === EntityType.CITY) where.cityId = entityId;
-
-    const inventory = await tx.inventory.findFirst({ where });
-    if (!inventory || inventory.quantity < quantity) {
-      throw new BadRequestException(
-        `Insufficient ${itemType} stock for ${entityType}`,
-      );
-    }
-
-    await tx.inventory.update({
-      where: { id: inventory.id },
-      data: { quantity: inventory.quantity - quantity },
-    });
-
-    if (entityId && (entityType === EntityType.CITY || entityType === EntityType.COUNTRY)) {
-      await this.balances.syncFromInventory(tx, entityType, entityId);
-    }
-  }
-
-  private async creditInventory(
-    tx: Prisma.TransactionClient,
-    entityType: EntityType,
-    entityId: string | null,
-    itemType: ItemType,
-    quantity: number,
-  ): Promise<void> {
-    const where: Prisma.InventoryWhereInput = { entityType, itemType };
-    if (entityType === EntityType.OFFICE) where.officeId = entityId;
-    if (entityType === EntityType.COUNTRY) where.countryId = entityId;
-    if (entityType === EntityType.CITY) where.cityId = entityId;
-
-    const inventory = await tx.inventory.findFirst({ where });
-    if (inventory) {
-      await tx.inventory.update({
-        where: { id: inventory.id },
-        data: { quantity: inventory.quantity + quantity },
+      await tx.transfer.update({
+        where: { id: t.id },
+        data: { status: TransferStatus.RESOLVED, resolvedAt: new Date() },
       });
-    } else {
-      await tx.inventory.create({
-        data: {
-          entityType,
-          officeId: entityType === EntityType.OFFICE ? entityId : null,
-          countryId: entityType === EntityType.COUNTRY ? entityId : null,
-          cityId: entityType === EntityType.CITY ? entityId : null,
-          itemType,
-          quantity,
-        },
-      });
-    }
-
-    if (entityId && (entityType === EntityType.CITY || entityType === EntityType.COUNTRY)) {
-      await this.balances.syncFromInventory(tx, entityType, entityId);
-    }
-  }
-
-  /**
-   * Phase 7: write a single AuditLog row for a transfer state change.
-   * Includes affectedUserIds (sender + receiver CITY/COUNTRY users via UserAccess)
-   * so the personal balance history query can find it.
-   */
-  private async writeTransferAudit(
-    tx: Prisma.TransactionClient,
-    params: {
-      action: AuditAction;
-      transferId: string;
-      actorId: string;
-      senderType: EntityType;
-      senderEntityId: string | null;
-      senderName?: string;
-      receiverType: EntityType;
-      receiverEntityId: string | null;
-      receiverName?: string;
-      items: Array<{ itemType: string; quantity: number }>;
-      extra?: Record<string, any>;
-    },
-  ): Promise<void> {
-    const collect = async (
-      entityType: EntityType,
-      entityId: string | null,
-    ): Promise<string[]> => {
-      if (!entityId) return [];
-      let scope: ScopeType | null = null;
-      if (entityType === EntityType.CITY) scope = ScopeType.CITY;
-      else if (entityType === EntityType.COUNTRY) scope = ScopeType.COUNTRY;
-      else return [];
-
-      const now = new Date();
-      const access = await tx.userAccess.findMany({
-        where: {
-          scopeType: scope,
-          scopeId: entityId,
-          revokedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        },
-        select: { userId: true },
-      });
-      return access.map((a) => a.userId);
-    };
-
-    try {
-      const senderUserIds = await collect(params.senderType, params.senderEntityId);
-      const receiverUserIds = await collect(params.receiverType, params.receiverEntityId);
-      const affectedUserIds = Array.from(new Set([...senderUserIds, ...receiverUserIds]));
-
       await tx.auditLog.create({
         data: {
-          action: params.action,
+          action: AuditAction.TRANSFER_RESOLVED,
+          userId: actor.id,
           entityType: 'Transfer',
-          entityId: params.transferId,
-          actorId: params.actorId,
-          metadata: {
-            senderType: params.senderType,
-            senderEntityId: params.senderEntityId,
-            senderName: params.senderName ?? null,
-            senderUserIds,
-            receiverType: params.receiverType,
-            receiverEntityId: params.receiverEntityId,
-            receiverName: params.receiverName ?? null,
-            receiverUserIds,
-            affectedUserIds,
-            items: params.items,
-            ...(params.extra || {}),
+          entityId: t.id,
+          payload: {
+            code: t.code,
+            fromCityId: t.fromCityId,
+            toCityId: t.toCityId,
           },
         },
       });
-    } catch (err) {
-      // Audit must never break the main flow.
-      this.logger.warn(`writeTransferAudit failed: ${(err as Error).message}`);
-    }
+      return tx.transfer.findUnique({ where: { id: t.id }, include: { lines: true } });
+    });
   }
 
-  private async storeDomainEvent(
-    aggregateId: string,
-    eventType: string,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
-    const lastEvent = await this.prisma.domainEvent.findFirst({
-      where: { aggregateId },
-      orderBy: { version: 'desc' },
+  async reject(id: string, actor: AuthUser) {
+    const t = await this.loadFull(id);
+    if (t.status !== TransferStatus.PENDING)
+      throw new ConflictException(`NOT_PENDING:${t.status}`);
+    await requireCityAccess(this.prisma, actor, t.toCityId);
+    return this.prisma.$transaction(async (tx) => {
+      for (const l of t.lines) {
+        await tx.inventory.upsert({
+          where: { cityId_color: { cityId: t.fromCityId, color: l.color } },
+          create: { cityId: t.fromCityId, color: l.color, count: l.sentCount },
+          update: { count: { increment: l.sentCount } },
+        });
+      }
+      await tx.transfer.update({
+        where: { id: t.id },
+        data: { status: TransferStatus.REJECTED, acceptedById: actor.id, acceptedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.TRANSFER_REJECTED,
+          userId: actor.id,
+          entityType: 'Transfer',
+          entityId: t.id,
+          payload: { code: t.code, fromCityId: t.fromCityId, toCityId: t.toCityId },
+        },
+      });
+      return tx.transfer.findUnique({ where: { id: t.id }, include: { lines: true } });
     });
+  }
 
-    await this.prisma.domainEvent.create({
-      data: {
-        aggregateType: 'Transfer',
-        aggregateId,
-        eventType,
-        version: (lastEvent?.version ?? 0) + 1,
-        payload: payload as Prisma.JsonObject,
-      },
+  async cancel(id: string, actor: AuthUser) {
+    const t = await this.loadFull(id);
+    if (t.status !== TransferStatus.PENDING)
+      throw new ConflictException(`NOT_PENDING:${t.status}`);
+    const isPrivileged = actor.role === Role.ADMIN || actor.role === Role.OFFICE;
+    if (!isPrivileged && t.createdById !== actor.id) {
+      throw new ForbiddenException('NOT_OWNER');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      for (const l of t.lines) {
+        await tx.inventory.upsert({
+          where: { cityId_color: { cityId: t.fromCityId, color: l.color } },
+          create: { cityId: t.fromCityId, color: l.color, count: l.sentCount },
+          update: { count: { increment: l.sentCount } },
+        });
+      }
+      await tx.transfer.update({
+        where: { id: t.id },
+        data: { status: TransferStatus.CANCELLED },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.TRANSFER_CANCELLED,
+          userId: actor.id,
+          entityType: 'Transfer',
+          entityId: t.id,
+          payload: { code: t.code, fromCityId: t.fromCityId, toCityId: t.toCityId },
+        },
+      });
+      return tx.transfer.findUnique({ where: { id: t.id }, include: { lines: true } });
     });
   }
 }

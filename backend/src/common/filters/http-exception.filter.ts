@@ -1,60 +1,44 @@
-import {
-  ExceptionFilter,
-  Catch,
-  ArgumentsHost,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(HttpExceptionFilter.name);
+  private readonly logger = new Logger('HttpException');
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const res = ctx.getResponse<Response>();
+    const req = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string | string[] = 'Internal server error';
-    let error = 'Internal Server Error';
+    let code = 'INTERNAL_ERROR';
+    let message = 'Internal server error';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      const exceptionResponse = exception.getResponse();
-
-      if (typeof exceptionResponse === 'string') {
-        message = exceptionResponse;
-      } else if (typeof exceptionResponse === 'object') {
-        const res = exceptionResponse as Record<string, unknown>;
-        message = (res.message as string | string[]) || message;
-        error = (res.error as string) || error;
+      const r = exception.getResponse();
+      if (typeof r === 'string') {
+        message = r;
+      } else if (r && typeof r === 'object') {
+        const obj = r as Record<string, unknown>;
+        message = (obj.message as string) ?? message;
+        code = (obj.code as string) ?? code;
+        if (Array.isArray(obj.message)) message = obj.message.join('; ');
       }
+      if (status === 400) code = 'VALIDATION_ERROR';
+      else if (status === 401) code = 'UNAUTHORIZED';
+      else if (status === 403) code = 'FORBIDDEN';
+      else if (status === 404) code = 'NOT_FOUND';
+      else if (status === 409) code = 'CONFLICT';
     } else if (exception instanceof Error) {
       message = exception.message;
-      this.logger.error(
-        `Unhandled exception: ${exception.message}`,
-        exception.stack,
-      );
+      this.logger.error(`${req.method} ${req.url} → ${exception.message}`, exception.stack);
     }
 
-    const correlationId = request.headers['x-correlation-id'] as string;
-
-    // Guard: don't send response if headers already sent (prevents ERR_HTTP_HEADERS_SENT)
-    if (response.headersSent) {
-      return;
-    }
-
-    response.status(status).json({
+    res.status(status).json({
       success: false,
-      statusCode: status,
-      error,
-      message,
+      error: { code, message },
       timestamp: new Date().toISOString(),
-      path: request.url,
-      correlationId,
     });
   }
 }

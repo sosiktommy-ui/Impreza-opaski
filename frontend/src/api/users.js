@@ -1,26 +1,45 @@
-import api from './axios';
+import api, { unwrap } from './axios';
 
-export const usersApi = {
-  getAll: (params) => api.get('/users', { params }),
+export async function listUsers() {
+  const res = await api.get('/users');
+  return unwrap(res);
+}
 
-  getById: (id) => api.get(`/users/${id}`),
+export async function getUser(id) {
+  const res = await api.get(`/users/${id}`);
+  return unwrap(res);
+}
 
-  create: (data) => api.post('/users', data),
-  // data: { username, password, email, role, displayName, officeId?, countryId?, cityId? }
+// { username, displayName, password, role, accesses: [{ scope, countryId?, cityId? }] }
+export async function createUser(payload) {
+  const res = await api.post('/users', payload);
+  return unwrap(res);
+}
 
-  update: (id, data) => api.patch(`/users/${id}`, data),
+// { displayName?, isActive?, role? }
+export async function updateUser(id, payload) {
+  const res = await api.patch(`/users/${id}`, payload);
+  return unwrap(res);
+}
 
-  remove: (id) => api.delete(`/users/${id}`),
+export async function deleteUser(id) {
+  const res = await api.delete(`/users/${id}`);
+  return unwrap(res);
+}
 
-  resetPassword: (id, newPassword) =>
-    api.patch(`/users/${id}/password`, { newPassword }),
+export async function resetUserPassword(id, newPassword) {
+  const res = await api.post(`/users/${id}/reset-password`, { newPassword });
+  return unwrap(res);
+}
 
-  getPassword: (id) => api.get(`/users/${id}/password`),
+export async function replaceAccesses(id, accesses) {
+  const res = await api.put(`/users/${id}/accesses`, { accesses });
+  return unwrap(res);
+}
 
-  getCountries: () => api.get('/users/countries'),
-
-  getOffices: () => api.get('/users/offices'),
-
-  getCities: (countryId) =>
-    api.get('/users/cities', { params: { countryId } }),
+export const ROLE_META = {
+  ADMIN: { label: 'Админ', tone: 'danger' },
+  OFFICE: { label: 'Офис', tone: 'accent' },
+  COUNTRY: { label: 'Страна', tone: 'success' },
+  MANAGER: { label: 'Менеджер', tone: 'muted' },
 };
