@@ -9,6 +9,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+startCommand = "node dist/main.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 180
 restartPolicyType = "ON_FAILURE"
