@@ -379,3 +379,203 @@ textarea.input::placeholder {
     transform: translateY(0);
   }
 }
+
+/* ───── Seg (tabs) ───── */
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  gap: 2px;
+}
+.seg-btn {
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.12s;
+  background: transparent;
+  border: none;
+  white-space: nowrap;
+}
+.seg-btn:hover {
+  color: var(--text);
+}
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+[data-theme='dark'] .seg-btn.active {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ───── Sparkline bars ───── */
+.bar {
+  background: linear-gradient(
+    180deg,
+    var(--accent-2),
+    color-mix(in srgb, var(--accent) 30%, transparent)
+  );
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+}
+
+/* ───── Number sizes ───── */
+.num-xl {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.num-lg {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* ───── Avatar ───── */
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ───── HR divider ───── */
+.hr {
+  height: 1px;
+  background: var(--border);
+}
+
+/* ───── Div-based table ───── */
+.th {
+  display: grid;
+  align-items: center;
+  padding: 11px 18px;
+  color: var(--text-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.tr {
+  display: grid;
+  align-items: center;
+  padding: 12px 18px;
+  font-size: 13.5px;
+  transition: background 0.1s;
+}
+.tr:hover {
+  background: var(--surface-2);
+}
+.tr + .tr {
+  border-top: 1px solid var(--border);
+}
+
+/* ───── Country flags ───── */
+.flag {
+  width: 20px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.15);
+  display: inline-block;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.flag-de {
+  background: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 33%,
+    #d00 33%,
+    #d00 66%,
+    #ffce00 66%,
+    #ffce00 100%
+  );
+}
+.flag-pl {
+  background: linear-gradient(
+    180deg,
+    #fff 0%,
+    #fff 50%,
+    #dc143c 50%,
+    #dc143c 100%
+  );
+}
+.flag-nl {
+  background: linear-gradient(
+    180deg,
+    #ae1c28 0%,
+    #ae1c28 33%,
+    #fff 33%,
+    #fff 66%,
+    #21468b 66%,
+    #21468b 100%
+  );
+}
+.flag-at {
+  background: linear-gradient(
+    180deg,
+    #ed2939 0%,
+    #ed2939 33%,
+    #fff 33%,
+    #fff 66%,
+    #ed2939 66%,
+    #ed2939 100%
+  );
+}
+.flag-ua {
+  background: linear-gradient(
+    180deg,
+    #005bbb 0%,
+    #005bbb 50%,
+    #ffd500 50%,
+    #ffd500 100%
+  );
+}
+.flag-cz {
+  background: linear-gradient(
+    135deg,
+    #fff 0%,
+    #fff 50%,
+    #d7141a 50%,
+    #d7141a 100%
+  );
+}
+
+/* ───── Stepper ───── */
+.step-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.step-dot.done {
+  background: var(--success);
+  color: #fff;
+  border-color: transparent;
+}
+.step-dot.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}

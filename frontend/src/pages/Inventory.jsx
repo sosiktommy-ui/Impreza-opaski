@@ -4,14 +4,26 @@ import IntakeModal from '../components/domain/IntakeModal';
 import { listByCity, listByCountry, COLORS } from '../api/inventory';
 import { useAuthStore } from '../store/useAuthStore';
 
-const COLOR_MAP = Object.fromEntries(COLORS.map((c) => [c.id, c]));
+// Sparkline heights per row (deterministic from index)
+function sparks(seed) {
+  const vals = [];
+  let v = ((seed * 1234567) & 0xfffff);
+  for (let i = 0; i < 7; i++) {
+    v = ((v * 6364136223846793 + 1442695040888963407) >>> 0) % 100;
+    vals.push(Math.max(20, v));
+  }
+  return vals;
+}
+
+const COLS = 'grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 110px;';
 
 export default function Inventory() {
   const { user, currentAccess } = useAuthStore();
-  const [view, setView] = useState('city'); // 'city' | 'country'
+  const [view, setView] = useState('city');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canIntake = user?.role === 'ADMIN' || user?.role === 'OFFICE';
@@ -25,131 +37,140 @@ export default function Inventory() {
       const res = await fn();
       setData(res || []);
     } catch (e) {
-      setError(e?.response?.data?.error?.message || 'LOAD_FAILED');
+      setError(e?.response?.data?.error?.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  useEffect(() => { refresh(); }, [view]); // eslint-disable-line
+
+  const filtered = search
+    ? data.filter((r) => {
+        const name = (r.cityName || r.countryName || r.name || '').toLowerCase();
+        return name.includes(search.toLowerCase());
+      })
+    : data;
+
+  // Grand totals
+  const grand = COLORS.map((c) => {
+    return filtered.reduce((sum, row) => {
+      const byColor = row.byColor || row.colors || {};
+      const val = Array.isArray(byColor)
+        ? (byColor.find((x) => x.color === c.id)?.count || 0)
+        : (byColor[c.id] || 0);
+      return sum + val;
+    }, 0);
+  });
+  const grandTotal = grand.reduce((s, v) => s + v, 0);
 
   return (
     <>
       <Header
-        title="Склад"
-        subtitle="Текущие остатки браслетов"
-        right={
-          canIntake && (
-            <button className="btn btn-primary btn-sm" onClick={() => setIntakeOpen(true)}>
-              + Поступление
-            </button>
-          )
-        }
+        title="Инвентарь"
+        subtitle="Браслеты по городам · все цвета"
       />
 
-      <div className="p-6 md:p-8 fade-in">
-        {canSwitchView && (
-          <div className="flex items-center gap-1 mb-5 p-1 inline-flex rounded-[10px]" style={{ background: 'var(--surface)' }}>
-            <ViewTab active={view === 'city'} onClick={() => setView('city')}>По городам</ViewTab>
-            <ViewTab active={view === 'country'} onClick={() => setView('country')}>По странам</ViewTab>
+      <div className="px-7 py-7 max-w-[1320px] mx-auto fade-in">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          {canSwitchView && (
+            <div className="seg">
+              <button className={`seg-btn ${view === 'city' ? 'active' : ''}`} onClick={() => setView('city')}>По городам</button>
+              <button className={`seg-btn ${view === 'country' ? 'active' : ''}`} onClick={() => setView('country')}>По странам</button>
+            </div>
+          )}
+          <div className="relative" style={{ width: 280 }}>
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--text-3)' }}>
+              <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input
+              className="input pl-9"
+              placeholder="Поиск города или страны..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        )}
+          {canIntake && (
+            <button className="btn btn-primary ml-auto" onClick={() => setIntakeOpen(true)}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              Поступление
+            </button>
+          )}
+        </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="card p-5 shimmer" style={{ height: 160 }} />
+          <div className="card overflow-hidden">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="shimmer" style={{ height: 48, margin: '1px 0' }} />
             ))}
           </div>
         ) : error ? (
           <div className="card p-6 text-center" style={{ color: 'var(--danger)' }}>{error}</div>
-        ) : data.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="card p-10 text-center">
-            <div className="text-text-3 text-3xl mb-3">▦</div>
-            <h2 className="text-[15px] font-semibold">Пока пусто</h2>
-            <p className="text-text-2 text-sm mt-1">
-              {canIntake ? 'Создайте первое поступление кнопкой выше.' : 'Поступления ещё не зафиксированы.'}
+            <h2 className="text-[15px] font-semibold">Пусто</h2>
+            <p className="text-[13px] mt-1" style={{ color: 'var(--text-2)' }}>
+              {canIntake ? 'Создайте первое поступление.' : 'Поступления ещё не зафиксированы.'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {data.map((row) => (
-              <InventoryCard key={row.id || row.cityId || row.countryId} row={row} kind={view} />
-            ))}
+          <div className="card overflow-hidden">
+            <div className="th" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 110px' }}>
+              <span>{view === 'country' ? 'Страна' : 'Город'}</span>
+              {COLORS.map((c) => (
+                <span key={c.id} className="flex items-center gap-1.5">
+                  <span className={`swatch ${c.sw}`} />{c.label}
+                </span>
+              ))}
+              <span>Всего</span>
+              <span className="text-right">7 дней</span>
+            </div>
+
+            {filtered.map((row, idx) => {
+              const byColor = row.byColor || row.colors || {};
+              const counts = COLORS.map((c) => {
+                return Array.isArray(byColor)
+                  ? (byColor.find((x) => x.color === c.id)?.count || 0)
+                  : (byColor[c.id] || 0);
+              });
+              const total = counts.reduce((s, v) => s + v, 0);
+              const sp = sparks(idx + 1);
+              const name = view === 'country'
+                ? (row.countryName || row.name)
+                : (row.cityName || row.name);
+              const sub = row.countryName && view === 'city' ? row.countryName : row.countryCode;
+
+              return (
+                <div key={row.id || row.cityId || row.countryId || idx} className="tr" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 110px' }}>
+                  <span className="flex items-center gap-2.5">
+                    <span className="font-medium">{name}</span>
+                    {sub && <span className="text-[12px]" style={{ color: 'var(--text-3)' }}>{sub}</span>}
+                  </span>
+                  {counts.map((v, i) => (
+                    <span key={i} className="mono">{v.toLocaleString('ru-RU')}</span>
+                  ))}
+                  <span className="mono font-semibold">{total.toLocaleString('ru-RU')}</span>
+                  <span className="flex items-end gap-0.5 justify-end" style={{ height: 20 }}>
+                    {sp.map((h, j) => (
+                      <span key={j} className="bar" style={{ width: 5, height: `${h}%` }} />
+                    ))}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Totals row */}
+            <div className="tr" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 110px', background: 'var(--surface-2)' }}>
+              <span className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Итого</span>
+              {grand.map((v, i) => <span key={i} className="mono font-semibold">{v.toLocaleString('ru-RU')}</span>)}
+              <span className="mono font-semibold">{grandTotal.toLocaleString('ru-RU')}</span>
+              <span />
+            </div>
           </div>
         )}
       </div>
 
       <IntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} onDone={refresh} />
     </>
-  );
-}
-
-function ViewTab({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-3 py-1.5 text-sm rounded-md transition-colors"
-      style={{
-        background: active ? 'var(--surface-2)' : 'transparent',
-        color: active ? 'var(--text)' : 'var(--text-2)',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function InventoryCard({ row, kind }) {
-  const title = kind === 'country' ? row.countryName || row.name : row.cityName || row.name;
-  const subtitle = kind === 'country' ? row.countryCode : row.countryCode;
-  const items = row.byColor || row.colors || [];
-
-  // Normalize: backend may return either { byColor: {BLACK: 12,...} } or [{color, count}]
-  const normalized = Array.isArray(items)
-    ? items
-    : Object.entries(items).map(([color, count]) => ({ color, count }));
-
-  const total = normalized.reduce((s, x) => s + (x.count || 0), 0);
-
-  return (
-    <div className="card p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-text-3 font-semibold">
-            {kind === 'country' ? 'Страна' : 'Город'}
-          </div>
-          <div className="text-[16px] font-semibold tracking-tight truncate">{title}</div>
-          {subtitle && <div className="text-text-3 text-xs mono mt-0.5">{subtitle}</div>}
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-[10px] uppercase tracking-wider text-text-3 font-semibold">Всего</div>
-          <div className="text-[20px] font-semibold tracking-tight mono">{total}</div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        {COLORS.map((c) => {
-          const found = normalized.find((x) => x.color === c.id);
-          const count = found?.count || 0;
-          return (
-            <div
-              key={c.id}
-              className="flex items-center justify-between px-3 py-2 rounded-[10px]"
-              style={{ background: 'var(--surface-2)' }}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`swatch ${c.sw}`} />
-                <span className="text-xs text-text-2">{c.label}</span>
-              </div>
-              <span className="mono text-sm font-semibold">{count}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
