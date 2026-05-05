@@ -53,28 +53,79 @@ export default function Home() {
 
   const today = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+  // Per-color visual config
+  const COLOR_THEME = {
+    BLACK: {
+      gradient: 'linear-gradient(135deg, #1a1a24 0%, #0a0a0d 100%)',
+      glow: 'rgba(139,92,246,0.18)',
+      bar: 'linear-gradient(180deg,#a78bfa,rgba(139,92,246,0.2))',
+      label: '#c4b5fd',
+      border: 'rgba(139,92,246,0.25)',
+      icon: '⬛',
+    },
+    WHITE: {
+      gradient: 'linear-gradient(135deg, #f0f0ec 0%, #d4d4d8 100%)',
+      glow: 'rgba(212,212,216,0.18)',
+      bar: 'linear-gradient(180deg,#71717a,rgba(113,113,122,0.2))',
+      label: '#52525b',
+      border: 'rgba(161,161,170,0.4)',
+      icon: '⬜',
+    },
+    RED: {
+      gradient: 'linear-gradient(135deg, #3b0a0a 0%, #1c0505 100%)',
+      glow: 'rgba(239,68,68,0.2)',
+      bar: 'linear-gradient(180deg,#f87171,rgba(239,68,68,0.2))',
+      label: '#fca5a5',
+      border: 'rgba(239,68,68,0.3)',
+      icon: '🔴',
+    },
+    BLUE: {
+      gradient: 'linear-gradient(135deg, #0a1a3b 0%, #05101c 100%)',
+      glow: 'rgba(59,130,246,0.2)',
+      bar: 'linear-gradient(180deg,#60a5fa,rgba(59,130,246,0.2))',
+      label: '#93c5fd',
+      border: 'rgba(59,130,246,0.3)',
+      icon: '🔵',
+    },
+  };
+
   return (
     <div className="px-7 py-7 max-w-[1320px] mx-auto space-y-6 fade-in">
-      {/* 4 color swatch cards */}
+      {/* 4 color bracelet cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {COLORS.map((c, i) => {
           const total = loadingInv ? null : colorTotals[i].total;
+          const theme = COLOR_THEME[c.id] || COLOR_THEME.BLACK;
           return (
-            <div key={c.id} className="card p-5">
+            <div
+              key={c.id}
+              className="relative overflow-hidden rounded-[16px] p-5"
+              style={{
+                background: theme.gradient,
+                border: `1px solid ${theme.border}`,
+                boxShadow: `0 0 32px ${theme.glow}`,
+              }}
+            >
+              {/* Glow blob */}
+              <div
+                className="absolute -top-6 -right-6 rounded-full opacity-30 pointer-events-none"
+                style={{ width: 80, height: 80, background: theme.glow, filter: 'blur(20px)' }}
+              />
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'var(--text-2)' }}>
-                  <span className={`swatch ${c.sw}`} />
+                <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest" style={{ color: theme.label }}>
+                  <span className={`swatch sw-lg ${c.sw}`} />
                   {c.label}
                 </div>
+                <span className="text-[18px] opacity-70">{theme.icon}</span>
               </div>
               {loadingInv ? (
                 <div className="shimmer rounded-md" style={{ width: 80, height: 30 }} />
               ) : (
-                <div className="num-xl mono">{total?.toLocaleString('ru-RU') || '0'}</div>
+                <div className="num-xl mono" style={{ color: '#fff' }}>{total?.toLocaleString('ru-RU') || '0'}</div>
               )}
               <div className="flex items-end gap-0.5 mt-3" style={{ height: 28 }}>
                 {SPARKS[i].map((h, j) => (
-                  <div key={j} className="bar flex-1" style={{ height: `${h}%` }} />
+                  <div key={j} className="flex-1 rounded-sm" style={{ height: `${h}%`, background: theme.bar, minHeight: 4 }} />
                 ))}
               </div>
             </div>

@@ -67,7 +67,7 @@ export default function Inventory() {
   return (
     <>
       <Header
-        title="Баланс"
+        title="Склад"
         subtitle="Браслеты по городам · все цвета"
       />
 

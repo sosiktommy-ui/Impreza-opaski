@@ -3,7 +3,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 const ALL_ITEMS = [
   { to: '/', icon: '◇', label: 'Обзор', roles: ['ADMIN','OFFICE','COUNTRY','MANAGER'], end: true },
-  { to: '/inventory', icon: '▦', label: 'Баланс', roles: ['ADMIN','OFFICE','COUNTRY','MANAGER'] },
+  { to: '/inventory', icon: '▦', label: 'Склад', roles: ['ADMIN','OFFICE','COUNTRY','MANAGER'] },
   { to: '/transfers', icon: '⇄', label: 'Передачи', roles: ['ADMIN','OFFICE','COUNTRY','MANAGER'] },
   { to: '/expenses', icon: '€', label: 'Расходы', roles: ['ADMIN','OFFICE','COUNTRY','MANAGER'] },
   { to: '/settings', icon: '⚙', label: 'Ещё', roles: ['ADMIN','OFFICE','COUNTRY','MANAGER'] },

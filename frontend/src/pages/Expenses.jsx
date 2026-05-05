@@ -57,7 +57,7 @@ export default function Expenses() {
     <>
       <Header
         title="Расходы"
-        subtitle="Списания: промо, потери, брак, недостачи"
+        subtitle="Промо, потери, брак, недостачи"
         right={
           canCreate && (
             <button className="btn btn-primary btn-sm" onClick={() => setNewOpen(true)}>

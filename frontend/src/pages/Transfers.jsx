@@ -68,7 +68,7 @@ export default function Transfers() {
   return (
     <>
       <Header
-        title="Переводы"
+        title="Передачи"
         subtitle="Активные и завершённые операции"
       />
 

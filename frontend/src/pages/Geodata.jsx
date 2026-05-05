@@ -59,7 +59,7 @@ export default function Geodata() {
   return (
     <>
       <Header
-        title="География"
+        title="Геоданные"
         subtitle="Страны и города"
         right={
           isAdmin && (

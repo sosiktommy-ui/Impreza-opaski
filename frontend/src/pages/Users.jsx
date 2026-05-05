@@ -61,7 +61,7 @@ export default function Users() {
   return (
     <>
       <Header
-        title="Пользователи"
+        title="Команда"
         subtitle="Аккаунты и доступы"
       />
 
