@@ -77,19 +77,17 @@ export default function ExpenseNewModal({ open, onClose, onDone, defaultCityId }
         </div>
 
         <div>
-          <label className="label">Тип</label>
+          <label className="label">Тип расхода</label>
           <div className="flex flex-wrap gap-2">
             {CREATABLE_KINDS.map((k) => (
               <button
                 key={k.id}
                 type="button"
                 onClick={() => setKind(k.id)}
-                className={`px-3 py-1.5 rounded-md text-sm transition-colors`}
+                className={`px-3 py-1.5 rounded-md text-sm transition-colors border`}
                 style={{
-                  background:
-                    kind === k.id ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : 'var(--surface-2)',
+                  background: kind === k.id ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : 'var(--surface-2)',
                   color: kind === k.id ? 'var(--accent)' : 'var(--text-2)',
-                  border: '1px solid',
                   borderColor: kind === k.id ? 'var(--accent)' : 'var(--border)',
                 }}
               >
@@ -97,6 +95,7 @@ export default function ExpenseNewModal({ open, onClose, onDone, defaultCityId }
               </button>
             ))}
           </div>
+          <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>SHORTAGE создаётся автоматически при разрешении расхождений</p>
         </div>
 
         <div>

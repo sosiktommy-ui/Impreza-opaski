@@ -17,6 +17,7 @@ export default function Expenses() {
   const [kindFilter, setKindFilter] = useState('');
   const [newOpen, setNewOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [stats, setStats] = useState({ total: 0, byKind: {} });
 
   const canCreate = user && user.role !== 'COUNTRY';
   const canDelete = user?.role === 'ADMIN';
@@ -28,6 +29,16 @@ export default function Expenses() {
       const params = kindFilter ? { kind: kindFilter } : {};
       const res = await listExpenses(params);
       setItems(res || []);
+
+      // Вычислить статистику по всем расходам
+      const allRes = await listExpenses({});
+      const byKind = {};
+      let totalCount = 0;
+      for (const exp of (allRes || [])) {
+        byKind[exp.kind] = (byKind[exp.kind] || 0) + exp.count;
+        totalCount += exp.count;
+      }
+      setStats({ total: totalCount, byKind });
     } catch (e) {
       setError(e?.response?.data?.error?.message || 'LOAD_FAILED');
     } finally {
@@ -68,6 +79,22 @@ export default function Expenses() {
       />
 
       <div className="p-6 md:p-8 fade-in">
+        {/* Статистика по типам */}
+        {stats.total > 0 && (
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+            <div className="card p-4 text-center">
+              <div className="text-xs" style={{ color: 'var(--text-2)' }}>Total</div>
+              <div className="num-lg mono" style={{ color: 'var(--accent)' }}>{stats.total.toLocaleString('ru-RU')}</div>
+            </div>
+            {KIND_FILTERS.slice(1).map((k) => (
+              <div key={k.id} className="card p-4 text-center">
+                <div className="text-xs" style={{ color: 'var(--text-2)' }}>{k.label}</div>
+                <div className="num-lg mono" style={{ color: 'var(--accent)' }}>{(stats.byKind[k.id] || 0).toLocaleString('ru-RU')}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center gap-1 mb-5 p-1 inline-flex rounded-[10px] flex-wrap" style={{ background: 'var(--surface)' }}>
           {KIND_FILTERS.map((f) => (
             <button
