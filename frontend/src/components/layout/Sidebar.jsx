@@ -10,11 +10,11 @@ const MAIN_ITEMS = [
     icon: <svg className="nav-ic" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 12L12 4l9 8M5 10v10h14V10"/></svg>,
   },
   {
-    to: '/inventory', label: 'Склад', roles: ROLES,
+    to: '/inventory', label: 'Баланс', roles: ROLES,
     icon: <svg className="nav-ic" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v10"/></svg>,
   },
   {
-    to: '/transfers', label: 'Передачи', roles: ROLES,
+    to: '/transfers', label: 'Отправки', roles: ROLES,
     icon: <svg className="nav-ic" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12"/></svg>,
   },
   {
@@ -29,7 +29,7 @@ const MAIN_ITEMS = [
 
 const MANAGE_ITEMS = [
   {
-    to: '/users', label: 'Команда', roles: ['ADMIN', 'OFFICE', 'COUNTRY'],
+    to: '/users', label: 'Настройки', roles: ['ADMIN', 'OFFICE', 'COUNTRY'],
     icon: <svg className="nav-ic" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M17 3.13a4 4 0 010 7.75"/></svg>,
   },
   {
