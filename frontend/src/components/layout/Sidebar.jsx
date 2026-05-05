@@ -10,7 +10,7 @@ const MAIN_ITEMS = [
     icon: <svg className="nav-ic" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 12L12 4l9 8M5 10v10h14V10"/></svg>,
   },
   {
-    to: '/inventory', label: 'Инвентарь', roles: ROLES,
+    to: '/inventory', label: 'Баланс', roles: ROLES,
     icon: <svg className="nav-ic" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v10"/></svg>,
   },
   {
