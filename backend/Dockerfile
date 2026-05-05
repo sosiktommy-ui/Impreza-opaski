@@ -37,6 +37,5 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3001
 
-# Apply schema (no migrations folder — using prisma db push). Seed run manually via railway CLI.
-# NOTE: --accept-data-loss removed for safety. If schema drift would destroy data, deploy will fail loud.
-CMD ["node", "dist/main.js"]
+# Sync schema on every deploy, then start the app
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/main.js"]
