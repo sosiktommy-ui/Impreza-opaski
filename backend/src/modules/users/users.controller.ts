@@ -1,80 +1,176 @@
 import {
-  Body,
   Controller,
-  Delete,
   Get,
-  Param,
-  Patch,
   Post,
-  Put,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
-import {
-  CreateUserDto,
-  ReplaceAccessesDto,
-  ResetPasswordDto,
-  UpdateUserDto,
-} from './dto/users.dto';
-import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
-import { RolesGuard } from '../../common/auth/roles.guard';
-import { Roles } from '../../common/auth/roles.decorator';
-import { CurrentUser } from '../../common/auth/current-user.decorator';
-import { AuthUser } from '../../common/auth/auth.types';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../auth/auth.service';
+import { Role } from '@prisma/client';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsEmail, MinLength } from 'class-validator';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+const ROLE_HIERARCHY: Record<string, number> = {
+  [Role.ADMIN]: 4,
+  [Role.OFFICE]: 3,
+  [Role.COUNTRY]: 2,
+  [Role.CITY]: 1,
+};
+
+class CreateUserDto {
+  @IsString()
+  @IsNotEmpty()
+  username!: string;
+
+  @IsString()
+  @MinLength(6)
+  password!: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsEnum(Role)
+  role!: Role;
+
+  @IsString()
+  @IsNotEmpty()
+  displayName!: string;
+
+  @IsString()
+  @IsOptional()
+  officeId?: string;
+
+  @IsString()
+  @IsOptional()
+  countryId?: string;
+
+  @IsString()
+  @IsOptional()
+  cityId?: string;
+}
+
+class ResetPasswordDto {
+  @IsString()
+  @MinLength(6)
+  newPassword!: string;
+}
+
 @Controller('users')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(private readonly usersService: UsersService) {}
 
-  @Roles(Role.ADMIN, Role.OFFICE)
   @Get()
-  list() {
-    return this.users.list();
-  }
-
   @Roles(Role.ADMIN, Role.OFFICE)
+  findAll(
+    @Query('role') role?: Role,
+    @Query('countryId') countryId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.findAll({ role, countryId, search, page, limit });
+  }
+
+  @Get('countries')
+  getCountries(@CurrentUser() user?: AuthenticatedUser) {
+    return this.usersService.getCountries({
+      role: user?.role,
+      countryId: user?.countryId ?? undefined,
+      cityId: user?.cityId ?? undefined,
+    });
+  }
+
+  @Get('offices')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getOffices() {
+    return this.usersService.getOffices();
+  }
+
+  @Get('cities')
+  getCities(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('countryId') countryId?: string,
+  ) {
+    // COUNTRY role can only see cities in its own country.
+    // CITY can pick cities in any country (for outgoing transfers).
+    let scopedCountryId = countryId;
+    if (user.role === 'COUNTRY') {
+      scopedCountryId = user.countryId ?? undefined;
+    }
+    return this.usersService.getCities(scopedCountryId);
+  }
+
   @Get(':id')
-  byId(@Param('id') id: string) {
-    return this.users.findById(id);
+  @Roles(Role.ADMIN, Role.OFFICE)
+  findById(@Param('id') id: string) {
+    return this.usersService.findById(id);
   }
 
-  @Roles(Role.ADMIN)
   @Post()
-  create(@Body() dto: CreateUserDto, @CurrentUser() actor: AuthUser) {
-    return this.users.create(dto, actor);
+  @Roles(Role.ADMIN, Role.OFFICE)
+  createUser(@Body() dto: CreateUserDto, @CurrentUser() caller: AuthenticatedUser) {
+    if (caller.role !== Role.ADMIN && ROLE_HIERARCHY[dto.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя создать пользователя с ролью равной или выше вашей');
+    }
+    return this.usersService.createUser(dto);
   }
 
-  @Roles(Role.ADMIN)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() actor: AuthUser) {
-    return this.users.update(id, dto, actor);
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async update(
+    @Param('id') id: string,
+    @Body() data: { displayName?: string; isActive?: boolean; email?: string },
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя редактировать пользователя с ролью равной или выше вашей');
+    }
+    return this.usersService.update(id, data);
   }
 
-  @Roles(Role.ADMIN)
-  @Delete(':id')
-  remove(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
-    return this.users.softDelete(id, actor);
-  }
-
-  @Roles(Role.ADMIN)
-  @Post(':id/reset-password')
-  resetPassword(
+  @Patch(':id/password')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async resetPassword(
     @Param('id') id: string,
     @Body() dto: ResetPasswordDto,
-    @CurrentUser() actor: AuthUser,
+    @CurrentUser() caller: AuthenticatedUser,
   ) {
-    return this.users.resetPassword(id, dto.newPassword, actor);
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя сбросить пароль пользователю с ролью равной или выше вашей');
+    }
+    return this.usersService.resetPassword(id, dto.newPassword);
   }
 
-  @Roles(Role.ADMIN)
-  @Put(':id/accesses')
-  replaceAccesses(
-    @Param('id') id: string,
-    @Body() dto: ReplaceAccessesDto,
-    @CurrentUser() actor: AuthUser,
-  ) {
-    return this.users.replaceAccesses(id, dto, actor);
+  @Get(':id/password')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getPassword(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя просматривать пароль пользователя с ролью равной или выше вашей');
+    }
+    return this.usersService.getPassword(id);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async deleteUser(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
+    const target = await this.usersService.findById(id);
+    if (target && ROLE_HIERARCHY[target.role] >= ROLE_HIERARCHY[caller.role]) {
+      throw new ForbiddenException('Нельзя удалить пользователя с ролью равной или выше вашей');
+    }
+    return this.usersService.deleteUser(id);
   }
 }

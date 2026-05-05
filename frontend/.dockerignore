@@ -1,8 +1,0 @@
-node_modules
-dist
-.next
-.env
-.env.local
-*.log
-.git
-*.tsbuildinfo

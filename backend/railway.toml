@@ -1,16 +1,6 @@
-# Backend deployment notes:
-# - Uses Dockerfile builder (see Dockerfile in this folder)
-# - Migration strategy: `prisma db push` (no migrations history yet — keep --accept-data-loss off after first deploy if data exists)
-# - First-time seed: run manually via Railway CLI:
-#     railway run -s backend -- npx ts-node prisma/seed.ts
-# - Required env vars: DATABASE_URL, JWT_SECRET, REFRESH_SECRET, BCRYPT_ROUNDS=12, FRONTEND_URL
-[build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
-
 [deploy]
-startCommand = "node dist/main.js"
+startCommand = "npx prisma generate && npx prisma db push && node dist/main.js"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 180
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

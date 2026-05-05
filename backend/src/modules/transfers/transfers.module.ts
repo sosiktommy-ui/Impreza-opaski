@@ -1,9 +1,30 @@
 import { Module } from '@nestjs/common';
-import { TransfersController } from './transfers.controller';
+import { CqrsModule } from '@nestjs/cqrs';
 import { TransfersService } from './transfers.service';
+import { TransfersController } from './transfers.controller';
+import { InventoryModule } from '../inventory/inventory.module';
+import { AuthModule } from '../auth/auth.module';
+import { BalancesModule } from '../balances/balances.module';
+
+// CQRS Command Handlers
+import { CreateTransferHandler } from './commands/create-transfer.handler';
+import { SendTransferHandler } from './commands/send-transfer.handler';
+import { AcceptTransferHandler } from './commands/accept-transfer.handler';
+import { RejectTransferHandler } from './commands/reject-transfer.handler';
+import { CancelTransferHandler } from './commands/cancel-transfer.handler';
+
+const CommandHandlers = [
+  CreateTransferHandler,
+  SendTransferHandler,
+  AcceptTransferHandler,
+  RejectTransferHandler,
+  CancelTransferHandler,
+];
 
 @Module({
+  imports: [CqrsModule, InventoryModule, AuthModule, BalancesModule],
   controllers: [TransfersController],
-  providers: [TransfersService],
+  providers: [TransfersService, ...CommandHandlers],
+  exports: [TransfersService],
 })
 export class TransfersModule {}

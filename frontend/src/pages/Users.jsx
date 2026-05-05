@@ -1,196 +1,601 @@
-import { useEffect, useState } from 'react';
-import Header from '../components/layout/Header';
-import UserCreateModal from '../components/domain/UserCreateModal';
-import UserEditModal from '../components/domain/UserEditModal';
-import { listUsers, ROLE_META } from '../api/users';
+import { useState, useEffect, useMemo } from 'react';
+import { usersApi } from '../api/users';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import Select from '../components/ui/Select';
+import Modal from '../components/ui/Modal';
+import Badge from '../components/ui/Badge';
+import AccessManagerModal from '../components/ui/AccessManagerModal';
+import BalanceAdjustModal from '../components/ui/BalanceAdjustModal';
+import BalanceHistoryModal from '../components/ui/BalanceHistoryModal';
+import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck, Wallet, History } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
-function avatarColor(username) {
-  const colors = [
-    'linear-gradient(135deg,#8b5cf6,#a78bfa)',
-    'linear-gradient(135deg,#f59e0b,#ea580c)',
-    'linear-gradient(135deg,#06b6d4,#0891b2)',
-    'linear-gradient(135deg,#ec4899,#be185d)',
-    'linear-gradient(135deg,#10b981,#047857)',
-    'linear-gradient(135deg,#6366f1,#4f46e5)',
-  ];
-  let h = 0;
-  for (let i = 0; i < (username || '').length; i++) h = (h * 31 + username.charCodeAt(i)) & 0xffff;
-  return colors[h % colors.length];
-}
+const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
 export default function Users() {
-  const { user: me } = useAuthStore();
-  const isAdmin = me?.role === 'ADMIN';
-  const [items, setItems] = useState([]);
+  const { user: currentUser } = useAuthStore();
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // all | active | inactive
+  const [countries, setCountries] = useState([]);
+  const [offices, setOffices] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showEdit, setShowEdit] = useState(null);
+  const [showPassword, setShowPassword] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [viewPasswordModal, setViewPasswordModal] = useState(null);
+  const [viewedPassword, setViewedPassword] = useState(null);
+  const [viewPasswordLoading, setViewPasswordLoading] = useState(false);
+  const [viewResetPw, setViewResetPw] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [accessUser, setAccessUser] = useState(null);
+  const [balanceUser, setBalanceUser] = useState(null);
+  const [historyUser, setHistoryUser] = useState(null);
 
-  async function refresh() {
-    setLoading(true);
-    setError(null);
+  // Create form
+  const [form, setForm] = useState({
+    username: '', password: '', email: '', displayName: '',
+    role: 'CITY', countryId: '', cityId: '', officeId: '',
+  });
+
+  // Edit form
+  const [editForm, setEditForm] = useState({
+    displayName: '', email: '', role: '', countryId: '', cityId: '', officeId: '', isActive: true,
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
     try {
-      const res = await listUsers();
-      setItems(res || []);
-    } catch (e) {
-      setError(e?.response?.data?.error?.message || 'LOAD_FAILED');
+      const promises = [usersApi.getAll({ limit: 500 }), usersApi.getCountries()];
+      // try to load offices (may fail if endpoint doesn't exist yet)
+      promises.push(usersApi.getOffices().catch(() => ({ data: [] })));
+      const [usersRes, countriesRes, officesRes] = await Promise.all(promises);
+      const uData = usersRes.data;
+      setUsers(Array.isArray(uData) ? uData : (uData?.data || []));
+      const cData = countriesRes.data;
+      setCountries(Array.isArray(cData) ? cData : (cData?.data || cData || []));
+      const oData = officesRes.data;
+      setOffices(Array.isArray(oData) ? oData : (oData?.data || oData || []));
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const filteredUsers = useMemo(() => {
+    let list = users;
+    if (roleFilter !== 'all') {
+      list = list.filter((u) => u.role === roleFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((u) =>
+        (u.displayName || '').toLowerCase().includes(q) ||
+        (u.username || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.country?.name || '').toLowerCase().includes(q) ||
+        (u.city?.name || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [users, roleFilter, searchQuery]);
+
+  const handleRoleChange = (e) => {
+    const role = e.target.value;
+    setForm((p) => ({ ...p, role, countryId: '', cityId: '', officeId: '' }));
+    setCities([]);
+  };
+
+  const handleCountryChange = async (e) => {
+    const cId = e.target.value;
+    setForm((p) => ({ ...p, countryId: cId, cityId: '' }));
+    if (cId && form.role === 'CITY') {
+      const { data } = await usersApi.getCities(cId);
+      setCities(Array.isArray(data) ? data : (data?.data || data || []));
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await usersApi.create({
+        username: form.username,
+        password: form.password,
+        email: form.email || undefined,
+        displayName: form.displayName,
+        role: form.role,
+        countryId: form.countryId || undefined,
+        cityId: form.cityId || undefined,
+        officeId: form.officeId || undefined,
+      });
+      setShowCreate(false);
+      setForm({ username: '', password: '', email: '', displayName: '', role: 'CITY', countryId: '', cityId: '', officeId: '' });
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка создания');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (u) => {
+    setEditForm({
+      displayName: u.displayName || '',
+      email: u.email || '',
+      role: u.role,
+      countryId: u.countryId || '',
+      cityId: u.cityId || '',
+      officeId: u.officeId || '',
+      isActive: u.isActive !== false,
+    });
+    setShowEdit(u);
+    setError('');
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await usersApi.update(showEdit.id, {
+        displayName: editForm.displayName,
+        email: editForm.email || undefined,
+        isActive: editForm.isActive,
+      });
+      setShowEdit(null);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка обновления');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (u) => {
+    try {
+      await usersApi.update(u.id, { isActive: !u.isActive });
+      await loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Ошибка');
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!confirm(`Удалить пользователя ${name}?`)) return;
+    try {
+      await usersApi.remove(id);
+      await loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Ошибка удаления');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      setError('Минимум 6 символов');
+      return;
+    }
+    setSaving(true);
+    try {
+      await usersApi.resetPassword(showPassword, newPassword);
+      setShowPassword(null);
+      setNewPassword('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 border-4 border-brand-200 border-t-brand-600 rounded-full" />
+      </div>
+    );
   }
 
-  useEffect(() => { refresh(); }, []);
-
-  const filtered = items.filter((u) => {
-    if (statusFilter === 'active' && !u.isActive) return false;
-    if (statusFilter === 'inactive' && u.isActive) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return u.username.toLowerCase().includes(q) || u.displayName?.toLowerCase().includes(q);
-    }
-    return true;
-  });
-
-  const activeCount = items.filter((u) => u.isActive).length;
-  const inactiveCount = items.filter((u) => !u.isActive).length;
-
   return (
-    <>
-      <Header
-        title="Настройки"
-        subtitle="Аккаунты и доступы"
-      />
-
-      <div className="px-7 py-7 max-w-[1320px] mx-auto fade-in">
-        <div className="flex items-center gap-3 mb-5 flex-wrap">
-          <div className="seg">
-            <button className={`seg-btn ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => setStatusFilter('all')}>
-              Все · {items.length}
-            </button>
-            <button className={`seg-btn ${statusFilter === 'active' ? 'active' : ''}`} onClick={() => setStatusFilter('active')}>
-              Активные · {activeCount}
-            </button>
-            <button className={`seg-btn ${statusFilter === 'inactive' ? 'active' : ''}`} onClick={() => setStatusFilter('inactive')}>
-              Заблокированные · {inactiveCount}
-            </button>
-          </div>
-          <div className="ml-auto flex gap-2">
-            <div className="relative" style={{ width: 240 }}>
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--text-3)' }}>
-                <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
-              </svg>
-              <input
-                className="input pl-9"
-                placeholder="Поиск пользователя..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            {isAdmin && (
-              <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                Добавить
-              </button>
-            )}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="card overflow-hidden">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="shimmer" style={{ height: 52, borderTop: i > 0 ? '1px solid var(--border)' : undefined }} />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="card p-6 text-center" style={{ color: 'var(--danger)' }}>{error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="card p-10 text-center">
-            <h2 className="text-[15px] font-semibold">Никого не найдено</h2>
-          </div>
-        ) : (
-          <div className="card overflow-hidden">
-            <div className="th" style={{ gridTemplateColumns: '1.5fr 1fr 1.4fr 110px 130px 36px' }}>
-              <span>Пользователь</span>
-              <span>Роль</span>
-              <span>Доступ</span>
-              <span>Статус</span>
-              <span>Активность</span>
-              <span />
-            </div>
-            {filtered.map((u) => {
-              const r = ROLE_META[u.role] || { label: u.role, tone: 'muted' };
-              const isMe = u.id === me?.id;
-              const initials = (u.displayName || u.username || 'U')
-                .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-              const accStr = u.accesses?.length
-                ? u.accesses.slice(0, 2).map((a) =>
-                    a.scope === 'GLOBAL' ? 'Глобальный' : a.scope === 'COUNTRY' ? a.countryName : a.cityName
-                  ).join(', ') + (u.accesses.length > 2 ? ` +${u.accesses.length - 2}` : '')
-                : '—';
-              const lastLogin = u.lastLoginAt
-                ? (() => {
-                    const diff = Date.now() - new Date(u.lastLoginAt).getTime();
-                    const mins = Math.floor(diff / 60000);
-                    if (mins < 2) return 'сейчас';
-                    if (mins < 60) return `${mins} мин`;
-                    const hrs = Math.floor(mins / 60);
-                    if (hrs < 24) return `${hrs} ч`;
-                    return `${Math.floor(hrs / 24)} дн`;
-                  })()
-                : '—';
-
-              return (
-                <div
-                  key={u.id}
-                  className="tr"
-                  style={{ gridTemplateColumns: '1.5fr 1fr 1.4fr 110px 130px 36px', cursor: 'pointer' }}
-                  onClick={() => setEditing(u)}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <span className="avatar" style={{ background: avatarColor(u.username) }}>{initials}</span>
-                    <span>
-                      <span className="font-medium block leading-tight">
-                        {u.displayName || u.username}
-                        {isMe && <span className="ml-1.5 text-[11px]" style={{ color: 'var(--text-3)' }}>вы</span>}
-                      </span>
-                      <span className="mono text-[12px]" style={{ color: 'var(--text-3)' }}>{u.username}</span>
-                    </span>
-                  </span>
-                  <span><span className={`pill pill-${r.tone}`}>{r.label}</span></span>
-                  <span className="text-[13px] truncate" style={{ color: 'var(--text-2)' }}>{accStr}</span>
-                  <span>
-                    {u.isActive
-                      ? <span className="pill pill-success">Активен</span>
-                      : <span className="pill pill-muted">Не активен</span>}
-                  </span>
-                  <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>{lastLogin}</span>
-                  <button
-                    className="btn btn-ghost btn-sm btn-icon"
-                    onClick={(e) => { e.stopPropagation(); setEditing(u); }}
-                  >
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
-                    </svg>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Settings size={22} className="text-brand-500" /> Пользователи</h2>
+        <Button onClick={() => setShowCreate(true)} size="sm">
+          <Plus size={18} /> Новый
+        </Button>
       </div>
 
-      <UserCreateModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={refresh} />
-      <UserEditModal
-        open={!!editing}
-        user={editing}
-        isAdmin={isAdmin}
-        onClose={() => setEditing(null)}
-        onDone={refresh}
+      {/* Search & role filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
+          <input
+            type="text"
+            placeholder="Поиск по имени, логину, email…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-edge rounded-[var(--radius-sm)] text-sm bg-surface-card text-content-primary placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {['all', 'ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].map((r) => (
+            <button
+              key={r}
+              onClick={() => setRoleFilter(r)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                roleFilter === r
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-surface-card text-content-secondary hover:bg-surface-card-hover border border-edge'
+              }`}
+            >
+              {r === 'all' ? 'Все' : ROLE_LABELS[r]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="text-xs text-content-muted">{filteredUsers.length} из {users.length} пользователей</div>
+
+      <div className="space-y-2">
+        {filteredUsers.map((u) => (
+          <Card key={u.id}>
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`font-medium ${u.isActive === false ? 'text-gray-400 line-through' : 'text-content-primary'}`}>
+                    {u.displayName}
+                  </span>
+                  {u.isActive === false && (
+                    <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
+                      неактивен
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-content-muted truncate">
+                  @{u.username}
+                  {u.email && ` • ${u.email}`}
+                  <span className="ml-1">
+                    • <span className="inline-flex"><Badge>{ROLE_LABELS[u.role] || u.role}</Badge></span>
+                  </span>
+                  {u.office && ` • ${u.office.name}`}
+                  {u.country && ` • ${u.country.name}`}
+                  {u.city && ` • ${u.city.name}`}
+                </div>
+                {(u.role === 'CITY' || u.role === 'COUNTRY') && (
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-content-muted">
+                    <span className="font-medium">Баланс:</span>
+                    <span className="flex items-center gap-1" title="Чёрные">
+                      <span className="w-2 h-2 rounded-full bg-zinc-800 dark:bg-zinc-200" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceBlack ?? 0}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Белые">
+                      <span className="w-2 h-2 rounded-full bg-white border border-edge" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceWhite ?? 0}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Красные">
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceRed ?? 0}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Синие">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="tabular-nums text-content-primary font-semibold">{u.balanceBlue ?? 0}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                <button
+                  onClick={() => toggleActive(u)}
+                  className={`p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover ${u.isActive === false ? 'text-green-500' : 'text-content-muted hover:text-orange-500'}`}
+                  title={u.isActive === false ? 'Активировать' : 'Деактивировать'}
+                >
+                  {u.isActive === false ? <UserCheck size={16} /> : <UserX size={16} />}
+                </button>
+                {(currentUser?.role === 'ADMIN' || currentUser?.role === 'OFFICE') && (
+                  (() => {
+                    const HIERARCHY = { ADMIN: 4, OFFICE: 3, COUNTRY: 2, CITY: 1 };
+                    const canView = HIERARCHY[u.role] < HIERARCHY[currentUser.role];
+                    if (!canView) return null;
+                    return (
+                      <button
+                        onClick={async () => {
+                          setViewPasswordModal(u);
+                          setViewedPassword(null);
+                          setViewPasswordLoading(true);
+                          try {
+                            const res = await usersApi.getPassword(u.id);
+                            const pw = res.data?.password || res.data?.data?.password;
+                            setViewedPassword(pw || '__EMPTY__');
+                          } catch {
+                            setViewedPassword('__EMPTY__');
+                          } finally {
+                            setViewPasswordLoading(false);
+                          }
+                        }}
+                        className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-emerald-500"
+                        title="Посмотреть пароль"
+                      >
+                        <Eye size={16} />
+                      </button>
+                    );
+                  })()
+                )}
+                <button
+                  onClick={() => openEdit(u)}
+                  className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
+                  title="Редактировать"
+                >
+                  <Pencil size={16} />
+                </button>
+                {currentUser?.role === 'ADMIN' && (
+                  <button
+                    onClick={() => setAccessUser(u)}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
+                    title="Управление доступами"
+                  >
+                    <ShieldCheck size={16} />
+                  </button>
+                )}
+                {(currentUser?.role === 'ADMIN' || currentUser?.role === 'OFFICE') && (u.role === 'CITY' || u.role === 'COUNTRY') && (
+                  <button
+                    onClick={() => setBalanceUser(u)}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-amber-500"
+                    title="Корректировать баланс"
+                  >
+                    <Wallet size={16} />
+                  </button>
+                )}
+                {(u.role === 'CITY' || u.role === 'COUNTRY') && (
+                  <button
+                    onClick={() => setHistoryUser(u)}
+                    className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
+                    title="История баланса"
+                  >
+                    <History size={16} />
+                  </button>
+                )}
+                <button
+                  onClick={() => { setShowPassword(u.id); setNewPassword(''); setError(''); }}
+                  className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
+                  title="Сменить пароль"
+                >
+                  <KeyRound size={16} />
+                </button>
+                <button
+                  onClick={() => handleDelete(u.id, u.displayName)}
+                  className="p-1.5 rounded-[var(--radius-sm)] hover:bg-red-500/10 text-content-muted hover:text-red-500"
+                  title="Удалить"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Create user modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Новый пользователь">
+        <form onSubmit={handleCreate} className="space-y-4">
+          <Input
+            label="Логин"
+            value={form.username}
+            onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
+            required
+          />
+          <Input
+            label="Пароль"
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+            required
+          />
+          <Input
+            label="Отображаемое имя"
+            value={form.displayName}
+            onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
+            required
+          />
+          <Input
+            label="Email (необязательно)"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+          />
+          <Select
+            label="Роль"
+            value={form.role}
+            onChange={handleRoleChange}
+            options={[
+              { value: 'ADMIN', label: 'Админ' },
+              { value: 'OFFICE', label: 'Офис' },
+              { value: 'COUNTRY', label: 'Страна' },
+              { value: 'CITY', label: 'Город' },
+            ]}
+          />
+
+          {(form.role === 'COUNTRY' || form.role === 'CITY') && (
+            <Select
+              label="Страна"
+              value={form.countryId}
+              onChange={handleCountryChange}
+              options={[
+                { value: '', label: '— Выберите —' },
+                ...countries.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
+          )}
+          {form.role === 'CITY' && cities.length > 0 && (
+            <Select
+              label="Город"
+              value={form.cityId}
+              onChange={(e) => setForm((p) => ({ ...p, cityId: e.target.value }))}
+              options={[
+                { value: '', label: '— Выберите —' },
+                ...cities.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
+          )}
+
+          {error && (
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
+          )}
+
+          <Button type="submit" loading={saving} className="w-full">
+            Создать
+          </Button>
+        </form>
+      </Modal>
+
+      {/* Edit user modal */}
+      <Modal open={!!showEdit} onClose={() => setShowEdit(null)} title="Редактировать пользователя">
+        {showEdit && (
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div className="text-sm text-gray-500 mb-2">
+              @{showEdit.username} • {ROLE_LABELS[showEdit.role]}
+            </div>
+            <Input
+              label="Отображаемое имя"
+              value={editForm.displayName}
+              onChange={(e) => setEditForm((p) => ({ ...p, displayName: e.target.value }))}
+              required
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={editForm.email}
+              onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
+            />
+            <div className="flex items-center justify-between bg-surface-secondary rounded-[var(--radius-sm)] px-3 py-2">
+              <span className="text-sm text-content-primary">Аккаунт активен</span>
+              <button
+                type="button"
+                onClick={() => setEditForm((p) => ({ ...p, isActive: !p.isActive }))}
+                className={`w-11 h-6 rounded-full transition-colors relative ${editForm.isActive ? 'bg-brand-600' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${editForm.isActive ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
+            )}
+
+            <Button type="submit" loading={saving} className="w-full">
+              Сохранить
+            </Button>
+          </form>
+        )}
+      </Modal>
+
+      {/* Reset password modal */}
+      <Modal
+        open={!!showPassword}
+        onClose={() => setShowPassword(null)}
+        title="Сменить пароль"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Новый пароль"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Минимум 6 символов"
+          />
+          {error && (
+            <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
+          )}
+          <Button onClick={handleResetPassword} loading={saving} className="w-full">
+            Сохранить
+          </Button>
+        </div>
+      </Modal>
+
+      {/* View password modal */}
+      <Modal
+        open={!!viewPasswordModal}
+        onClose={() => { setViewPasswordModal(null); setViewResetPw(''); }}
+        title={`Пароль: ${viewPasswordModal?.displayName || viewPasswordModal?.username || ''}`}
+      >
+        <div className="space-y-4">
+          {viewPasswordLoading ? (
+            <div className="text-center text-content-muted">Загрузка...</div>
+          ) : viewedPassword && viewedPassword !== '__EMPTY__' ? (
+            <div className="bg-surface-card p-4 rounded-[var(--radius-sm)] text-center">
+              <span className="text-lg font-mono select-all">{viewedPassword}</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm text-content-muted text-center">
+                Пароль не зафиксирован. Задайте новый:
+              </div>
+              <Input
+                type="password"
+                value={viewResetPw}
+                onChange={(e) => setViewResetPw(e.target.value)}
+                placeholder="Минимум 6 символов"
+              />
+              <Button
+                loading={saving}
+                className="w-full"
+                onClick={async () => {
+                  if (!viewResetPw || viewResetPw.length < 6) {
+                    setError('Минимум 6 символов');
+                    return;
+                  }
+                  setSaving(true);
+                  try {
+                    await usersApi.resetPassword(viewPasswordModal.id, viewResetPw);
+                    setViewedPassword(viewResetPw);
+                    setViewResetPw('');
+                  } catch {
+                    setError('Ошибка сброса пароля');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                Сохранить и показать
+              </Button>
+            </div>
+          )}
+          <Button variant="secondary" onClick={() => { setViewPasswordModal(null); setViewResetPw(''); }} className="w-full">
+            Закрыть
+          </Button>
+        </div>
+      </Modal>
+
+      <AccessManagerModal
+        open={!!accessUser}
+        user={accessUser}
+        offices={offices}
+        countries={countries}
+        onClose={() => setAccessUser(null)}
       />
-    </>
+
+      <BalanceAdjustModal
+        open={!!balanceUser}
+        user={balanceUser}
+        onClose={() => setBalanceUser(null)}
+        onSuccess={() => loadData()}
+      />
+
+      <BalanceHistoryModal
+        open={!!historyUser}
+        userId={historyUser?.id}
+        title={historyUser ? `История баланса: ${historyUser.displayName || historyUser.username}` : 'История баланса'}
+        onClose={() => setHistoryUser(null)}
+      />
+    </div>
   );
 }

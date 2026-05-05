@@ -1,47 +1,36 @@
-import api, { unwrap } from './axios';
+import api from './axios';
 
-export async function listTransfers(params = {}) {
-  const res = await api.get('/transfers', { params });
-  return unwrap(res);
-}
+export const transfersApi = {
+  getAll: (params) => api.get('/transfers', { params }),
 
-export async function getTransfer(id) {
-  const res = await api.get(`/transfers/${id}`);
-  return unwrap(res);
-}
+  getById: (id) => api.get(`/transfers/${id}`),
 
-// { fromCityId, toCityId, lines: [{color, sentCount}], comment? }
-export async function createTransfer(payload) {
-  const res = await api.post('/transfers', payload);
-  return unwrap(res);
-}
+  getPending: () => api.get('/transfers/pending'),
 
-// { lines: [{color, receivedCount}] }
-export async function acceptTransfer(id, payload) {
-  const res = await api.post(`/transfers/${id}/accept`, payload);
-  return unwrap(res);
-}
+  getProblematic: (params) => api.get('/transfers/problematic', { params }),
 
-export async function rejectTransfer(id) {
-  const res = await api.post(`/transfers/${id}/reject`);
-  return unwrap(res);
-}
+  create: (data) => api.post('/transfers', data),
+  // data: { senderType, senderCountryId?, senderCityId?, receiverType, receiverCountryId?, receiverCityId?, items: [{itemType, quantity}], notes? }
 
-export async function resolveTransfer(id) {
-  const res = await api.post(`/transfers/${id}/resolve`);
-  return unwrap(res);
-}
+  accept: (id, items) =>
+    api.patch(`/transfers/${id}/accept`, { items }),
+  // items: [{itemType, receivedQuantity}]
 
-export async function cancelTransfer(id) {
-  const res = await api.post(`/transfers/${id}/cancel`);
-  return unwrap(res);
-}
+  reject: (id, reason) =>
+    api.patch(`/transfers/${id}/reject`, { reason }),
 
-export const TRANSFER_STATUS = {
-  PENDING: { label: 'Ожидает', tone: 'warning' },
-  ACCEPTED: { label: 'Принят', tone: 'success' },
-  REJECTED: { label: 'Отклонён', tone: 'danger' },
-  DISCREPANCY: { label: 'Расхождение', tone: 'danger' },
-  RESOLVED: { label: 'Закрыт', tone: 'muted' },
-  CANCELLED: { label: 'Отменён', tone: 'muted' },
+  cancel: (id) => api.patch(`/transfers/${id}/cancel`),
+
+  // Phase 3: Enhanced resolution with 2FA and CompanyLoss tracking
+  resolveDiscrepancy: (id, payload) =>
+    api.patch(`/transfers/${id}/resolve-discrepancy`, payload),
+  // payload: { resolutionType: 'ACCEPT_SENDER'|'ACCEPT_RECEIVER'|'ACCEPT_COMPROMISE', password, compromiseValues?: {BLACK: n, WHITE: n, ...} }
+  
+  // Get statistics for dashboard
+  getStats: (params) => api.get('/transfers/stats', { params }),
+
+  // Admin-only: edit SENT transfer (requires 2FA password)
+  editTransfer: (id, payload) =>
+    api.patch(`/transfers/${id}/edit`, payload),
+  // payload: { items: [{itemType, quantity}], password, notes? }
 };
