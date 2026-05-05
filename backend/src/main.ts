@@ -15,7 +15,8 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001);
+  const rawPort = configService.get<string>('PORT');
+  const port = Number(rawPort) || 3001;
 
   // CORS — MUST BE FIRST, before helmet and other middleware
   // Hardcoded Railway domains + env variable for flexibility
