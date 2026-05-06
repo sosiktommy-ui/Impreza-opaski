@@ -826,10 +826,9 @@ export default function Expenses() {
                   setSelectedEventId(id);
                   if (id) {
                     const ev = imprezaEvents.find((ev) => String(ev.id) === id);
-                    if (ev) {
-                      setDescription(ev.title);
-                      if (ev.date && !eventDate) setEventDate(ev.date.slice(0, 10));
-                    }
+                    if (ev) setDescription(ev.title);
+                  } else {
+                    setDescription('');
                   }
                 }}
                 className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
@@ -851,7 +850,8 @@ export default function Expenses() {
             )}
           </div>
 
-          {/* ── Description ───────────────────────────── */}
+          {/* ── Description (only when no event selected) ── */}
+          {!selectedEventId && (
           <Input
             label={expenseType === 'EXTERNAL' ? 'Описание расхода *' : 'Описание расхода *'}
             value={description}
@@ -861,6 +861,7 @@ export default function Expenses() {
               : 'Напр: Подготовка склада, Промо-акция, Тестирование...'}
             required
           />
+          )}
 
           {/* ── Optional date ─────────────────────────── */}
           <div>
