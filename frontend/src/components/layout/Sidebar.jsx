@@ -1,21 +1,14 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
-  Truck,
-  PackageCheck,
-  ShieldAlert,
-  Receipt,
+  ArrowLeftRight,
   Warehouse,
+  BarChart3,
   SlidersHorizontal,
-  X,
   CircleUserRound,
-  ClockArrowUp,
+  X,
   PanelLeftClose,
   PanelLeft,
-  MapPinned,
-  Clock,
-  BarChart3,
-  TrendingDown,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore, useBadgeStore } from '../../store/useAppStore';
@@ -25,34 +18,20 @@ import { inventoryApi } from '../../api/inventory';
 
 const MENU_TOOLTIPS = {
   '/': 'Общая сводка и статистика',
-  '/transfers': 'Исходящие трансферы браслетов',
-  '/acceptance': 'Входящие трансферы ожидающие подтверждения',
-  '/problematic': 'Трансферы с расхождением в количестве',
-  '/pending': 'Трансферы ожидающие ответа получателя',
-  '/expenses': 'Расход браслетов на мероприятиях',
-  '/company-losses': 'Потерянные браслеты и инциденты',
-  '/balance': 'Остатки браслетов по странам и городам',
-  '/map': 'Географическое распределение браслетов',
-  '/history': 'Все трансферы и операции',
-  '/statistics': 'Аналитика и отчётность',
+  '/transfers': 'Переводы: отправки, входящие, незавершённые, проблемы',
+  '/accounting': 'Учёт: баланс, расходы, потери',
+  '/analytics': 'Аналитика: статистика, история, карта',
   '/users': 'Управление пользователями и настройки',
   '/profile': 'Ваш профиль и настройки аккаунта',
 };
 
 const allLinks = [
-  { to: '/', icon: LayoutGrid, label: 'Главная', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/transfers', icon: Truck, label: 'Отправки', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/acceptance', icon: PackageCheck, label: 'Получение', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'incoming' },
-  { to: '/problematic', icon: ShieldAlert, label: 'Проблемные', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'problematic' },
-  { to: '/pending', icon: Clock, label: 'Зависшие', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'pending' },
-  { to: '/expenses', icon: Receipt, label: 'Расходы', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/company-losses', icon: TrendingDown, label: 'Минус компании', labelCountry: 'Потери страны', labelCity: 'Мои потери', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: 'companyLoss' },
-  { to: '/balance', icon: Warehouse, label: 'Баланс', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/map', icon: MapPinned, label: 'Карта', roles: ['ADMIN', 'OFFICE', 'COUNTRY'], badgeKey: null },
-  { to: '/history', icon: ClockArrowUp, label: 'История', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/statistics', icon: BarChart3, label: 'Статистика', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
-  { to: '/users', icon: SlidersHorizontal, label: 'Настройки', roles: ['ADMIN', 'OFFICE'], badgeKey: null },
-  { to: '/profile', icon: CircleUserRound, label: 'Профиль', roles: ['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'], badgeKey: null },
+  { to: '/',           icon: LayoutGrid,        label: 'Главная',    roles: ['ADMIN','OFFICE','COUNTRY','CITY'], badgeKey: null },
+  { to: '/transfers',  icon: ArrowLeftRight,     label: 'Переводы',   roles: ['ADMIN','OFFICE','COUNTRY','CITY'], badgeKey: 'transfers' },
+  { to: '/accounting', icon: Warehouse,          label: 'Учёт',       roles: ['ADMIN','OFFICE','COUNTRY','CITY'], badgeKey: 'companyLoss' },
+  { to: '/analytics',  icon: BarChart3,          label: 'Аналитика',  roles: ['ADMIN','OFFICE','COUNTRY','CITY'], badgeKey: null },
+  { to: '/users',      icon: SlidersHorizontal,  label: 'Управление', roles: ['ADMIN','OFFICE'],                  badgeKey: null },
+  { to: '/profile',    icon: CircleUserRound,    label: 'Профиль',    roles: ['ADMIN','OFFICE','COUNTRY','CITY'], badgeKey: null },
 ];
 
 export default function Sidebar() {
@@ -73,40 +52,31 @@ export default function Sidebar() {
 
   // Get badge count for a link
   const getBadge = (badgeKey) => {
-    switch (badgeKey) {
-      case 'incoming': return incomingCount > 0 ? incomingCount : null;
-      case 'problematic': return problematicCount > 0 ? problematicCount : null;
-      case 'pending': return pendingCount > 0 ? pendingCount : null;
-      case 'companyLoss': return companyLossCount > 0 ? companyLossCount : null;
-      default: return null;
+    if (badgeKey === 'transfers') {
+      const total = incomingCount + pendingCount + problematicCount;
+      return total > 0 ? total : null;
     }
+    if (badgeKey === 'companyLoss') return companyLossCount > 0 ? companyLossCount : null;
+    return null;
   };
 
-  // Get badge color class
   const getBadgeColor = (badgeKey) => {
-    switch (badgeKey) {
-      case 'problematic': return 'bg-amber-500';
-      case 'pending': return 'bg-orange-500';
-      case 'incoming': return 'bg-emerald-500';
-      case 'companyLoss': return 'bg-red-500';
-      default: return 'bg-brand-600';
-    }
+    if (badgeKey === 'transfers')  return 'bg-brand-600';
+    if (badgeKey === 'companyLoss') return 'bg-red-500';
+    return 'bg-brand-600';
   };
 
   const navContent = (collapsed) => (
     <nav className="flex flex-col gap-1 p-2">
-      {links.map(({ to, icon: Icon, label, labelCity, labelCountry, badgeKey }) => {
+      {links.map(({ to, icon: Icon, label, badgeKey }) => {
         const badge = getBadge(badgeKey);
         const badgeColor = getBadgeColor(badgeKey);
-        const displayLabel = user?.role === 'CITY' && labelCity ? labelCity
-          : user?.role === 'COUNTRY' && labelCountry ? labelCountry
-          : label;
         return (
           <NavLink
             key={to}
             to={to}
             onClick={closeSidebar}
-            title={MENU_TOOLTIPS[to] || displayLabel}
+            title={MENU_TOOLTIPS[to] || label}
             className={({ isActive }) =>
               `group relative flex items-center ${collapsed ? 'justify-center' : ''} gap-3 ${collapsed ? 'px-2' : 'px-3'} py-2.5 rounded-lg text-sm font-medium transition-all duration-200
               ${isActive
@@ -122,7 +92,7 @@ export default function Sidebar() {
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-brand-500 rounded-r-full" />
                 )}
                 <Icon size={20} strokeWidth={isActive ? 2 : 1.6} className="flex-shrink-0 transition-all" />
-                {!collapsed && <span className="flex-1 truncate">{displayLabel}</span>}
+                {!collapsed && <span className="flex-1 truncate">{label}</span>}
                 {!collapsed && badge && (
                   <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full ${badgeColor} text-white text-2xs font-bold px-1.5 animate-pulse`}>
                     {badge}
