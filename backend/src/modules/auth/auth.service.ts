@@ -9,7 +9,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { Role, ScopeType, UserAccess } from '@prisma/client';
+import { AccessType, Role, ScopeType, UserAccess } from '@prisma/client';
 
 /** Token kinds. Personal token is short-lived and only allows scope selection. */
 export type JwtKind = 'personal' | 'scoped';
@@ -31,6 +31,7 @@ export interface JwtPayload {
   scopeType?: ScopeType;
   scopeId?: string | null;
   accessId?: string;
+  accessType?: AccessType;
 }
 
 export interface ResolvedScopeFields {
@@ -358,6 +359,7 @@ export class AuthService {
       scopeType: access.scopeType,
       scopeId: access.scopeId,
       accessId: access.id,
+      accessType: access.accessType,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -451,6 +453,7 @@ export class AuthService {
     access: UserAccess;
   }> {
     const access = await this.assertAccessUsable(accessId, userId);
+
     const userRow = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -576,6 +579,7 @@ export class AuthService {
       return {
         id: a.id,
         scopeType: a.scopeType,
+        accessType: a.accessType,
         scopeId: a.scopeId,
         target,
         expiresAt: a.expiresAt,
@@ -626,6 +630,7 @@ export class AuthService {
     return {
       id: access.id,
       scopeType: access.scopeType,
+      accessType: access.accessType,
       scopeId: access.scopeId,
       target,
       expiresAt: access.expiresAt,

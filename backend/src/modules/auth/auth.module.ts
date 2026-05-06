@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PersonalAuthGuard } from './guards/personal-auth.guard';
 import { ScopeAccessGuard } from './guards/scope-access.guard';
+import { AccessTypeGuard } from './guards/access-type.guard';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ScopeAccessGuard } from './guards/scope-access.guard';
     RolesGuard,
     PersonalAuthGuard,
     ScopeAccessGuard,
+    AccessTypeGuard,
   ],
   exports: [
     AuthService,
@@ -37,6 +39,7 @@ import { ScopeAccessGuard } from './guards/scope-access.guard';
     RolesGuard,
     PersonalAuthGuard,
     ScopeAccessGuard,
+    AccessTypeGuard,
     JwtModule,
   ],
 })

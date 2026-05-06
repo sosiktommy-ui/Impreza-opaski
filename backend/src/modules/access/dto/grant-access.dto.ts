@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, IsDateString } from 'class-validator';
-import { ScopeType } from '@prisma/client';
+import { AccessType, ScopeType } from '@prisma/client';
 
 export class GrantAccessDto {
   @IsString()
@@ -12,6 +12,10 @@ export class GrantAccessDto {
   @IsOptional()
   @IsString()
   scopeId?: string | null;
+
+  @IsOptional()
+  @IsEnum(AccessType)
+  accessType?: AccessType;
 
   @IsOptional()
   @IsDateString()

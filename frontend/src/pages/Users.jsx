@@ -9,6 +9,7 @@ import Badge from '../components/ui/Badge';
 import AccessManagerModal from '../components/ui/AccessManagerModal';
 import BalanceAdjustModal from '../components/ui/BalanceAdjustModal';
 import BalanceHistoryModal from '../components/ui/BalanceHistoryModal';
+import GeoManagementPanel from '../components/ui/GeoManagementPanel';
 import { Plus, Pencil, Trash2, KeyRound, Search, UserCheck, UserX, Settings, Eye, ShieldCheck, Wallet, History } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -36,6 +37,8 @@ export default function Users() {
   const [accessUser, setAccessUser] = useState(null);
   const [balanceUser, setBalanceUser] = useState(null);
   const [historyUser, setHistoryUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('accounts');
+  const [accessPreset, setAccessPreset] = useState(null);
 
   // Create form
   const [form, setForm] = useState({
@@ -206,14 +209,58 @@ export default function Users() {
     );
   }
 
+  const openAccessManager = (targetUser, preset = null) => {
+    setAccessUser(targetUser);
+    setAccessPreset(preset);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-content-primary flex items-center gap-2"><Settings size={22} className="text-brand-500" /> Пользователи</h2>
-        <Button onClick={() => setShowCreate(true)} size="sm">
-          <Plus size={18} /> Новый
-        </Button>
+        {activeTab === 'accounts' && (
+          <Button onClick={() => setShowCreate(true)} size="sm">
+            <Plus size={18} /> Новый аккаунт
+          </Button>
+        )}
       </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab('accounts')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            activeTab === 'accounts'
+              ? 'bg-brand-600 text-white'
+              : 'bg-surface-card text-content-secondary hover:bg-surface-card-hover border border-edge'
+          }`}
+        >
+          Аккаунты людей
+        </button>
+        <button
+          onClick={() => setActiveTab('geo')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            activeTab === 'geo'
+              ? 'bg-brand-600 text-white'
+              : 'bg-surface-card text-content-secondary hover:bg-surface-card-hover border border-edge'
+          }`}
+        >
+          Страны и города
+        </button>
+      </div>
+
+      {activeTab === 'geo' && (
+        <GeoManagementPanel
+          countries={countries}
+          offices={offices}
+          users={users}
+          currentUser={currentUser}
+          onRefresh={loadData}
+          onOpenAccessManager={openAccessManager}
+        />
+      )}
+
+      {activeTab === 'accounts' && (
+        <>
 
       {/* Search & role filter */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -339,7 +386,7 @@ export default function Users() {
                 </button>
                 {currentUser?.role === 'ADMIN' && (
                   <button
-                    onClick={() => setAccessUser(u)}
+                    onClick={() => openAccessManager(u)}
                     className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted hover:text-brand-600"
                     title="Управление доступами"
                   >
@@ -383,6 +430,8 @@ export default function Users() {
           </Card>
         ))}
       </div>
+      </>
+      )}
 
       {/* Create user modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Новый пользователь">
@@ -580,7 +629,11 @@ export default function Users() {
         user={accessUser}
         offices={offices}
         countries={countries}
-        onClose={() => setAccessUser(null)}
+        initialScopeType={accessPreset?.initialScopeType}
+        initialScopeId={accessPreset?.initialScopeId}
+        initialAccessType={accessPreset?.initialAccessType}
+        initialCountryForCity={accessPreset?.initialCountryForCity}
+        onClose={() => { setAccessUser(null); setAccessPreset(null); }}
       />
 
       <BalanceAdjustModal

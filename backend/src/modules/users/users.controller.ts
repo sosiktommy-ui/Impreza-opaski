@@ -17,7 +17,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { Role } from '@prisma/client';
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsEmail, MinLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsEmail,
+  MinLength,
+  IsNumber,
+} from 'class-validator';
 
 const ROLE_HIERARCHY: Record<string, number> = {
   [Role.ADMIN]: 4,
@@ -65,6 +73,50 @@ class ResetPasswordDto {
   newPassword!: string;
 }
 
+class CreateCountryDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @IsOptional()
+  @IsString()
+  officeId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+}
+
+class CreateCityDto {
+  @IsString()
+  @IsNotEmpty()
+  countryId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  slug?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+}
+
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
@@ -109,6 +161,24 @@ export class UsersController {
       scopedCountryId = user.countryId ?? undefined;
     }
     return this.usersService.getCities(scopedCountryId);
+  }
+
+  @Post('countries')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  createCountry(
+    @Body() dto: CreateCountryDto,
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    return this.usersService.createCountry(dto, caller);
+  }
+
+  @Post('cities')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  createCity(
+    @Body() dto: CreateCityDto,
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    return this.usersService.createCity(dto, caller);
   }
 
   @Get(':id')

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ScopeType } from '@prisma/client';
+import { AccessType, ScopeType } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { GrantAccessDto } from './dto/grant-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
@@ -41,6 +41,7 @@ export class AccessService {
     if (!user) throw new NotFoundException('User not found');
 
     await this.validateScope(dto.scopeType, dto.scopeId ?? null);
+    this.validateAccessType(dto.scopeType, dto.accessType ?? AccessType.FULL);
 
     // Avoid duplicate active access for the same scope
     const existing = await this.prisma.userAccess.findFirst({
@@ -60,6 +61,7 @@ export class AccessService {
         userId: dto.userId,
         scopeType: dto.scopeType,
         scopeId: dto.scopeId ?? null,
+        accessType: dto.accessType ?? AccessType.FULL,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
         notes: dto.notes ?? null,
         grantedById: granterId,
@@ -71,6 +73,7 @@ export class AccessService {
       accessId: created.id,
       userId: dto.userId,
       scopeType: dto.scopeType,
+      accessType: created.accessType,
       scopeId: dto.scopeId ?? null,
       expiresAt: created.expiresAt,
       notes: created.notes,
@@ -103,7 +106,17 @@ export class AccessService {
     const access = await this.prisma.userAccess.findUnique({ where: { id: accessId } });
     if (!access) throw new NotFoundException('Access not found');
 
-    const data: { expiresAt?: Date | null; notes?: string | null } = {};
+    const nextAccessType = dto.accessType ?? access.accessType;
+    this.validateAccessType(access.scopeType, nextAccessType);
+
+    const data: {
+      accessType?: AccessType;
+      expiresAt?: Date | null;
+      notes?: string | null;
+    } = {};
+    if (dto.accessType !== undefined) {
+      data.accessType = dto.accessType;
+    }
     if (dto.expiresAt !== undefined) {
       data.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     }
@@ -115,6 +128,15 @@ export class AccessService {
       where: { id: accessId },
       data,
     });
+  }
+
+  private validateAccessType(scopeType: ScopeType, accessType: AccessType): void {
+    if (
+      accessType === AccessType.PARTIAL &&
+      (scopeType === ScopeType.GLOBAL || scopeType === ScopeType.OFFICE)
+    ) {
+      throw new BadRequestException('PARTIAL access is allowed only for COUNTRY and CITY scopes');
+    }
   }
 
   /** Validate that scopeId references a real entity for the given scopeType. */

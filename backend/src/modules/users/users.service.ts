@@ -196,6 +196,106 @@ export class UsersService {
     });
   }
 
+  async createCountry(
+    data: {
+      name: string;
+      code: string;
+      officeId?: string;
+      latitude?: number;
+      longitude?: number;
+    },
+    caller: { role: Role; officeId?: string | null },
+  ) {
+    const normalizedCode = data.code.trim().toLowerCase();
+    if (!normalizedCode) {
+      throw new BadRequestException('Country code is required');
+    }
+
+    const officeId = caller.role === Role.OFFICE
+      ? caller.officeId ?? null
+      : data.officeId ?? null;
+
+    if (caller.role === Role.OFFICE && !officeId) {
+      throw new BadRequestException('Office account is not linked to an office');
+    }
+
+    if (officeId) {
+      const office = await this.prisma.office.findUnique({ where: { id: officeId } });
+      if (!office) throw new BadRequestException('Office not found');
+    }
+
+    try {
+      return await this.prisma.country.create({
+        data: {
+          name: data.name.trim(),
+          code: normalizedCode,
+          officeId,
+          latitude: data.latitude ?? 0,
+          longitude: data.longitude ?? 0,
+        },
+        include: {
+          office: { select: { id: true, name: true, code: true } },
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException('Country name or code already exists');
+      }
+      throw error;
+    }
+  }
+
+  async createCity(
+    data: {
+      countryId: string;
+      name: string;
+      slug?: string;
+      latitude?: number;
+      longitude?: number;
+    },
+    caller: { role: Role; officeId?: string | null },
+  ) {
+    const country = await this.prisma.country.findUnique({
+      where: { id: data.countryId },
+      select: { id: true, officeId: true },
+    });
+    if (!country) throw new BadRequestException('Country not found');
+
+    if (caller.role === Role.OFFICE) {
+      if (!caller.officeId || country.officeId !== caller.officeId) {
+        throw new BadRequestException('Office user can create cities only in own office countries');
+      }
+    }
+
+    const slug = (data.slug?.trim() || data.name.trim())
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-');
+
+    if (!slug) throw new BadRequestException('City slug is invalid');
+
+    try {
+      return await this.prisma.city.create({
+        data: {
+          countryId: data.countryId,
+          name: data.name.trim(),
+          slug,
+          latitude: data.latitude ?? 0,
+          longitude: data.longitude ?? 0,
+        },
+        include: {
+          country: { select: { id: true, name: true, code: true, officeId: true } },
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException('City slug already exists');
+      }
+      throw error;
+    }
+  }
+
   async createUser(data: {
     username: string;
     password: string;

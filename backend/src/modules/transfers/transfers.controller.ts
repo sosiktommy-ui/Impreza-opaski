@@ -13,11 +13,13 @@ import {
 import { TransfersService } from './transfers.service';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AccessTypeGuard } from '../auth/guards/access-type.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { AllowAccessTypes } from '../auth/decorators/allow-access-types.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
-import { Role, TransferStatus, EntityType, ItemType } from '@prisma/client';
+import { AccessType, Role, TransferStatus, EntityType, ItemType } from '@prisma/client';
 import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
 import { EditTransferDto } from './dto/edit-transfer.dto';
 import {
@@ -105,7 +107,7 @@ class AcceptTransferDto {
 }
 
 @Controller('transfers')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AccessTypeGuard)
 export class TransfersController {
   constructor(
     private readonly transfersService: TransfersService,
@@ -113,6 +115,7 @@ export class TransfersController {
   ) {}
 
   @Post()
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   sendTransfer(
     @Body() dto: CreateTransferDto,
@@ -125,6 +128,7 @@ export class TransfersController {
   }
 
   @Patch(':id/accept')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   acceptTransfer(
     @Param('id') id: string,
@@ -135,6 +139,7 @@ export class TransfersController {
   }
 
   @Patch(':id/reject')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   rejectTransfer(
     @Param('id') id: string,
@@ -145,6 +150,7 @@ export class TransfersController {
   }
 
   @Patch(':id/cancel')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
   async cancelTransfer(
     @Param('id') id: string,
@@ -163,6 +169,7 @@ export class TransfersController {
   }
 
   @Patch(':id/resolve-discrepancy')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN)
   async resolveDiscrepancy(
     @Param('id') id: string,
@@ -178,6 +185,7 @@ export class TransfersController {
   }
 
   @Patch(':id/edit')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN)
   async editTransfer(
     @Param('id') id: string,

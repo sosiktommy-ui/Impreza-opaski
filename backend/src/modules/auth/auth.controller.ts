@@ -183,6 +183,7 @@ export class AuthController {
       access: {
         id: access.id,
         scopeType: access.scopeType,
+        accessType: access.accessType,
         scopeId: access.scopeId,
       },
     };
@@ -221,6 +222,7 @@ export class AuthController {
       access: {
         id: access.id,
         scopeType: access.scopeType,
+        accessType: access.accessType,
         scopeId: access.scopeId,
       },
     };

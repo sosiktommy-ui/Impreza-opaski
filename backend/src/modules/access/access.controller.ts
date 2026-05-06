@@ -7,10 +7,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { AccessType, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AccessTypeGuard } from '../auth/guards/access-type.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { AllowAccessTypes } from '../auth/decorators/allow-access-types.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { AccessService } from './access.service';
@@ -19,7 +21,8 @@ import { UpdateAccessDto } from './dto/update-access.dto';
 
 /** All endpoints are admin-only. Manages UserAccess rows. */
 @Controller('access')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AccessTypeGuard)
+@AllowAccessTypes(AccessType.FULL)
 @Roles(Role.ADMIN)
 export class AccessController {
   constructor(private readonly accessService: AccessService) {}

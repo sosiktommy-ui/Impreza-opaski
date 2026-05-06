@@ -22,7 +22,17 @@ function fmtDate(value) {
   try { return new Date(value).toLocaleDateString('ru-RU'); } catch { return null; }
 }
 
-export default function AccessManagerModal({ open, user, offices = [], countries = [], onClose }) {
+export default function AccessManagerModal({
+  open,
+  user,
+  offices = [],
+  countries = [],
+  onClose,
+  initialScopeType,
+  initialScopeId,
+  initialAccessType,
+  initialCountryForCity,
+}) {
   const [accesses, setAccesses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,6 +40,7 @@ export default function AccessManagerModal({ open, user, offices = [], countries
   // Form state
   const [scopeType, setScopeType] = useState('CITY');
   const [scopeId, setScopeId] = useState('');
+  const [accessType, setAccessType] = useState('FULL');
   const [expiresAt, setExpiresAt] = useState('');
   const [notes, setNotes] = useState('');
   const [countryForCity, setCountryForCity] = useState('');
@@ -55,20 +66,30 @@ export default function AccessManagerModal({ open, user, offices = [], countries
     if (open && user?.id) {
       reload();
       // reset form
-      setScopeType('CITY');
-      setScopeId('');
+      setScopeType(initialScopeType || 'CITY');
+      setScopeId(initialScopeId || '');
+      setAccessType(initialAccessType || 'FULL');
       setExpiresAt('');
       setNotes('');
-      setCountryForCity('');
+      setCountryForCity(initialCountryForCity || '');
       setCities([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, user?.id]);
+  }, [open, user?.id, initialScopeType, initialScopeId, initialAccessType, initialCountryForCity]);
+
+  useEffect(() => {
+    if (!open || !countryForCity || scopeType !== 'CITY') return;
+    onCountryForCityChange({ target: { value: countryForCity } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     setScopeId('');
     setCities([]);
     setCountryForCity('');
+    if (scopeType === 'GLOBAL' || scopeType === 'OFFICE') {
+      setAccessType('FULL');
+    }
   }, [scopeType]);
 
   const onCountryForCityChange = async (e) => {
@@ -109,6 +130,7 @@ export default function AccessManagerModal({ open, user, offices = [], countries
         userId: user.id,
         scopeType,
         scopeId: scopeType === 'GLOBAL' ? null : scopeId,
+        accessType,
       };
       if (expiresAt) payload.expiresAt = new Date(expiresAt).toISOString();
       if (notes.trim()) payload.notes = notes.trim();
@@ -154,6 +176,7 @@ export default function AccessManagerModal({ open, user, offices = [], countries
                       <div className="text-sm font-medium text-content-primary truncate">{name}</div>
                       <div className="text-[11px] text-content-muted truncate">
                         {SCOPE_LABEL[a.scopeType]}
+                        {a.accessType ? ` • ${a.accessType === 'PARTIAL' ? 'ограниченный' : 'полный'}` : ''}
                         {a.expiresAt ? ` • до ${fmtDate(a.expiresAt)}` : ''}
                         {a.notes ? ` • ${a.notes}` : ''}
                       </div>
@@ -193,6 +216,16 @@ export default function AccessManagerModal({ open, user, offices = [], countries
             onChange={(e) => setScopeType(e.target.value)}
           >
             {SCOPE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </Select>
+
+          <Select
+            label="Тип доступа"
+            value={accessType}
+            onChange={(e) => setAccessType(e.target.value)}
+            disabled={scopeType === 'GLOBAL' || scopeType === 'OFFICE'}
+          >
+            <option value="FULL">Полный (FULL)</option>
+            <option value="PARTIAL">Ограниченный (PARTIAL)</option>
           </Select>
 
           {scopeType === 'OFFICE' && (

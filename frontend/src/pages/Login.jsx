@@ -78,6 +78,12 @@ export default function Login() {
   };
 
   if (step === 'scope') {
+    const sortedAccesses = [...pendingAccesses].sort((a, b) => {
+      const aPartial = a.accessType === 'PARTIAL' ? 1 : 0;
+      const bPartial = b.accessType === 'PARTIAL' ? 1 : 0;
+      return aPartial - bPartial;
+    });
+
     return (
       <div className="min-h-dvh flex items-center justify-center bg-surface-primary px-4 py-8">
         <div className="w-full max-w-md">
@@ -87,13 +93,14 @@ export default function Login() {
           </div>
 
           <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4 space-y-2">
-            {pendingAccesses.map((access) => {
+            {sortedAccesses.map((access) => {
               const meta = SCOPE_META[access.scopeType] ?? SCOPE_META.CITY;
               const Icon = meta.Icon;
               const targetName =
                 access.target?.name ??
                 (access.scopeType === 'GLOBAL' ? 'Все подразделения' : '—');
               const expires = formatExpires(access.expiresAt);
+              const isPartial = access.accessType === 'PARTIAL';
               return (
                 <button
                   key={access.id}
@@ -102,13 +109,14 @@ export default function Login() {
                   disabled={submitting}
                   className="w-full text-left flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-edge hover:border-brand-500 hover:bg-surface-hover transition disabled:opacity-50"
                 >
-                  <div className="shrink-0 w-10 h-10 rounded-full bg-brand-500/10 text-brand-500 flex items-center justify-center">
+                  <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${isPartial ? 'bg-amber-500/10 text-amber-500' : 'bg-brand-500/10 text-brand-500'}`}>
                     <Icon size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-content-primary truncate">{targetName}</div>
                     <div className="text-xs text-content-muted truncate">
                       {meta.label}
+                      {isPartial ? ' • ограниченный' : ' • полный'}
                       {expires ? ` • до ${expires}` : ''}
                     </div>
                   </div>

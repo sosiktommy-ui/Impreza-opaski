@@ -71,7 +71,8 @@ function ScopePill() {
     }
   };
 
-  const hasAlternatives = (accesses?.length ?? 0) > 1;
+  const allAccesses = accesses ?? [];
+  const hasAlternatives = allAccesses.length > 1;
 
   return (
     <div className="relative" ref={ref}>
@@ -89,16 +90,17 @@ function ScopePill() {
       {open && (
         <div className="absolute left-0 mt-1 w-64 bg-surface-card border border-edge rounded-[var(--radius-md)] shadow-lg z-40 p-1.5">
           {loading && <div className="text-xs text-content-muted px-2 py-2">Загрузка…</div>}
-          {!loading && accesses && accesses.length === 0 && (
+          {!loading && allAccesses.length === 0 && (
             <div className="text-xs text-content-muted px-2 py-2">Нет доступных областей</div>
           )}
-          {!loading && accesses && accesses.length === 1 && (
+          {!loading && allAccesses.length === 1 && (
             <div className="text-xs text-content-muted px-2 py-2">Других областей нет</div>
           )}
-          {!loading && hasAlternatives && accesses.map((a) => {
+          {!loading && hasAlternatives && allAccesses.map((a) => {
             const ItemIcon = SCOPE_ICON[a.scopeType] ?? Globe;
             const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Все подразделения' : '—');
             const active = a.id === currentAccess.id;
+            const accessTypeLabel = a.accessType === 'PARTIAL' ? 'ограниченный' : 'полный';
             return (
               <button
                 key={a.id}
@@ -111,7 +113,7 @@ function ScopePill() {
                 <ItemIcon size={14} className="shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-medium">{name}</div>
-                  <div className="text-[10px] text-content-muted truncate">{SCOPE_LABEL[a.scopeType]}</div>
+                  <div className="text-[10px] text-content-muted truncate">{SCOPE_LABEL[a.scopeType]} • {accessTypeLabel}</div>
                 </div>
                 {active && <span className="text-[10px] text-brand-500">текущая</span>}
               </button>

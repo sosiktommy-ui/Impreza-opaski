@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EntityType, ItemType, CityStatus, Prisma, Role } from '@prisma/client';
+import { AccessType, EntityType, ItemType, CityStatus, Prisma, Role, ScopeType } from '@prisma/client';
 import { BalancesService } from '../balances/balances.service';
 
 const CACHE_TTL = 300; // 5 minutes
@@ -228,6 +228,8 @@ export class InventoryService {
     eventName: string;
     eventDate?: string;
     location?: string;
+    type?: string;
+    targetCityId?: string | null;
     black: number;
     white: number;
     red: number;
@@ -237,6 +239,7 @@ export class InventoryService {
   }) {
     const {
       cityId, userId, eventName, eventDate, location,
+      type = 'INTERNAL', targetCityId,
       black, white, red, blue, notes, actorId,
     } = params;
 
@@ -248,6 +251,38 @@ export class InventoryService {
     // Validate city exists
     const city = await this.prisma.city.findUnique({ where: { id: cityId } });
     if (!city) throw new NotFoundException(`City ${cityId} not found`);
+
+    // For EXTERNAL expenses, validate targetCityId and actor access
+    if (type === 'EXTERNAL') {
+      if (!targetCityId) {
+        throw new BadRequestException('targetCityId is required for external expenses');
+      }
+      if (targetCityId === cityId) {
+        throw new BadRequestException('targetCityId must differ from sourceCityId');
+      }
+      const targetCity = await this.prisma.city.findUnique({
+        where: { id: targetCityId },
+        select: { id: true, countryId: true },
+      });
+      if (!targetCity) throw new NotFoundException(`Target city ${targetCityId} not found`);
+
+      // Actor must have access to the target city directly or through the target country.
+      const access = await this.prisma.userAccess.findFirst({
+        where: {
+          userId: actorId,
+          OR: [
+            { scopeType: ScopeType.CITY, scopeId: targetCityId },
+            { scopeType: ScopeType.COUNTRY, scopeId: targetCity.countryId },
+          ],
+          accessType: { in: [AccessType.FULL, AccessType.PARTIAL] },
+          revokedAt: null,
+          AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
+        },
+      });
+      if (!access) {
+        throw new BadRequestException('No access to target city');
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // Check and deduct balance for each color
@@ -282,12 +317,15 @@ export class InventoryService {
           eventName,
           eventDate: eventDate && !isNaN(new Date(eventDate).getTime()) ? new Date(eventDate) : new Date(),
           location: location || null,
+          type: (type as any) ?? 'INTERNAL',
           black,
           white,
           red,
           blue,
           notes: notes || null,
           createdBy: actorId,
+          targetCityId: targetCityId ?? null,
+          actorUserId: actorId,
         },
         include: {
           city: { select: { id: true, name: true, slug: true } },
@@ -337,14 +375,21 @@ export class InventoryService {
     userId?: string;
     page?: number;
     limit?: number;
+    includeTargeted?: boolean; // also return external expenses where this city is targetCityId
   }) {
-    const { cityId, countryId, userId, page = 1, limit = 20 } = params;
+    const { cityId, countryId, userId, page = 1, limit = 20, includeTargeted = false } = params;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ExpenseWhereInput = {};
-    if (cityId) where.cityId = cityId;
-    if (countryId) where.city = { countryId };
-    if (userId) where.userId = userId;
+    let where: Prisma.ExpenseWhereInput = {};
+
+    if (cityId && includeTargeted) {
+      // Show both expenses made BY this city AND external expenses made FOR this city
+      where = { OR: [{ cityId }, { targetCityId: cityId }] };
+    } else {
+      if (cityId) where.cityId = cityId;
+      if (countryId) where.city = { countryId };
+      if (userId) where.userId = userId;
+    }
 
     const [expenses, total] = await Promise.all([
       this.prisma.expense.findMany({

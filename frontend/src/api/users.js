@@ -23,4 +23,8 @@ export const usersApi = {
 
   getCities: (countryId) =>
     api.get('/users/cities', { params: { countryId } }),
+
+  createCountry: (data) => api.post('/users/countries', data),
+
+  createCity: (data) => api.post('/users/cities', data),
 };

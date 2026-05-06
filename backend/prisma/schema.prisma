@@ -53,6 +53,11 @@ enum ScopeType {
   CITY
 }
 
+enum AccessType {
+  FULL    // Can switch into this scope and do everything
+  PARTIAL // Can only create external expenses for this city, no scope switch
+}
+
 enum ExpenseType {
   INTERNAL
   EXTERNAL
@@ -181,8 +186,9 @@ model UserAccess {
   userId String @map("user_id")
   user   User   @relation("AccessHolder", fields: [userId], references: [id], onDelete: Cascade)
 
-  scopeType ScopeType @map("scope_type")
-  scopeId   String?   @map("scope_id") // NULL when scopeType=GLOBAL; polymorphic ref to Office/Country/City otherwise
+  scopeType  ScopeType  @map("scope_type")
+  accessType AccessType @default(FULL) @map("access_type")
+  scopeId    String?    @map("scope_id") // NULL when scopeType=GLOBAL; polymorphic ref to Office/Country/City otherwise
 
   expiresAt DateTime? @map("expires_at") // NULL = permanent
   revokedAt DateTime? @map("revoked_at")
@@ -449,10 +455,15 @@ model Expense {
   createdBy String      @map("created_by")
   createdAt DateTime    @default(now()) @map("created_at")
 
+  // External expense fields (type = EXTERNAL)
+  targetCityId String? @map("target_city_id") // city receiving the external expense
+  actorUserId  String? @map("actor_user_id")  // personal user who triggered it
+
   @@index([cityId])
   @@index([eventDate])
   @@index([createdBy])
   @@index([userId])
+  @@index([targetCityId])
   @@map("expenses")
 }
 

@@ -10,15 +10,19 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { InventoryService } from './inventory.service';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AccessTypeGuard } from '../auth/guards/access-type.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { AllowAccessTypes } from '../auth/decorators/allow-access-types.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthenticatedUser } from '../auth/auth.service';
-import { Role, EntityType, ItemType } from '@prisma/client';
+import { AuthenticatedUser, JwtPayload } from '../auth/auth.service';
+import { AccessType, Role, EntityType, ItemType, ScopeType } from '@prisma/client';
 import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 class AdjustBalanceDto {
@@ -64,6 +68,14 @@ class CreateExpenseDto {
   @IsString()
   @IsOptional()
   location?: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string; // INTERNAL or EXTERNAL
+
+  @IsString()
+  @IsOptional()
+  targetCityId?: string; // required when type=EXTERNAL
 
   @IsInt()
   @Min(0)
@@ -117,7 +129,7 @@ class CreateBraceletsDto {
 }
 
 @Controller('inventory')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AccessTypeGuard)
 export class InventoryController {
   private readonly logger = new Logger('InventoryController');
   
@@ -177,17 +189,20 @@ export class InventoryController {
     @Query('userId') userId?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('includeTargeted') includeTargeted?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     let scopedCityId = cityId;
     let scopedCountryId = countryId;
     let scopedUserId = userId;
+    let shouldIncludeTargeted = includeTargeted === 'true';
 
     if (user?.role === Role.CITY) {
-      // CITY users see only their own consumed expenses
-      scopedUserId = user.id;
-      scopedCityId = undefined;
+      // CITY users see expenses for their city (both internal and incoming external)
+      scopedCityId = user.cityId ?? cityId;
+      scopedUserId = undefined;
       scopedCountryId = undefined;
+      shouldIncludeTargeted = true;
     } else if (user?.role === Role.COUNTRY && user.countryId) {
       scopedCountryId = user.countryId;
     }
@@ -198,12 +213,14 @@ export class InventoryController {
       userId: scopedUserId,
       page,
       limit,
+      includeTargeted: shouldIncludeTargeted,
     });
   }
 
   // NOTE: Parametric route moved to the end of controller to avoid matching before static routes
 
   @Post('adjust')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
   async adjustBalance(
     @Body() dto: AdjustBalanceDto,
@@ -225,10 +242,12 @@ export class InventoryController {
   }
 
   @Post('expense')
+  @AllowAccessTypes(AccessType.FULL, AccessType.PARTIAL)
   @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
   async createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
   ) {
     // CITY role always uses own cityId
     // ADMIN/OFFICE/COUNTRY must provide cityId in dto
@@ -238,6 +257,30 @@ export class InventoryController {
     }
     if (!targetCityId) {
       throw new BadRequestException('cityId is required');
+    }
+
+    const payload = (request as any).jwtPayload as JwtPayload | undefined;
+    if (payload?.accessType === AccessType.PARTIAL) {
+      const expenseType = (dto.type ?? 'INTERNAL').toUpperCase();
+      if (expenseType !== 'EXTERNAL') {
+        throw new ForbiddenException('PARTIAL access can create only EXTERNAL expenses');
+      }
+
+      if (payload.scopeType === ScopeType.CITY) {
+        if (!payload.scopeId || targetCityId !== payload.scopeId) {
+          throw new ForbiddenException('PARTIAL CITY access can spend only from its own city');
+        }
+      } else if (payload.scopeType === ScopeType.COUNTRY) {
+        if (!payload.scopeId) {
+          throw new ForbiddenException('PARTIAL COUNTRY access is invalid');
+        }
+        const sourceCountryId = await this.inventoryService.getCityCountryId(targetCityId);
+        if (!sourceCountryId || sourceCountryId !== payload.scopeId) {
+          throw new ForbiddenException('PARTIAL COUNTRY access can spend only from its own country');
+        }
+      } else {
+        throw new ForbiddenException('PARTIAL access is allowed only for COUNTRY or CITY scopes');
+      }
     }
     // COUNTRY can only create expenses for cities in their own country
     if (user.role === Role.COUNTRY && user.countryId) {
@@ -256,10 +299,13 @@ export class InventoryController {
       cityId: targetCityId,
       userId: consumerUserId,
       actorId: user.id,
+      type: dto.type,
+      targetCityId: dto.targetCityId,
     });
   }
 
   @Delete('expense/:id')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
   deleteExpense(
     @Param('id') id: string,
@@ -273,6 +319,7 @@ export class InventoryController {
   // ──────────────────────────────────────────────
 
   @Get('warehouse/balance')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
   async getWarehouseBalance(
     @CurrentUser() user: AuthenticatedUser,
@@ -299,6 +346,7 @@ export class InventoryController {
   }
 
   @Get('warehouse/creation-history')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
   async getWarehouseHistory(
     @CurrentUser() user: AuthenticatedUser,
@@ -340,6 +388,7 @@ export class InventoryController {
   }
 
   @Post('warehouse/create-bracelets')
+  @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
   async createBracelets(
     @Body() dto: CreateBraceletsDto,
