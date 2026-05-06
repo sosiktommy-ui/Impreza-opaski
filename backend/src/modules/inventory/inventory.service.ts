@@ -373,11 +373,12 @@ export class InventoryService {
     cityId?: string;
     countryId?: string;
     userId?: string;
+    type?: string;
     page?: number;
     limit?: number;
     includeTargeted?: boolean; // also return external expenses where this city is targetCityId
   }) {
-    const { cityId, countryId, userId, page = 1, limit = 20, includeTargeted = false } = params;
+    const { cityId, countryId, userId, type, page = 1, limit = 20, includeTargeted = false } = params;
     const skip = (page - 1) * limit;
 
     let where: Prisma.ExpenseWhereInput = {};
@@ -390,6 +391,7 @@ export class InventoryService {
       if (countryId) where.city = { countryId };
       if (userId) where.userId = userId;
     }
+    if (type) (where as any).type = type;
 
     const [expenses, total] = await Promise.all([
       this.prisma.expense.findMany({
@@ -411,13 +413,17 @@ export class InventoryService {
       this.prisma.expense.count({ where }),
     ]);
 
-    // Hydrate consumer user info (cheap second query, avoids relation join load)
-    const userIds = Array.from(
-      new Set(expenses.map((e) => e.userId).filter((v): v is string => !!v)),
+    // Hydrate consumer user and actor info
+    const allUserIds = Array.from(
+      new Set([
+        ...expenses.map((e) => e.userId).filter((v): v is string => !!v),
+        ...expenses.map((e) => e.actorUserId).filter((v): v is string => !!v),
+        ...expenses.map((e) => e.createdBy).filter((v): v is string => !!v),
+      ]),
     );
-    const users = userIds.length
+    const users = allUserIds.length
       ? await this.prisma.user.findMany({
-          where: { id: { in: userIds } },
+          where: { id: { in: allUserIds } },
           select: { id: true, username: true, displayName: true, role: true },
         })
       : [];
@@ -427,7 +433,9 @@ export class InventoryService {
       data: expenses.map((e) => ({
         ...e,
         user: e.userId ? userMap.get(e.userId) ?? null : null,
+        actorUser: e.actorUserId ? userMap.get(e.actorUserId) ?? (e.createdBy ? userMap.get(e.createdBy) ?? null : null) : (e.createdBy ? userMap.get(e.createdBy) ?? null : null),
       })),
+
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }

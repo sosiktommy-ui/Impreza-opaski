@@ -12,11 +12,19 @@ import Modal from '../components/ui/Modal';
 import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   CalendarDays, Plus, Search, TrendingDown,
-  MapPin, BarChart3, Trash2,
+  MapPin, BarChart3, Trash2, ArrowLeftRight, Home, Globe,
 } from 'lucide-react';
 
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
 const BRACELET_KEYS = ['black', 'white', 'red', 'blue'];
+
+const EXPENSE_TYPE_META = {
+  INTERNAL: { label: 'Внутренний', className: 'bg-emerald-500/10 text-emerald-500', Icon: Home },
+  EXTERNAL: { label: 'Внешний', className: 'bg-sky-500/10 text-sky-500', Icon: ArrowLeftRight },
+  THIRD:    { label: 'Сторонний', className: 'bg-gray-500/10 text-gray-400', Icon: Globe },
+};
+
+const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
 export default function Expenses() {
   const { user } = useAuthStore();
@@ -35,6 +43,7 @@ export default function Expenses() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCity, setFilterCity] = useState('all');
+  const [filterType, setFilterType] = useState('all'); // all | INTERNAL | EXTERNAL | THIRD
   const [sortOrder, setSortOrder] = useState('newest');
 
   // Form
@@ -135,13 +144,21 @@ export default function Expenses() {
 
     const avg = totalEvents > 0 ? Math.round(totalBracelets / totalEvents) : 0;
 
-    return { totalEvents, totalBracelets, avg, byColor };
+    const byType = {
+      INTERNAL: expenses.filter((ex) => (ex.type || 'INTERNAL') === 'INTERNAL').length,
+      EXTERNAL: expenses.filter((ex) => ex.type === 'EXTERNAL').length,
+      THIRD: expenses.filter((ex) => ex.type === 'THIRD').length,
+    };
+
+    return { totalEvents, totalBracelets, avg, byColor, byType };
   }, [expenses]);
 
   // ── Filtered & sorted expenses ─────────────────
   const filteredExpenses = useMemo(() => {
     let list = [...expenses];
-
+    if (filterType !== 'all') {
+      list = list.filter((ex) => (ex.type || 'INTERNAL') === filterType);
+    }
     if (filterCity !== 'all') {
       list = list.filter((ex) => ex.city?.name === filterCity || ex.cityId === filterCity);
     }
@@ -416,6 +433,29 @@ export default function Expenses() {
         </div>
       )}
 
+      {/* ── Type tabs ─────────────────────────────────── */}
+      <div className="flex items-center gap-1 bg-surface-card border border-edge rounded-[var(--radius-sm)] p-0.5 w-fit">
+        {[
+          { key: 'all', label: 'Все', count: stats.totalEvents },
+          { key: 'INTERNAL', label: 'Внутренние', count: stats.byType.INTERNAL },
+          { key: 'EXTERNAL', label: 'Внешние', count: stats.byType.EXTERNAL },
+          ...(stats.byType.THIRD > 0 ? [{ key: 'THIRD', label: 'Сторонние', count: stats.byType.THIRD }] : []),
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setFilterType(t.key)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-[var(--radius-sm)] transition-colors flex items-center gap-1.5 ${
+              filterType === t.key ? 'bg-brand-600 text-white' : 'text-content-secondary hover:text-content-primary'
+            }`}
+          >
+            {t.label}
+            <span className={`text-xs px-1.5 rounded-full ${filterType === t.key ? 'bg-white/20' : 'bg-surface-secondary'}`}>
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* ── Filters ───────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
@@ -465,6 +505,9 @@ export default function Expenses() {
         <div className="space-y-3">
           {filteredExpenses.map((ex) => {
             const total = (ex.black || 0) + (ex.white || 0) + (ex.red || 0) + (ex.blue || 0);
+            const typeMeta = EXPENSE_TYPE_META[ex.type] ?? EXPENSE_TYPE_META.INTERNAL;
+            const TypeIcon = typeMeta.Icon;
+            const actor = ex.actorUser;
             return (
               <div
                 key={ex.id}
@@ -476,6 +519,9 @@ export default function Expenses() {
                       <h3 className="font-semibold text-content-primary flex items-center gap-2">
                         <CalendarDays size={16} className="text-purple-500 flex-shrink-0" />
                         <span className="truncate">{ex.eventName}</span>
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${typeMeta.className}`}>
+                          <TypeIcon size={10} />{typeMeta.label}
+                        </span>
                       </h3>
                       {ex.location && ex.location.toLowerCase() !== (ex.city?.name || '').toLowerCase() && (
                         <div className="text-xs text-content-muted mt-0.5 flex items-center gap-1 ml-6">
@@ -508,18 +554,16 @@ export default function Expenses() {
                         <MapPin size={11} />
                         {ex.city?.name || 'Город'}
                       </span>
-                      {ex.user && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500 font-medium">
-                          {ex.user.displayName || ex.user.username}
-                          {ex.user.role && (
-                            <span className="text-[10px] opacity-70">({ex.user.role})</span>
+                      {actor && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 font-medium">
+                          Добавил: {actor.displayName || actor.username}
+                          {actor.role && (
+                            <span className="text-[10px] opacity-70">({ROLE_LABELS[actor.role] || actor.role})</span>
                           )}
                         </span>
                       )}
-                      {ex.createdBy && typeof ex.createdBy === 'object' && (
-                        <span className="text-content-muted">
-                          Добавил: {ex.createdBy.displayName || ex.createdBy.username || 'Неизвестно'}
-                        </span>
+                      {ex.type === 'EXTERNAL' && ex.targetCityId && (
+                        <span className="text-sky-400 text-[11px]">→ Внешний</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">

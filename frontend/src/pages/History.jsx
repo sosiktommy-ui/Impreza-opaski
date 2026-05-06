@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { History as HistoryIcon, Send, PackageCheck, CalendarDays, ArrowRight, Filter, Search, ShieldCheck } from 'lucide-react';
+import { History as HistoryIcon, Send, PackageCheck, CalendarDays, ArrowRight, Filter, Search, ShieldCheck, Home, ArrowLeftRight, Globe } from 'lucide-react';
 import { transfersApi } from '../api/transfers';
 import { inventoryApi } from '../api/inventory';
 import { auditApi } from '../api/audit';
@@ -10,6 +10,14 @@ import BraceletBadge from '../components/ui/BraceletBadge';
 import Skeleton from '../components/ui/Skeleton';
 import Pagination from '../components/ui/Pagination';
 import { getSenderName, getReceiverName, isAdminTransfer, getTotalQuantity, getTransferCardClass } from '../utils/transferHelpers';
+
+const EXPENSE_TYPE_META = {
+  INTERNAL: { label: 'Внутренний', className: 'bg-emerald-500/10 text-emerald-500', Icon: Home },
+  EXTERNAL: { label: 'Внешний', className: 'bg-sky-500/10 text-sky-500', Icon: ArrowLeftRight },
+  THIRD:    { label: 'Сторонний', className: 'bg-gray-500/10 text-gray-400', Icon: Globe },
+};
+
+const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
 const TAB_FILTERS_BASE = [
   { key: 'all', label: 'Все' },
@@ -67,6 +75,9 @@ function TransferRow({ t }) {
 }
 
 function ExpenseRow({ e }) {
+  const typeMeta = EXPENSE_TYPE_META[e.type] ?? EXPENSE_TYPE_META.INTERNAL;
+  const TypeIcon = typeMeta.Icon;
+  const actor = e.actorUser;
   return (
     <div className="flex items-start gap-3 p-3">
       <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -76,6 +87,9 @@ function ExpenseRow({ e }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-content-primary">{e.eventName}</span>
           <span className="text-2xs text-content-muted">{e.city?.name || ''}</span>
+          <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${typeMeta.className}`}>
+            <TypeIcon size={9} />{typeMeta.label}
+          </span>
         </div>
         <div className="flex items-center gap-1.5 mt-1">
           {BRACELET_ORDER.map((type) => {
@@ -83,9 +97,12 @@ function ExpenseRow({ e }) {
             return qty > 0 ? <BraceletBadge key={type} type={type} count={qty} /> : null;
           })}
         </div>
-        <p className="text-2xs text-content-muted mt-1">
-          {new Date(e.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-          {e.location && <span className="ml-2 text-content-secondary">· {e.location}</span>}
+        <p className="text-2xs text-content-muted mt-1 flex items-center gap-2 flex-wrap">
+          <span>{new Date(e.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+          {e.location && <span className="text-content-secondary">· {e.location}</span>}
+          {actor && (
+            <span className="text-violet-400">· Добавил: <strong>{actor.displayName || actor.username}</strong> ({ROLE_LABELS[actor.role] || actor.role})</span>
+          )}
         </p>
       </div>
     </div>
@@ -129,6 +146,7 @@ function AuditRow({ log }) {
         </div>
         <p className="text-2xs text-content-muted mt-0.5">
           Актор: {log.actor?.displayName || log.actor?.username || log.actorId?.slice(-6) || '—'}
+          {log.actor?.role && <span className="ml-1 opacity-70">({ROLE_LABELS[log.actor.role] || log.actor.role})</span>}
           {log.entityType && <span className="ml-2">· {log.entityType}</span>}
         </p>
         {meta.notes && <p className="text-2xs text-content-secondary mt-0.5">"{meta.notes}"</p>}
