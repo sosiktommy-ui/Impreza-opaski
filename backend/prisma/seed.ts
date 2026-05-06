@@ -175,6 +175,14 @@ const COUNTRIES: CountryData[] = [
 async function main() {
   console.log('🌱 Seeding IMPREZA v2 database...\n');
 
+  // ── Idempotency check: skip if new-style accounts already exist ──
+  const polzovatel1 = await prisma.user.findUnique({ where: { username: 'polzovatel1' } });
+  if (polzovatel1) {
+    console.log('✅ Seed already applied (polzovatel1 exists). Skipping.');
+    return;
+  }
+  console.log('ℹ️  New accounts not found — running full reseed.\n');
+
   // ───── 1. Clean all tables ─────
   console.log('🗑️  Cleaning existing data...');
   const targetTables = [
