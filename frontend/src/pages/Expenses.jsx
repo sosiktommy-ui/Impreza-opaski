@@ -277,6 +277,8 @@ export default function Expenses() {
     const cid = e.target.value;
     setTargetCountryId(cid);
     setTargetCityId('');
+    setSelectedEventId('');
+    setDescription('');
     if (!cid) { setTargetCitiesForAdmin([]); return; }
     try {
       const { data } = await usersApi.getCities(cid);
@@ -750,7 +752,7 @@ export default function Expenses() {
                 accessibleCities.length > 0 ? (
                   <select
                     value={targetCityId}
-                    onChange={(e) => setTargetCityId(e.target.value)}
+                    onChange={(e) => { setTargetCityId(e.target.value); setSelectedEventId(''); setDescription(''); }}
                     className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
                     required
                   >
@@ -773,7 +775,7 @@ export default function Expenses() {
                   {targetCountryId && (
                     <select
                       value={targetCityId}
-                      onChange={(e) => setTargetCityId(e.target.value)}
+                      onChange={(e) => { setTargetCityId(e.target.value); setSelectedEventId(''); setDescription(''); }}
                       className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
                       required
                     >
@@ -810,45 +812,70 @@ export default function Expenses() {
             </div>
           )}
 
-          {/* ── Event selector (both types) ───────────── */}
-          <div>
-            <label className="block text-sm font-medium text-content-primary mb-1">
-              Мероприятие
-              <span className="text-content-muted font-normal ml-1">(необязательно)</span>
-            </label>
-            {loadingEvents ? (
-              <div className="text-xs text-content-muted px-1 py-2">Загружаю мероприятия...</div>
-            ) : (
-              <select
-                value={selectedEventId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setSelectedEventId(id);
-                  if (id) {
-                    const ev = imprezaEvents.find((ev) => String(ev.id) === id);
-                    if (ev) setDescription(ev.title);
-                  } else {
-                    setDescription('');
-                  }
-                }}
-                className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
-              >
-                <option value="">— Выбрать мероприятие —</option>
-                {imprezaEvents.map((ev) => (
-                  <option key={ev.id} value={String(ev.id)}>
-                    {ev.date ? `${new Date(ev.date).toLocaleDateString('ru-RU')} · ` : ''}
-                    {ev.title}
-                    {ev.city ? ` (${ev.city})` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-            {imprezaEvents.length === 0 && !loadingEvents && (
-              <p className="text-[11px] text-content-muted mt-0.5">
-                Мероприятия недоступны — заполните описание вручную
-              </p>
-            )}
-          </div>
+          {/* ── Event selector ─────────────────────── */}
+          {(() => {
+            // Determine which city name to filter events by
+            let filterCityName = null;
+            if (expenseType === 'INTERNAL') {
+              filterCityName = user.role === 'CITY'
+                ? user.city?.name
+                : cities.find((c) => c.id === cityId)?.name;
+            } else {
+              // EXTERNAL — use target city name
+              const targetCityObj =
+                accessibleCities.find((c) => c.id === targetCityId) ||
+                targetCitiesForAdmin.find((c) => c.id === targetCityId);
+              filterCityName = targetCityObj?.name;
+            }
+
+            const eventsForCity = filterCityName
+              ? imprezaEvents.filter((ev) =>
+                  ev.city && ev.city.toLowerCase().includes(filterCityName.toLowerCase()),
+                )
+              : [];
+
+            // For EXTERNAL without target selected yet — don't show selector
+            if (expenseType === 'EXTERNAL' && !targetCityId) return null;
+
+            return (
+              <div>
+                <label className="block text-sm font-medium text-content-primary mb-1">
+                  Мероприятие
+                  <span className="text-content-muted font-normal ml-1">(необязательно)</span>
+                </label>
+                {loadingEvents ? (
+                  <div className="text-xs text-content-muted px-1 py-2">Загружаю мероприятия...</div>
+                ) : eventsForCity.length > 0 ? (
+                  <select
+                    value={selectedEventId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedEventId(id);
+                      if (id) {
+                        const ev = eventsForCity.find((ev) => String(ev.id) === id);
+                        if (ev) setDescription(ev.title);
+                      } else {
+                        setDescription('');
+                      }
+                    }}
+                    className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+                  >
+                    <option value="">— Выбрать мероприятие —</option>
+                    {eventsForCity.map((ev) => (
+                      <option key={ev.id} value={String(ev.id)}>
+                        {ev.date ? `${new Date(ev.date).toLocaleDateString('ru-RU')} · ` : ''}
+                        {ev.title}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-[11px] text-content-muted">
+                    Нет мероприятий для этого города — заполните описание вручную
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Description (only when no event selected) ── */}
           {!selectedEventId && (
