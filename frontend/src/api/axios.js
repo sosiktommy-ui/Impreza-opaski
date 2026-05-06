@@ -55,10 +55,14 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        const currentAccessId = useAuthStore.getState().currentAccess?.id;
         const { data } = await axios.post(
           `${api.defaults.baseURL}/auth/refresh`,
           {},
-          { withCredentials: true },
+          {
+            withCredentials: true,
+            headers: currentAccessId ? { 'X-Access-Id': currentAccessId } : undefined,
+          },
         );
         const newToken = data.data?.accessToken || data.accessToken;
         useAuthStore.getState().setToken(newToken);

@@ -75,8 +75,20 @@ export const useAuthStore = create((set, get) => ({
       throw err;
     }
 
-    if (accesses.length === 1) {
-      const user = await get().selectScope(accesses[0].id);
+    const fullAccesses = accesses.filter((access) => access.accessType !== 'PARTIAL');
+    if (fullAccesses.length === 0) {
+      ss.removeItem(PERSONAL_KEY);
+      set({ personalToken: null });
+      const err = new Error('No full access');
+      err.code = 'NO_FULL_ACCESS';
+      throw err;
+    }
+
+    const userRole = result.user?.role;
+    const canAutoSelectBroadScope = userRole === 'ADMIN' || userRole === 'OFFICE';
+
+    if (canAutoSelectBroadScope && fullAccesses.length === 1) {
+      const user = await get().selectScope(fullAccesses[0].id);
       return { autoSelected: true, user };
     }
 
@@ -88,6 +100,13 @@ export const useAuthStore = create((set, get) => ({
   selectScope: async (accessId) => {
     const personalToken = get().personalToken || ss.getItem(PERSONAL_KEY);
     if (!personalToken) throw new Error('No personal token; restart login');
+
+    const selectedAccess = get().pendingAccesses.find((access) => access.id === accessId);
+    if (selectedAccess?.accessType === 'PARTIAL') {
+      const err = new Error('Only FULL access can be selected');
+      err.code = 'PARTIAL_NOT_ALLOWED';
+      throw err;
+    }
 
     const { data } = await authApi.selectScope(personalToken, accessId);
     const result = unwrapAuthResult(data);
@@ -181,7 +200,7 @@ export const useAuthStore = create((set, get) => ({
       }
 
       // ── Path B: no per-tab token → try the HttpOnly refresh cookie ──
-      const { data } = await authApi.refresh();
+      const { data } = await authApi.refresh(cachedAccess?.id);
       const result = unwrapAuthResult(data);
       const newToken = result.accessToken;
       if (!newToken) throw new Error('no token');

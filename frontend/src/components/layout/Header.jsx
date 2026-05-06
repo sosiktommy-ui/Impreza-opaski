@@ -100,14 +100,19 @@ function ScopePill() {
             const ItemIcon = SCOPE_ICON[a.scopeType] ?? Globe;
             const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Все подразделения' : '—');
             const active = a.id === currentAccess.id;
+            const disabled = active || a.accessType === 'PARTIAL';
             const accessTypeLabel = a.accessType === 'PARTIAL' ? 'ограниченный' : 'полный';
             return (
               <button
                 key={a.id}
                 onClick={() => pick(a.id)}
-                disabled={active}
+                disabled={disabled}
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-[var(--radius-sm)] text-left text-sm transition-colors ${
-                  active ? 'bg-brand-500/10 text-brand-500' : 'hover:bg-surface-card-hover text-content-primary'
+                  active
+                    ? 'bg-brand-500/10 text-brand-500'
+                    : disabled
+                      ? 'text-content-muted opacity-60 cursor-not-allowed'
+                      : 'hover:bg-surface-card-hover text-content-primary'
                 }`}
               >
                 <ItemIcon size={14} className="shrink-0" />
@@ -116,6 +121,7 @@ function ScopePill() {
                   <div className="text-[10px] text-content-muted truncate">{SCOPE_LABEL[a.scopeType]} • {accessTypeLabel}</div>
                 </div>
                 {active && <span className="text-[10px] text-brand-500">текущая</span>}
+                {!active && a.accessType === 'PARTIAL' && <span className="text-[10px] text-amber-500">недоступно</span>}
               </button>
             );
           })}

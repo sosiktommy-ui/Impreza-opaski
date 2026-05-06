@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
   Logger,
@@ -223,8 +224,17 @@ export class AuthService {
       throw new UnauthorizedException('No active access for this user');
     }
 
+    const fullAccesses = accesses.filter((a) => a.accessType === AccessType.FULL);
+    if (fullAccesses.length === 0) {
+      throw new UnauthorizedException('No full access available for this user');
+    }
+
+    if (user.role !== Role.ADMIN && user.role !== Role.OFFICE) {
+      throw new UnauthorizedException('Scope selection is required for this account');
+    }
+
     // Prefer access matching legacy user fields
-    const legacyMatch = accesses.find((a) => {
+    const legacyMatch = fullAccesses.find((a) => {
       if (a.scopeType === ScopeType.OFFICE && a.scopeId === user.officeId) return true;
       if (a.scopeType === ScopeType.COUNTRY && a.scopeId === user.countryId) return true;
       if (a.scopeType === ScopeType.CITY && a.scopeId === user.cityId) return true;
@@ -235,10 +245,10 @@ export class AuthService {
 
     const priority: ScopeType[] = [ScopeType.GLOBAL, ScopeType.OFFICE, ScopeType.COUNTRY, ScopeType.CITY];
     for (const t of priority) {
-      const match = accesses.find((a) => a.scopeType === t);
+      const match = fullAccesses.find((a) => a.scopeType === t);
       if (match) return match;
     }
-    return accesses[0];
+    return fullAccesses[0];
   }
 
   async refresh(refreshTokenValue: string, previousAccessId?: string | null): Promise<TokenPair> {
@@ -294,6 +304,7 @@ export class AuthService {
       if (
         found &&
         found.userId === baseUser.id &&
+        found.accessType === AccessType.FULL &&
         !found.revokedAt &&
         (!found.expiresAt || found.expiresAt.getTime() > Date.now())
       ) {
@@ -453,6 +464,9 @@ export class AuthService {
     access: UserAccess;
   }> {
     const access = await this.assertAccessUsable(accessId, userId);
+    if (access.accessType !== AccessType.FULL) {
+      throw new ForbiddenException('Only FULL accesses can be used to enter a workspace');
+    }
 
     const userRow = await this.prisma.user.findUnique({
       where: { id: userId },

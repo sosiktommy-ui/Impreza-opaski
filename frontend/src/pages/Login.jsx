@@ -31,7 +31,7 @@ export default function Login() {
   const pendingAccesses = useAuthStore((s) => s.pendingAccesses);
   const personalToken = useAuthStore((s) => s.personalToken);
 
-  const step = personalToken && pendingAccesses.length > 1 ? 'scope' : 'credentials';
+  const step = personalToken && pendingAccesses.length > 0 ? 'scope' : 'credentials';
 
   const handleCredentials = async (e) => {
     e.preventDefault();
@@ -44,6 +44,8 @@ export default function Login() {
     } catch (err) {
       if (err?.code === 'NO_ACCESS') {
         setError('У вас нет активных доступов. Обратитесь к администратору.');
+      } else if (err?.code === 'NO_FULL_ACCESS') {
+        setError('У вас нет полного доступа для входа. Обратитесь к администратору.');
       } else {
         const msg = err.response?.data?.message || '';
         if (msg.includes('Invalid credentials')) {
@@ -65,6 +67,10 @@ export default function Login() {
     try {
       await selectScope(accessId);
     } catch (err) {
+      if (err?.code === 'PARTIAL_NOT_ALLOWED') {
+        setError('Можно выбрать только полный доступ. Ограниченные доступны только для просмотра.');
+        return;
+      }
       const msg = err.response?.data?.message || 'Не удалось выбрать доступ';
       setError(msg);
     } finally {
@@ -106,8 +112,8 @@ export default function Login() {
                   key={access.id}
                   type="button"
                   onClick={() => handlePick(access.id)}
-                  disabled={submitting}
-                  className="w-full text-left flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-edge hover:border-brand-500 hover:bg-surface-hover transition disabled:opacity-50"
+                  disabled={submitting || isPartial}
+                  className="w-full text-left flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-edge transition disabled:opacity-60 disabled:cursor-not-allowed hover:border-brand-500 hover:bg-surface-hover disabled:hover:border-edge disabled:hover:bg-transparent"
                 >
                   <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${isPartial ? 'bg-amber-500/10 text-amber-500' : 'bg-brand-500/10 text-brand-500'}`}>
                     <Icon size={18} />
@@ -119,10 +125,17 @@ export default function Login() {
                       {isPartial ? ' • ограниченный' : ' • полный'}
                       {expires ? ` • до ${expires}` : ''}
                     </div>
+                    {isPartial && (
+                      <div className="text-[11px] text-amber-500 mt-1">Для входа недоступен</div>
+                    )}
                   </div>
                 </button>
               );
             })}
+
+            <div className="px-1 pt-2 text-xs text-content-muted">
+              Сначала войдите в аккаунт человека, затем выберите один из полных доступов.
+            </div>
 
             {error && (
               <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)] border border-red-500/20">{error}</div>

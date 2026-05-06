@@ -33,7 +33,9 @@ export const authApi = {
   login: (username, password) =>
     api.post('/auth/login', { username, password }),
 
-  refresh: () => api.post('/auth/refresh'),
+  refresh: (accessId) => api.post('/auth/refresh', {}, {
+    headers: accessId ? { 'X-Access-Id': accessId } : undefined,
+  }),
 
   logout: () => api.post('/auth/logout'),
 

@@ -58,12 +58,16 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const refreshToken = request.cookies?.refresh_token;
+    const previousAccessId =
+      typeof request.headers['x-access-id'] === 'string'
+        ? request.headers['x-access-id']
+        : undefined;
 
     if (!refreshToken) {
       throw new UnauthorizedException('No refresh token provided');
     }
 
-    const tokens = await this.authService.refresh(refreshToken);
+    const tokens = await this.authService.refresh(refreshToken, previousAccessId);
 
     // Set new refresh token cookie
     const isProduction = process.env.NODE_ENV === 'production';
