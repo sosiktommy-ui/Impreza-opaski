@@ -1,45 +1,45 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Globe, Building2, Map as MapIcon, MapPin, Trash2, Plus, Info, CheckCircle2, Eye, Lock } from 'lucide-react';
 import Modal from './Modal';
 import Button from './Button';
 import { accessApi } from '../../api/access';
 import { usersApi } from '../../api/users';
 
-// в”Ђв”Ђв”Ђ Constants в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const SCOPE_TYPES = [
-  { value: 'CITY',    label: 'Р“РѕСЂРѕРґ',      Icon: MapPin,    color: 'sky',    desc: 'Р”РѕСЃС‚СѓРї Рє РєРѕРЅРєСЂРµС‚РЅРѕРјСѓ РіРѕСЂРѕРґСѓ' },
-  { value: 'COUNTRY', label: 'РЎС‚СЂР°РЅР°',     Icon: MapIcon,   color: 'emerald',desc: 'Р”РѕСЃС‚СѓРї РєРѕ РІСЃРµР№ СЃС‚СЂР°РЅРµ' },
-  { value: 'OFFICE',  label: 'РћС„РёСЃ',       Icon: Building2, color: 'violet', desc: 'Р”РѕСЃС‚СѓРї Рє РѕС„РёСЃСѓ / СЃРєР»Р°РґСѓ' },
-  { value: 'GLOBAL',  label: 'Р“Р»РѕР±Р°Р»СЊРЅРѕ',  Icon: Globe,     color: 'amber',  desc: 'РџРѕР»РЅС‹Р№ РґРѕСЃС‚СѓРї Р±РµР· РѕРіСЂР°РЅРёС‡РµРЅРёР№' },
+  { value: 'CITY',    label: 'Город',      Icon: MapPin,    color: 'sky',    desc: 'Доступ к конкретному городу' },
+  { value: 'COUNTRY', label: 'Страна',     Icon: MapIcon,   color: 'emerald',desc: 'Доступ ко всей стране' },
+  { value: 'OFFICE',  label: 'Офис',       Icon: Building2, color: 'violet', desc: 'Доступ к офису / складу' },
+  { value: 'GLOBAL',  label: 'Глобально',  Icon: Globe,     color: 'amber',  desc: 'Полный доступ без ограничений' },
 ];
 
 const ACCESS_TYPES = [
   {
     value: 'FULL',
-    label: 'РџРѕР»РЅС‹Р№',
+    label: 'Полный',
     Icon: CheckCircle2,
     color: 'emerald',
-    desc: 'РџРµСЂРµРєР»СЋС‡РµРЅРёРµ РІ РєРѕРЅС‚РµРєСЃС‚ + РѕС‚РїСЂР°РІРєРё, РїСЂРёС‘РјРєР°, СЂР°СЃС…РѕРґС‹, СЃРєР»Р°Рґ',
+    desc: 'Переключение в контекст + отправки, приёмка, расходы, склад',
   },
   {
     value: 'PARTIAL',
-    label: 'РћРіСЂР°РЅРёС‡РµРЅРЅС‹Р№',
+    label: 'Ограниченный',
     Icon: Eye,
     color: 'amber',
-    desc: 'РўРѕР»СЊРєРѕ СЃРѕР·РґР°РЅРёРµ СЂР°СЃС…РѕРґРѕРІ EXTERNAL. Р‘РµР· РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ РєРѕРЅС‚РµРєСЃС‚Р°',
+    desc: 'Только создание расходов EXTERNAL. Без переключения контекста',
   },
 ];
 
 const SCOPE_ICON = { GLOBAL: Globe, OFFICE: Building2, COUNTRY: MapIcon, CITY: MapPin };
-const SCOPE_LABEL = { GLOBAL: 'Р“Р»РѕР±Р°Р»СЊРЅРѕ', OFFICE: 'РћС„РёСЃ', COUNTRY: 'РЎС‚СЂР°РЅР°', CITY: 'Р“РѕСЂРѕРґ' };
+const SCOPE_LABEL = { GLOBAL: 'Глобально', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
 function fmtDate(value) {
   if (!value) return null;
   try { return new Date(value).toLocaleDateString('ru-RU'); } catch { return null; }
 }
 
-// в”Ђв”Ђв”Ђ Component в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function AccessManagerModal({
   open,
@@ -76,7 +76,7 @@ export default function AccessManagerModal({
       const list = data?.accesses ?? data?.data?.accesses ?? data ?? [];
       setAccesses(Array.isArray(list) ? list : []);
     } catch (err) {
-      setError(err.response?.data?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РґРѕСЃС‚СѓРїС‹');
+      setError(err.response?.data?.message || 'Не удалось загрузить доступы');
     } finally {
       setLoading(false);
     }
@@ -130,12 +130,12 @@ export default function AccessManagerModal({
   };
 
   const handleRevoke = async (id) => {
-    if (!confirm('РћС‚РѕР·РІР°С‚СЊ СЌС‚РѕС‚ РґРѕСЃС‚СѓРї?')) return;
+    if (!confirm('Отозвать этот доступ?')) return;
     try {
       await accessApi.revoke(id);
       await reload();
     } catch (err) {
-      setError(err.response?.data?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РѕР·РІР°С‚СЊ');
+      setError(err.response?.data?.message || 'Не удалось отозвать');
     }
   };
 
@@ -143,7 +143,7 @@ export default function AccessManagerModal({
     e.preventDefault();
     setError('');
     if (scopeType !== 'GLOBAL' && !scopeId) {
-      setError(scopeType === 'CITY' && !countryForCity ? 'РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ СЃС‚СЂР°РЅСѓ, Р·Р°С‚РµРј РіРѕСЂРѕРґ' : 'Р’С‹Р±РµСЂРёС‚Рµ С†РµР»СЊ РґРѕСЃС‚СѓРїР°');
+      setError(scopeType === 'CITY' && !countryForCity ? 'Сначала выберите страну, затем город' : 'Выберите цель доступа');
       return;
     }
     setSubmitting(true);
@@ -164,7 +164,7 @@ export default function AccessManagerModal({
       setCities([]);
       await reload();
     } catch (err) {
-      setError(err.response?.data?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РґР°С‚СЊ РґРѕСЃС‚СѓРї');
+      setError(err.response?.data?.message || 'Не удалось выдать доступ');
     } finally {
       setSubmitting(false);
     }
@@ -176,26 +176,26 @@ export default function AccessManagerModal({
   const inactiveAccesses = accesses.filter(a => a.revokedAt || (a.expiresAt && new Date(a.expiresAt) < new Date()));
 
   return (
-    <Modal open={open} onClose={onClose} title={`Р”РѕСЃС‚СѓРїС‹ вЂ” ${user.displayName || user.username}`} wide>
+    <Modal open={open} onClose={onClose} title={`Доступы — ${user.displayName || user.username}`} wide>
       <div className="space-y-5">
 
-        {/* в”Ђв”Ђ Current accesses в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
+        {/* ── Current accesses ───────────────────────── */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-content-primary">РўРµРєСѓС‰РёРµ РґРѕСЃС‚СѓРїС‹</h3>
+            <h3 className="text-sm font-semibold text-content-primary">Текущие доступы</h3>
             {activeAccesses.length > 0 && (
               <span className="text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium">
-                {activeAccesses.length} Р°РєС‚РёРІРЅ{activeAccesses.length === 1 ? 'С‹Р№' : 'С‹С…'}
+                {activeAccesses.length} активн{activeAccesses.length === 1 ? 'ый' : 'ых'}
               </span>
             )}
           </div>
 
-          {loading && <div className="text-xs text-content-muted py-2">Р—Р°РіСЂСѓР·РєР°вЂ¦</div>}
+          {loading && <div className="text-xs text-content-muted py-2">Загрузка…</div>}
 
           {!loading && accesses.length === 0 && (
             <div className="flex items-center gap-2 text-xs text-content-muted py-3 px-3 bg-surface-secondary rounded-lg">
               <Lock size={14} className="flex-shrink-0" />
-              РќРµС‚ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹С… РґРѕСЃС‚СѓРїРѕРІ вЂ” СЂР°Р±РѕС‚Р°РµС‚ С‚РѕР»СЊРєРѕ РІ СЃРІРѕС‘Рј СЃС‚Р°РЅРґР°СЂС‚РЅРѕРј РєРѕРЅС‚РµРєСЃС‚Рµ
+              Нет дополнительных доступов — работает только в своём стандартном контексте
             </div>
           )}
 
@@ -203,7 +203,7 @@ export default function AccessManagerModal({
             <div className="space-y-1.5">
               {activeAccesses.map((a) => {
                 const Icon = SCOPE_ICON[a.scopeType] ?? Globe;
-                const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Р’СЃРµ РїРѕРґСЂР°Р·РґРµР»РµРЅРёСЏ' : 'вЂ”');
+                const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Все подразделения' : '—');
                 const isPartial = a.accessType === 'PARTIAL';
                 return (
                   <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg border border-edge bg-surface-card">
@@ -215,21 +215,21 @@ export default function AccessManagerModal({
                         <span className="text-sm font-semibold text-content-primary">{name}</span>
                         <span className="text-[10px] text-content-muted">({SCOPE_LABEL[a.scopeType]})</span>
                         <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isPartial ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                          {isPartial ? 'рџ‘Ѓ РћРіСЂР°РЅРёС‡РµРЅРЅС‹Р№' : 'вњ“ РџРѕР»РЅС‹Р№'}
+                          {isPartial ? '👁 Ограниченный' : '✓ Полный'}
                         </span>
                       </div>
                       <div className="text-[11px] text-content-muted mt-0.5 flex items-center gap-2 flex-wrap">
                         {isPartial
-                          ? 'РўРѕР»СЊРєРѕ СЂР°СЃС…РѕРґС‹ EXTERNAL вЂ” Р±РµР· РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ РєРѕРЅС‚РµРєСЃС‚Р°'
-                          : 'РџРѕР»РЅРѕРµ СѓРїСЂР°РІР»РµРЅРёРµ: РѕС‚РїСЂР°РІРєРё, РїСЂРёС‘РјРєР°, СЂР°СЃС…РѕРґС‹, СЃРєР»Р°Рґ'}
-                        {a.expiresAt && <span className="text-amber-400">В· РёСЃС‚РµРєР°РµС‚ {fmtDate(a.expiresAt)}</span>}
-                        {a.notes && <span className="italic">В· {a.notes}</span>}
+                          ? 'Только расходы EXTERNAL — без переключения контекста'
+                          : 'Полное управление: отправки, приёмка, расходы, склад'}
+                        {a.expiresAt && <span className="text-amber-400">· истекает {fmtDate(a.expiresAt)}</span>}
+                        {a.notes && <span className="italic">· {a.notes}</span>}
                       </div>
                     </div>
                     <button
                       onClick={() => handleRevoke(a.id)}
                       className="p-1.5 rounded-[var(--radius-sm)] hover:bg-red-500/10 text-content-muted hover:text-red-500 flex-shrink-0"
-                      title="РћС‚РѕР·РІР°С‚СЊ РґРѕСЃС‚СѓРї"
+                      title="Отозвать доступ"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -242,19 +242,19 @@ export default function AccessManagerModal({
           {!loading && inactiveAccesses.length > 0 && (
             <details className="mt-2">
               <summary className="text-[11px] text-content-muted cursor-pointer select-none hover:text-content-secondary">
-                РџРѕРєР°Р·Р°С‚СЊ РѕС‚РѕР·РІР°РЅРЅС‹Рµ / РёСЃС‚С‘РєС€РёРµ ({inactiveAccesses.length})
+                Показать отозванные / истёкшие ({inactiveAccesses.length})
               </summary>
               <div className="space-y-1 mt-1.5">
                 {inactiveAccesses.map((a) => {
                   const Icon = SCOPE_ICON[a.scopeType] ?? Globe;
-                  const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Р’СЃРµ' : 'вЂ”');
+                  const name = a.target?.name ?? (a.scopeType === 'GLOBAL' ? 'Все' : '—');
                   const isRevoked = !!a.revokedAt;
                   return (
                     <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg border border-edge opacity-50">
                       <Icon size={14} className="text-content-muted flex-shrink-0" />
                       <span className="flex-1 min-w-0 text-[11px] text-content-muted truncate">
-                        {name} В· {SCOPE_LABEL[a.scopeType]} В· {a.accessType === 'PARTIAL' ? 'РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Р№' : 'РїРѕР»РЅС‹Р№'}
-                        {isRevoked ? ' В· РѕС‚РѕР·РІР°РЅ' : ` В· РёСЃС‚С‘Рє ${fmtDate(a.expiresAt)}`}
+                        {name} · {SCOPE_LABEL[a.scopeType]} · {a.accessType === 'PARTIAL' ? 'ограниченный' : 'полный'}
+                        {isRevoked ? ' · отозван' : ` · истёк ${fmtDate(a.expiresAt)}`}
                       </span>
                     </div>
                   );
@@ -264,13 +264,13 @@ export default function AccessManagerModal({
           )}
         </div>
 
-        {/* в”Ђв”Ђ Grant new access в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
+        {/* ── Grant new access ───────────────────────── */}
         <form onSubmit={handleGrant} className="border-t border-edge pt-5 space-y-4">
-          <h3 className="text-sm font-semibold text-content-primary">Р’С‹РґР°С‚СЊ РЅРѕРІС‹Р№ РґРѕСЃС‚СѓРї</h3>
+          <h3 className="text-sm font-semibold text-content-primary">Выдать новый доступ</h3>
 
-          {/* РЁР°Рі 1 вЂ” С‚РёРї РѕР±Р»Р°СЃС‚Рё */}
+          {/* Шаг 1 — тип области */}
           <div>
-            <p className="text-xs font-medium text-content-muted mb-2">РЁР°Рі 1 вЂ” РўРёРї РѕР±Р»Р°СЃС‚Рё</p>
+            <p className="text-xs font-medium text-content-muted mb-2">Шаг 1 — Тип области</p>
             <div className="grid grid-cols-2 gap-2">
               {SCOPE_TYPES.map(({ value, label, Icon, color, desc }) => (
                 <button
@@ -293,10 +293,10 @@ export default function AccessManagerModal({
             </div>
           </div>
 
-          {/* РЁР°Рі 2 вЂ” СѓСЂРѕРІРµРЅСЊ (С‚РѕР»СЊРєРѕ РґР»СЏ CITY/COUNTRY) */}
+          {/* Шаг 2 — уровень (только для CITY/COUNTRY) */}
           {(scopeType === 'CITY' || scopeType === 'COUNTRY') && (
             <div>
-              <p className="text-xs font-medium text-content-muted mb-2">РЁР°Рі 2 вЂ” РЈСЂРѕРІРµРЅСЊ РґРѕСЃС‚СѓРїР°</p>
+              <p className="text-xs font-medium text-content-muted mb-2">Шаг 2 — Уровень доступа</p>
               <div className="grid grid-cols-2 gap-2">
                 {ACCESS_TYPES.map(({ value, label, Icon, color, desc }) => (
                   <button
@@ -320,17 +320,17 @@ export default function AccessManagerModal({
             </div>
           )}
 
-          {/* РЁР°Рі 3 вЂ” РІС‹Р±РѕСЂ С†РµР»Рё */}
+          {/* Шаг 3 — выбор цели */}
           <div>
             <p className="text-xs font-medium text-content-muted mb-2">
-              РЁР°Рі {scopeType === 'CITY' || scopeType === 'COUNTRY' ? '3' : '2'} вЂ” Р’С‹Р±РµСЂРёС‚Рµ{' '}
-              {scopeType === 'CITY' ? 'СЃС‚СЂР°РЅСѓ Рё РіРѕСЂРѕРґ' : scopeType === 'COUNTRY' ? 'СЃС‚СЂР°РЅСѓ' : scopeType === 'OFFICE' ? 'РѕС„РёСЃ' : 'РѕР±Р»Р°СЃС‚СЊ'}
+              Шаг {scopeType === 'CITY' || scopeType === 'COUNTRY' ? '3' : '2'} — Выберите{' '}
+              {scopeType === 'CITY' ? 'страну и город' : scopeType === 'COUNTRY' ? 'страну' : scopeType === 'OFFICE' ? 'офис' : 'область'}
             </p>
 
             {scopeType === 'GLOBAL' && (
               <div className="flex items-start gap-2 p-3 bg-amber-500/10 text-amber-400 rounded-lg text-xs">
                 <Info size={14} className="flex-shrink-0 mt-0.5" />
-                Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ РґРѕСЃС‚СѓРї РґР°С‘С‚ РїРѕР»РЅС‹Р№ РєРѕРЅС‚СЂРѕР»СЊ РЅР°Рґ РІСЃРµР№ СЃРёСЃС‚РµРјРѕР№ Р±РµР· РѕРіСЂР°РЅРёС‡РµРЅРёР№. РСЃРїРѕР»СЊР·СѓР№С‚Рµ РѕСЃС‚РѕСЂРѕР¶РЅРѕ.
+                Глобальный доступ даёт полный контроль над всей системой без ограничений. Используйте осторожно.
               </div>
             )}
 
@@ -341,7 +341,7 @@ export default function AccessManagerModal({
                 className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
                 required
               >
-                <option value="">вЂ” Р’С‹Р±РµСЂРёС‚Рµ РѕС„РёСЃ вЂ”</option>
+                <option value="">— Выберите офис —</option>
                 {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             )}
@@ -353,7 +353,7 @@ export default function AccessManagerModal({
                 className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
                 required
               >
-                <option value="">вЂ” Р’С‹Р±РµСЂРёС‚Рµ СЃС‚СЂР°РЅСѓ вЂ”</option>
+                <option value="">— Выберите страну —</option>
                 {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
@@ -365,7 +365,7 @@ export default function AccessManagerModal({
                   onChange={handleCountryForCityChange}
                   className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
                 >
-                  <option value="">1. Р’С‹Р±РµСЂРёС‚Рµ СЃС‚СЂР°РЅСѓ в†’</option>
+                  <option value="">1. Выберите страну →</option>
                   {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
 
@@ -378,29 +378,29 @@ export default function AccessManagerModal({
                     disabled={citiesLoading}
                   >
                     <option value="">
-                      {citiesLoading ? 'Р—Р°РіСЂСѓР·РєР° РіРѕСЂРѕРґРѕРІ...' : `2. Р’С‹Р±РµСЂРёС‚Рµ РіРѕСЂРѕРґ${cities.length ? ` (${cities.length})` : ''} в†’`}
+                      {citiesLoading ? 'Загрузка городов...' : `2. Выберите город${cities.length ? ` (${cities.length})` : ''} →`}
                     </option>
                     {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 ) : (
                   <p className="text-[11px] text-content-muted flex items-center gap-1">
-                    <Info size={11} /> РџРѕСЃР»Рµ РІС‹Р±РѕСЂР° СЃС‚СЂР°РЅС‹ РїРѕСЏРІРёС‚СЃСЏ СЃРїРёСЃРѕРє РіРѕСЂРѕРґРѕРІ
+                    <Info size={11} /> После выбора страны появится список городов
                   </p>
                 )}
 
                 {scopeId && (
                   <p className="text-[11px] text-content-muted flex items-center gap-1">
-                    <Info size={11} /> Р§С‚РѕР±С‹ РґР°С‚СЊ РґРѕСЃС‚СѓРї Рє РЅРµСЃРєРѕР»СЊРєРёРј РіРѕСЂРѕРґР°Рј вЂ” РґРѕР±Р°РІР»СЏР№С‚Рµ РёС… РїРѕ РѕРґРЅРѕРјСѓ
+                    <Info size={11} /> Чтобы дать доступ к нескольким городам — добавляйте их по одному
                   </p>
                 )}
               </div>
             )}
           </div>
 
-          {/* РќРµРѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ */}
+          {/* Необязательные поля */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-content-muted mb-1">РСЃС‚РµРєР°РµС‚ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</label>
+              <label className="block text-xs font-medium text-content-muted mb-1">Истекает (необязательно)</label>
               <input
                 type="date"
                 value={expiresAt}
@@ -409,12 +409,12 @@ export default function AccessManagerModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-content-muted mb-1">Р—Р°РјРµС‚РєР° (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</label>
+              <label className="block text-xs font-medium text-content-muted mb-1">Заметка (необязательно)</label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Р’СЂРµРјРµРЅРЅС‹Р№, РґР»СЏ РїСЂРѕРµРєС‚Р°..."
+                placeholder="Временный, для проекта..."
                 className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
               />
             </div>
@@ -425,9 +425,9 @@ export default function AccessManagerModal({
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" onClick={onClose}>Р—Р°РєСЂС‹С‚СЊ</Button>
+            <Button type="button" variant="ghost" onClick={onClose}>Закрыть</Button>
             <Button type="submit" loading={submitting}>
-              <Plus size={14} /> Р’С‹РґР°С‚СЊ РґРѕСЃС‚СѓРї
+              <Plus size={14} /> Выдать доступ
             </Button>
           </div>
         </form>
