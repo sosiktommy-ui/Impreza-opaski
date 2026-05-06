@@ -429,11 +429,24 @@ export class InventoryService {
       : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
+    // Hydrate targetCity names for EXTERNAL expenses
+    const targetCityIds = Array.from(
+      new Set(expenses.map((e) => e.targetCityId).filter((v): v is string => !!v)),
+    );
+    const targetCities = targetCityIds.length
+      ? await this.prisma.city.findMany({
+          where: { id: { in: targetCityIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const targetCityMap = new Map(targetCities.map((c) => [c.id, c]));
+
     return {
       data: expenses.map((e) => ({
         ...e,
         user: e.userId ? userMap.get(e.userId) ?? null : null,
         actorUser: e.actorUserId ? userMap.get(e.actorUserId) ?? (e.createdBy ? userMap.get(e.createdBy) ?? null : null) : (e.createdBy ? userMap.get(e.createdBy) ?? null : null),
+        targetCity: e.targetCityId ? (targetCityMap.get(e.targetCityId) ?? null) : null,
       })),
 
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },

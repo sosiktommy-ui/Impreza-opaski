@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
-import { eventsApi } from '../api/events';
+import { accessApi } from '../api/access';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -12,7 +12,7 @@ import Modal from '../components/ui/Modal';
 import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   CalendarDays, Plus, Search, TrendingDown,
-  MapPin, BarChart3, Trash2, ArrowLeftRight, Home, Globe,
+  MapPin, BarChart3, Trash2, ArrowLeftRight, Home, Globe, ExternalLink,
 } from 'lucide-react';
 
 const ITEM_LABELS = { BLACK: 'Чёрные', WHITE: 'Белые', RED: 'Красные', BLUE: 'Синие' };
@@ -20,8 +20,8 @@ const BRACELET_KEYS = ['black', 'white', 'red', 'blue'];
 
 const EXPENSE_TYPE_META = {
   INTERNAL: { label: 'Внутренний', className: 'bg-emerald-500/10 text-emerald-500', Icon: Home },
-  EXTERNAL: { label: 'Внешний', className: 'bg-sky-500/10 text-sky-500', Icon: ArrowLeftRight },
-  THIRD:    { label: 'Сторонний', className: 'bg-gray-500/10 text-gray-400', Icon: Globe },
+  EXTERNAL: { label: 'Внешний',   className: 'bg-sky-500/10 text-sky-500',     Icon: ExternalLink },
+  THIRD:    { label: 'Сторонний', className: 'bg-gray-500/10 text-gray-400',   Icon: Globe },
 };
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
@@ -37,8 +37,6 @@ export default function Expenses() {
   const [selectedCountryId, setSelectedCountryId] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [imprezaEvents, setimprezaEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,12 +46,16 @@ export default function Expenses() {
 
   // Form
   const [cityId, setCityId] = useState('');
-  const [expenseType, setExpenseType] = useState('EXTERNAL'); // EXTERNAL | INTERNAL | THIRD
-  const [eventName, setEventName] = useState('');
+  const [expenseType, setExpenseType] = useState('INTERNAL'); // INTERNAL | EXTERNAL
+  const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState('');
-  const [location, setLocation] = useState('');
   const [quantities, setQuantities] = useState({ black: '', white: '', red: '', blue: '' });
   const [notes, setNotes] = useState('');
+  // EXTERNAL target
+  const [targetCityId, setTargetCityId] = useState('');
+  const [targetCountryId, setTargetCountryId] = useState('');
+  const [targetCitiesForAdmin, setTargetCitiesForAdmin] = useState([]);
+  const [accessibleCities, setAccessibleCities] = useState([]); // for CITY role EXTERNAL
 
   // Balance display in modal
   const [cityBalance, setCityBalance] = useState(null);
@@ -70,7 +72,7 @@ export default function Expenses() {
     try {
       const params = { limit: 100 };
       if (globalCountryId) params.countryId = globalCountryId;
-      if (globalCityId) params.cityId = globalCityId;
+      if (globalCityId) { params.cityId = globalCityId; params.includeTargeted = true; }
       const { data } = await inventoryApi.getExpenses(params);
       const list = Array.isArray(data) ? data : (data?.data || []);
       setExpenses(Array.isArray(list) ? list : []);
@@ -132,30 +134,19 @@ export default function Expenses() {
     }
   };
 
-  // Load IMPREZA events filtered by user's city (for CITY role)
-  const loadimprezaEvents = async (targetCityName) => {
+  // Load cities accessible to CITY-role user (for EXTERNAL expenses)
+  const loadAccessibleCities = async () => {
     try {
-      const params = {};
-      // If we know the city name, filter on server side
-      if (targetCityName) params.city = targetCityName;
-      const { data } = await eventsApi.getEvents(params);
-      const list = data?.data || data;
-      const allEvents = Array.isArray(list) ? list : [];
-      
-      // Filter out old events (only show last 60 days)
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      
-      const recentEvents = allEvents.filter(ev => {
-        // Keep events without date or with recent date
-        if (!ev.date) return true;
-        const eventDate = new Date(ev.date);
-        return !isNaN(eventDate.getTime()) && eventDate >= sixtyDaysAgo;
-      });
-      
-      setimprezaEvents(recentEvents);
-    } catch (err) {
-      console.error('Failed to load IMPREZA events', err);
+      const { data } = await accessApi.listForUser(user.id);
+      const list = data?.accesses ?? data?.data?.accesses ?? data ?? [];
+      const accesses = Array.isArray(list) ? list : [];
+      const cities = accesses
+        .filter(a => !a.revokedAt && !(a.expiresAt && new Date(a.expiresAt) < new Date()))
+        .filter(a => a.scopeType === 'CITY')
+        .map(a => ({ id: a.scopeId, name: a.target?.name || a.scopeId }));
+      setAccessibleCities(cities);
+    } catch {
+      setAccessibleCities([]);
     }
   };
 
@@ -179,7 +170,7 @@ export default function Expenses() {
     const byType = {
       INTERNAL: expenses.filter((ex) => (ex.type || 'INTERNAL') === 'INTERNAL').length,
       EXTERNAL: expenses.filter((ex) => ex.type === 'EXTERNAL').length,
-      THIRD: expenses.filter((ex) => ex.type === 'THIRD').length,
+      THIRD:    expenses.filter((ex) => ex.type === 'THIRD').length,
     };
 
     return { totalEvents, totalBracelets, avg, byColor, byType };
@@ -225,81 +216,51 @@ export default function Expenses() {
   const openCreate = async () => {
     setShowCreate(true);
     setError('');
-    setSelectedEvent('');
     setSelectedCountryId('');
-    setimprezaEvents([]);
-    setExpenseType('EXTERNAL');
+    setExpenseType('INTERNAL');
     setCityBalance(null);
+    setTargetCityId('');
+    setTargetCountryId('');
+    setTargetCitiesForAdmin([]);
+    setAccessibleCities([]);
+    setDescription('');
+    setEventDate('');
 
     if (user.role === 'CITY') {
       setCityId(user.cityId);
-      await loadCityBalance(user.cityId);
-      const cityName = user.city?.name;
-      if (cityName) {
-        await loadimprezaEvents(cityName);
-      } else {
-        await loadimprezaEvents();
-      }
-    } else if (user.role === 'ADMIN' || user.role === 'OFFICE') {
-      await loadimprezaEvents();
-    } else if (user.role === 'COUNTRY') {
-      await loadimprezaEvents();
+      await Promise.all([loadCityBalance(user.cityId), loadAccessibleCities()]);
     }
   };
 
-  // When country is selected, reload cities filtered by that country
+  // When source country changes (ADMIN/OFFICE)
   const handleCountryChange = async (e) => {
     const cid = e.target.value;
     setSelectedCountryId(cid);
     setCityId('');
-    setSelectedEvent('');
-    setEventName('');
-    setEventDate('');
-    setLocation('');
-    setimprezaEvents([]);
-    if (cid) {
-      await loadCities(cid);
-    } else {
-      await loadCities();
-    }
+    setCityBalance(null);
+    if (cid) await loadCities(cid);
+    else await loadCities();
   };
 
-  // When city is selected in the form (for ADMIN/OFFICE/COUNTRY), load events for that city
+  // When source city changes (ADMIN/OFFICE/COUNTRY)
   const handleCityChange = async (e) => {
     const id = e.target.value;
     setCityId(id);
-    setSelectedEvent('');
-    setEventName('');
-    setEventDate('');
-    setLocation('');
     await loadCityBalance(id);
-
-    if (id) {
-      const city = cities.find((c) => c.id === id);
-      if (city?.name) {
-        await loadimprezaEvents(city.name);
-      } else {
-        await loadimprezaEvents();
-      }
-    } else {
-      setimprezaEvents([]);
-    }
   };
 
-  const handleEventSelect = (e) => {
-    const val = e.target.value;
-    setSelectedEvent(val);
-    if (val) {
-      const ev = imprezaEvents.find((ev) => String(ev.id) === val);
-      if (ev) {
-        setEventName(ev.title);
-        setEventDate(ev.date && !isNaN(new Date(ev.date).getTime()) ? ev.date.slice(0, 10) : '');
-        setLocation(ev.venue || ev.city || '');
-      }
-    } else {
-      setEventName('');
-      setEventDate('');
-      setLocation('');
+  // When target country changes for ADMIN EXTERNAL
+  const handleTargetCountryChange = async (e) => {
+    const cid = e.target.value;
+    setTargetCountryId(cid);
+    setTargetCityId('');
+    if (!cid) { setTargetCitiesForAdmin([]); return; }
+    try {
+      const { data } = await usersApi.getCities(cid);
+      const list = data?.data || data;
+      setTargetCitiesForAdmin(Array.isArray(list) ? list : []);
+    } catch {
+      setTargetCitiesForAdmin([]);
     }
   };
 
@@ -307,17 +268,18 @@ export default function Expenses() {
     e.preventDefault();
     setError('');
 
-    const targetCityId = user.role === 'CITY' ? user.cityId : cityId;
-    if (!targetCityId) { setError('Выберите город'); return; }
+    // Source city (where balance is deducted)
+    const sourceCityId = user.role === 'CITY' ? user.cityId : cityId;
+    if (!sourceCityId) { setError('Выберите город'); return; }
 
-    // Validate eventName based on type
-    if (expenseType === 'EXTERNAL' && !selectedEvent) {
-      setError('Выберите мероприятие IMPREZA из списка');
+    if (!description.trim()) {
+      setError('Укажите описание расхода');
       return;
     }
-    if ((expenseType === 'INTERNAL' || expenseType === 'THIRD') && !eventName.trim()) {
-      setError(expenseType === 'INTERNAL' ? 'Укажите описание расхода' : 'Укажите название мероприятия');
-      return;
+
+    if (expenseType === 'EXTERNAL') {
+      if (!targetCityId) { setError('Выберите целевой город'); return; }
+      if (targetCityId === sourceCityId) { setError('Целевой город не может совпадать с текущим'); return; }
     }
 
     const black = parseInt(quantities.black) || 0;
@@ -330,7 +292,7 @@ export default function Expenses() {
       return;
     }
 
-    // Balance warning check
+    // Balance warning check (balance is always on source city)
     if (cityBalance) {
       const overBlack = black > (cityBalance.black || 0);
       const overWhite = white > (cityBalance.white || 0);
@@ -350,11 +312,11 @@ export default function Expenses() {
     setSending(true);
     try {
       await inventoryApi.createExpense({
-        cityId: targetCityId,
-        eventName: eventName.trim(),
+        cityId: sourceCityId,
+        eventName: description.trim(),
         eventDate: eventDate || undefined,
-        location: location.trim() || undefined,
         type: expenseType,
+        targetCityId: expenseType === 'EXTERNAL' ? targetCityId : undefined,
         black, white, red, blue,
         notes: notes.trim() || undefined,
       });
@@ -373,16 +335,17 @@ export default function Expenses() {
   const resetForm = () => {
     setCityId(user.role === 'CITY' ? user.cityId : '');
     setSelectedCountryId('');
-    setExpenseType('EXTERNAL');
-    setEventName('');
+    setExpenseType('INTERNAL');
+    setDescription('');
     setEventDate('');
-    setLocation('');
     setQuantities({ black: '', white: '', red: '', blue: '' });
     setNotes('');
     setError('');
-    setSelectedEvent('');
-    setimprezaEvents([]);
     setCityBalance(null);
+    setTargetCityId('');
+    setTargetCountryId('');
+    setTargetCitiesForAdmin([]);
+    setAccessibleCities([]);
   };
 
   const handleDelete = async (id) => {
@@ -506,7 +469,7 @@ export default function Expenses() {
           { key: 'all', label: 'Все', count: stats.totalEvents },
           { key: 'INTERNAL', label: 'Внутренние', count: stats.byType.INTERNAL },
           { key: 'EXTERNAL', label: 'Внешние', count: stats.byType.EXTERNAL },
-          ...(stats.byType.THIRD > 0 ? [{ key: 'THIRD', label: 'Сторонние', count: stats.byType.THIRD }] : []),
+          ...(stats.byType.THIRD > 0 ? [{ key: 'THIRD', label: 'Сторонние (устар.)', count: stats.byType.THIRD }] : []),
         ].map((t) => (
           <button
             key={t.key}
@@ -629,8 +592,11 @@ export default function Expenses() {
                           )}
                         </span>
                       )}
-                      {ex.type === 'EXTERNAL' && ex.targetCityId && (
-                        <span className="text-sky-400 text-[11px]">→ Внешний</span>
+                      {ex.type === 'EXTERNAL' && (
+                        <span className="text-sky-400 text-[11px] flex items-center gap-1">
+                          <ExternalLink size={10} />
+                          {ex.city?.name} → {ex.targetCity?.name || (ex.targetCityId ? '...' : '?')}
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -688,72 +654,124 @@ export default function Expenses() {
           {/* ── Expense type selector ─────────────────── */}
           <div>
             <p className="text-sm font-medium text-content-primary mb-2">Тип расхода</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { key: 'EXTERNAL', icon: ArrowLeftRight, label: 'Внешний',     desc: 'Мероприятие IMPREZA',  active: 'border-sky-500 bg-sky-500/10 text-sky-500', inactive: 'border-edge text-content-secondary' },
-                { key: 'INTERNAL', icon: Home,           label: 'Внутренний',  desc: 'Склад, промо, штаб',   active: 'border-emerald-500 bg-emerald-500/10 text-emerald-500', inactive: 'border-edge text-content-secondary' },
-                { key: 'THIRD',    icon: Globe,          label: 'Сторонний',   desc: 'Внешняя организация',  active: 'border-amber-500 bg-amber-500/10 text-amber-500', inactive: 'border-edge text-content-secondary' },
+                { key: 'INTERNAL', icon: Home,         label: 'Внутренний', desc: 'Расход текущего города — склад, промо, штаб',              active: 'border-emerald-500 bg-emerald-500/10 text-emerald-500', inactive: 'border-edge text-content-secondary' },
+                { key: 'EXTERNAL', icon: ExternalLink, label: 'Внешний',    desc: 'Расход для другого города (баланс снимается здесь)',       active: 'border-sky-500 bg-sky-500/10 text-sky-500',             inactive: 'border-edge text-content-secondary' },
               ].map(({ key, icon: Icon, label, desc, active, inactive }) => (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => {
-                    setExpenseType(key);
-                    setSelectedEvent('');
-                    setEventName('');
-                    setEventDate('');
-                    setLocation('');
-                  }}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${expenseType === key ? active : inactive + ' hover:border-brand-500/30'}`}
+                  onClick={() => { setExpenseType(key); setTargetCityId(''); setTargetCountryId(''); setTargetCitiesForAdmin([]); }}
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${expenseType === key ? active : inactive + ' hover:border-brand-500/30'}`}
                 >
-                  <Icon size={18} />
-                  <span className="text-xs font-semibold">{label}</span>
-                  <span className={`text-[10px] leading-tight ${expenseType === key ? 'opacity-80' : 'text-content-muted'}`}>{desc}</span>
+                  <div className="mt-0.5 flex-shrink-0"><Icon size={16} /></div>
+                  <div>
+                    <div className="text-xs font-semibold">{label}</div>
+                    <div className={`text-[10px] leading-tight mt-0.5 ${expenseType === key ? 'opacity-80' : 'text-content-muted'}`}>{desc}</div>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* ── Country select ────────────────────────── */}
-          {user.role !== 'CITY' && countries.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-content-primary mb-1">Страна</label>
-              <select
-                value={selectedCountryId}
-                onChange={handleCountryChange}
-                className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
-              >
-                <option value="">— Выберите страну —</option>
-                {countries.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+          {/* ── Source city ───────────────────────────── */}
+          {user.role === 'CITY' ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-surface-secondary rounded-lg border border-edge text-sm">
+              <MapPin size={14} className="text-content-muted flex-shrink-0" />
+              <span className="text-content-muted">Текущий город (источник):</span>
+              <span className="font-semibold text-content-primary">{user.city?.name || 'Ваш город'}</span>
+            </div>
+          ) : (
+            <>
+              {countries.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-content-primary mb-1">Страна (источник)</label>
+                  <select
+                    value={selectedCountryId}
+                    onChange={handleCountryChange}
+                    className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+                  >
+                    <option value="">— Выберите страну —</option>
+                    {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {cities.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-content-primary mb-1">Город (источник — откуда снимается баланс)</label>
+                  <select
+                    value={cityId}
+                    onChange={handleCityChange}
+                    className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+                    required
+                  >
+                    <option value="">— Выберите город —</option>
+                    {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Target city (EXTERNAL only) ───────────── */}
+          {expenseType === 'EXTERNAL' && (
+            <div className="border border-sky-500/30 bg-sky-500/5 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-semibold text-sky-500 flex items-center gap-1.5">
+                <ExternalLink size={13} /> Целевой город (для кого расход)
+              </p>
+
+              {user.role === 'CITY' ? (
+                accessibleCities.length > 0 ? (
+                  <select
+                    value={targetCityId}
+                    onChange={(e) => setTargetCityId(e.target.value)}
+                    className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
+                    required
+                  >
+                    <option value="">— Выберите город —</option>
+                    {accessibleCities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                ) : (
+                  <p className="text-xs text-amber-400 px-1">У вас нет доступа к другим городам. Обратитесь к администратору.</p>
+                )
+              ) : (
+                <>
+                  <select
+                    value={targetCountryId}
+                    onChange={handleTargetCountryChange}
+                    className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
+                  >
+                    <option value="">1. Выберите страну цели →</option>
+                    {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {targetCountryId && (
+                    <select
+                      value={targetCityId}
+                      onChange={(e) => setTargetCityId(e.target.value)}
+                      className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
+                      required
+                    >
+                      <option value="">2. Выберите город цели →</option>
+                      {targetCitiesForAdmin.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  )}
+                </>
+              )}
+
+              {targetCityId && (
+                <p className="text-[11px] text-sky-400">
+                  Баланс снимается с текущего города и фиксируется как внешний расход в обоих городах
+                </p>
+              )}
             </div>
           )}
 
-          {/* ── City select ───────────────────────────── */}
-          {user.role !== 'CITY' && cities.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-content-primary mb-1">Город</label>
-              <select
-                value={cityId}
-                onChange={handleCityChange}
-                className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
-                required
-              >
-                <option value="">— Выберите город —</option>
-                {cities.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* ── City balance display ──────────────────── */}
+          {/* ── Source city balance ───────────────────── */}
           {(cityId || user.role === 'CITY') && (
             <div className="p-3 rounded-lg bg-surface-secondary border border-edge">
               <p className="text-xs text-content-muted mb-2">
-                {loadingBalance ? 'Загружаю баланс города...' : 'Доступный баланс города:'}
+                {loadingBalance ? 'Загружаю баланс...' : 'Баланс текущего города (источника):'}
               </p>
               {!loadingBalance && cityBalance && (
                 <BraceletRow
@@ -767,68 +785,27 @@ export default function Expenses() {
             </div>
           )}
 
-          {/* ── Event / description section ───────────── */}
-          {expenseType === 'EXTERNAL' ? (
-            <div>
-              <label className="block text-sm font-medium text-content-primary mb-1">
-                Мероприятие IMPREZA <span className="text-red-400">*</span>
-              </label>
-              {imprezaEvents.length > 0 ? (
-                <select
-                  value={selectedEvent}
-                  onChange={handleEventSelect}
-                  className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
-                >
-                  <option value="">— Выберите мероприятие —</option>
-                  {imprezaEvents.map((ev) => (
-                    <option key={ev.id} value={String(ev.id)}>
-                      {ev.title}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="text-sm text-content-muted bg-surface-secondary px-3 py-2.5 rounded-[var(--radius-sm)]">
-                  {(cityId || user.role === 'CITY')
-                    ? 'Нет мероприятий IMPREZA для этого города'
-                    : 'Выберите город для загрузки мероприятий'}
-                </div>
-              )}
-              {selectedEvent && eventName && (
-                <div className="mt-2 bg-sky-500/10 text-sky-400 rounded-[var(--radius-sm)] px-3 py-2 text-sm space-y-0.5">
-                  <div className="font-medium">{eventName}</div>
-                  {eventDate && !isNaN(new Date(eventDate).getTime()) && (
-                    <div className="text-xs flex items-center gap-1 opacity-80">
-                      <CalendarDays size={12} />
-                      {new Date(eventDate).toLocaleDateString('ru-RU')}
-                    </div>
-                  )}
-                  {location && (
-                    <div className="text-xs flex items-center gap-1 opacity-80">
-                      <MapPin size={12} />
-                      {location}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : expenseType === 'INTERNAL' ? (
-            <Input
-              label="Описание расхода *"
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              placeholder="Напр: Подготовка склада, Промо-акция, Тестирование..."
-              required
+          {/* ── Description ───────────────────────────── */}
+          <Input
+            label={expenseType === 'EXTERNAL' ? 'Описание расхода *' : 'Описание расхода *'}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={expenseType === 'EXTERNAL'
+              ? 'Для чего выдаём браслеты (событие, промо, передача...)'
+              : 'Напр: Подготовка склада, Промо-акция, Тестирование...'}
+            required
+          />
+
+          {/* ── Optional date ─────────────────────────── */}
+          <div>
+            <label className="block text-xs font-medium text-content-muted mb-1">Дата (необязательно)</label>
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:outline-none"
             />
-          ) : (
-            /* THIRD */
-            <Input
-              label="Название события *"
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              placeholder="Название мероприятия сторонней организации"
-              required
-            />
-          )}
+          </div>
 
           {/* ── Bracelet quantities ───────────────────── */}
           <div>
