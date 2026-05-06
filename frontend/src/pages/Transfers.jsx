@@ -49,6 +49,10 @@ export default function Transfers() {
   const [officesLoading, setOfficesLoading] = useState(false);
   const [toOfficeId, setToOfficeId] = useState('');
 
+  // Confirmation step
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState(null);
+
   // Sender balance (to validate before sending)
   const [senderBalance, setSenderBalance] = useState({ BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -288,13 +292,23 @@ export default function Transfers() {
       notes: notes || undefined,
     };
 
+    // Stage confirmation instead of sending immediately
+    setPendingPayload(payload);
+    setShowConfirm(true);
+  };
+
+  const executeSend = async () => {
+    if (!pendingPayload) return;
     setSending(true);
     try {
-      await transfersApi.create(payload);
+      await transfersApi.create(pendingPayload);
+      setShowConfirm(false);
       setShowCreate(false);
+      setPendingPayload(null);
       resetForm();
       await loadTransfers();
     } catch (err) {
+      setShowConfirm(false);
       setError(err.response?.data?.message || 'Ошибка создания отправки');
     } finally {
       setSending(false);
@@ -320,6 +334,7 @@ export default function Transfers() {
     setQuantities({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
     setNotes('');
     setError('');
+    setPendingPayload(null);
   };
 
   // Receiver label for the summary hint
@@ -723,6 +738,79 @@ export default function Transfers() {
             <Send size={18} /> {user.role === 'CITY' ? 'Отправить' : 'Отправить'}
           </Button>
         </form>
+      </Modal>
+
+      {/* ── Confirm Send Modal ────────────────────────── */}
+      <Modal
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        title="Подтвердите отправку"
+      >
+        <div className="space-y-4">
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-400 flex items-start gap-2">
+            <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+            <span>Убедитесь, что данные верны. Отправку нельзя будет изменить после подтверждения.</span>
+          </div>
+
+          {receiverLabel && (
+            <div className="space-y-1">
+              <p className="text-xs text-content-muted">Получатель</p>
+              <p className="text-sm font-semibold text-content-primary flex items-center gap-1.5">
+                <Send size={14} className="text-brand-500" />
+                {receiverLabel}
+              </p>
+            </div>
+          )}
+
+          {pendingPayload?.items && (
+            <div className="space-y-1">
+              <p className="text-xs text-content-muted">Браслеты</p>
+              <div className="flex flex-wrap gap-2">
+                {pendingPayload.items.map((item) => (
+                  <span
+                    key={item.itemType}
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      item.itemType === 'BLACK' ? 'bg-gray-800 text-gray-200'
+                      : item.itemType === 'WHITE' ? 'bg-gray-200 text-gray-800'
+                      : item.itemType === 'RED'   ? 'bg-red-600/20 text-red-400'
+                      : 'bg-blue-600/20 text-blue-400'
+                    }`}
+                  >
+                    {ITEM_LABELS[item.itemType]}: {item.quantity} шт
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-content-muted mt-1">
+                Итого: {pendingPayload.items.reduce((s, i) => s + i.quantity, 0)} шт
+              </p>
+            </div>
+          )}
+
+          {pendingPayload?.notes && (
+            <div className="space-y-1">
+              <p className="text-xs text-content-muted">Примечание</p>
+              <p className="text-sm text-content-primary italic">{pendingPayload.notes}</p>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="ghost"
+              className="flex-1"
+              onClick={() => setShowConfirm(false)}
+              disabled={sending}
+            >
+              Назад
+            </Button>
+            <Button
+              className="flex-1"
+              loading={sending}
+              onClick={executeSend}
+            >
+              <Send size={16} /> Подтвердить
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

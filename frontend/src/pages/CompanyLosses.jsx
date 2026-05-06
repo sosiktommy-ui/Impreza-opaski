@@ -411,10 +411,16 @@ export default function CompanyLosses() {
 
         {/* Load more */}
         {hasMore && losses.length > 0 && (
-          <div className="p-4 border-t border-edge text-center">
+          <div className="p-4 border-t border-edge text-center space-y-2">
+            <p className="text-xs text-content-muted">Показано {losses.length} записей{!hasMore ? '' : ' · есть ещё'}</p>
             <Button variant="outline" size="sm" onClick={handleLoadMore}>
               Загрузить ещё
             </Button>
+          </div>
+        )}
+        {!hasMore && losses.length > 0 && (
+          <div className="p-3 border-t border-edge text-center">
+            <p className="text-xs text-content-muted">Показано все {losses.length} записей</p>
           </div>
         )}
       </div>

@@ -48,11 +48,17 @@ export default function Expenses() {
 
   // Form
   const [cityId, setCityId] = useState('');
+  const [expenseType, setExpenseType] = useState('EXTERNAL'); // EXTERNAL | INTERNAL | THIRD
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [location, setLocation] = useState('');
   const [quantities, setQuantities] = useState({ black: '', white: '', red: '', blue: '' });
   const [notes, setNotes] = useState('');
+
+  // Balance display in modal
+  const [cityBalance, setCityBalance] = useState(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
     loadExpenses();
@@ -97,6 +103,32 @@ export default function Expenses() {
       } catch (err) {
         console.error(err);
       }
+    }
+  };
+
+  const loadCityBalance = async (cid) => {
+    if (!cid) { setCityBalance(null); return; }
+    setLoadingBalance(true);
+    try {
+      const { data } = await inventoryApi.getBalance('CITY', cid);
+      const raw = data?.data || data;
+      if (Array.isArray(raw)) {
+        const bal = { black: 0, white: 0, red: 0, blue: 0 };
+        raw.forEach(item => { if (item.itemType) bal[item.itemType.toLowerCase()] = item.quantity || 0; });
+        setCityBalance(bal);
+      } else if (raw && typeof raw === 'object') {
+        setCityBalance({
+          black: raw.black ?? raw.BLACK ?? 0,
+          white: raw.white ?? raw.WHITE ?? 0,
+          red:   raw.red   ?? raw.RED   ?? 0,
+          blue:  raw.blue  ?? raw.BLUE  ?? 0,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load city balance', err);
+      setCityBalance(null);
+    } finally {
+      setLoadingBalance(false);
     }
   };
 
@@ -196,9 +228,12 @@ export default function Expenses() {
     setSelectedEvent('');
     setSelectedCountryId('');
     setimprezaEvents([]);
+    setExpenseType('EXTERNAL');
+    setCityBalance(null);
 
     if (user.role === 'CITY') {
       setCityId(user.cityId);
+      await loadCityBalance(user.cityId);
       const cityName = user.city?.name;
       if (cityName) {
         await loadimprezaEvents(cityName);
@@ -237,6 +272,7 @@ export default function Expenses() {
     setEventName('');
     setEventDate('');
     setLocation('');
+    await loadCityBalance(id);
 
     if (id) {
       const city = cities.find((c) => c.id === id);
@@ -273,7 +309,16 @@ export default function Expenses() {
 
     const targetCityId = user.role === 'CITY' ? user.cityId : cityId;
     if (!targetCityId) { setError('Выберите город'); return; }
-    if (!eventName.trim()) { setError('Выберите расход из списка IMPREZA'); return; }
+
+    // Validate eventName based on type
+    if (expenseType === 'EXTERNAL' && !selectedEvent) {
+      setError('Выберите мероприятие IMPREZA из списка');
+      return;
+    }
+    if ((expenseType === 'INTERNAL' || expenseType === 'THIRD') && !eventName.trim()) {
+      setError(expenseType === 'INTERNAL' ? 'Укажите описание расхода' : 'Укажите название мероприятия');
+      return;
+    }
 
     const black = parseInt(quantities.black) || 0;
     const white = parseInt(quantities.white) || 0;
@@ -285,6 +330,23 @@ export default function Expenses() {
       return;
     }
 
+    // Balance warning check
+    if (cityBalance) {
+      const overBlack = black > (cityBalance.black || 0);
+      const overWhite = white > (cityBalance.white || 0);
+      const overRed   = red   > (cityBalance.red   || 0);
+      const overBlue  = blue  > (cityBalance.blue  || 0);
+      if (overBlack || overWhite || overRed || overBlue) {
+        const over = [];
+        if (overBlack) over.push(`чёрных (есть: ${cityBalance.black})`);
+        if (overWhite) over.push(`белых (есть: ${cityBalance.white})`);
+        if (overRed)   over.push(`красных (есть: ${cityBalance.red})`);
+        if (overBlue)  over.push(`синих (есть: ${cityBalance.blue})`);
+        setError(`Недостаточно браслетов: ${over.join(', ')}`);
+        return;
+      }
+    }
+
     setSending(true);
     try {
       await inventoryApi.createExpense({
@@ -292,11 +354,14 @@ export default function Expenses() {
         eventName: eventName.trim(),
         eventDate: eventDate || undefined,
         location: location.trim() || undefined,
+        type: expenseType,
         black, white, red, blue,
         notes: notes.trim() || undefined,
       });
       setShowCreate(false);
       resetForm();
+      setSuccessMsg('Расход записан');
+      setTimeout(() => setSuccessMsg(''), 3000);
       await loadExpenses();
     } catch (err) {
       setError(err.response?.data?.message || 'Ошибка создания расхода');
@@ -308,6 +373,7 @@ export default function Expenses() {
   const resetForm = () => {
     setCityId(user.role === 'CITY' ? user.cityId : '');
     setSelectedCountryId('');
+    setExpenseType('EXTERNAL');
     setEventName('');
     setEventDate('');
     setLocation('');
@@ -316,6 +382,7 @@ export default function Expenses() {
     setError('');
     setSelectedEvent('');
     setimprezaEvents([]);
+    setCityBalance(null);
   };
 
   const handleDelete = async (id) => {
@@ -603,6 +670,13 @@ export default function Expenses() {
         </div>
       )}
 
+      {/* ── Success toast ─────────────────────────────── */}
+      {successMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white text-sm px-5 py-2.5 rounded-full shadow-lg animate-fadeIn pointer-events-none">
+          ✓ {successMsg}
+        </div>
+      )}
+
       {/* ── Create Expense Modal ──────────────────────── */}
       <Modal
         open={showCreate}
@@ -610,7 +684,37 @@ export default function Expenses() {
         title="Новый расход"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Country select */}
+
+          {/* ── Expense type selector ─────────────────── */}
+          <div>
+            <p className="text-sm font-medium text-content-primary mb-2">Тип расхода</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'EXTERNAL', icon: ArrowLeftRight, label: 'Внешний',     desc: 'Мероприятие IMPREZA',  active: 'border-sky-500 bg-sky-500/10 text-sky-500', inactive: 'border-edge text-content-secondary' },
+                { key: 'INTERNAL', icon: Home,           label: 'Внутренний',  desc: 'Склад, промо, штаб',   active: 'border-emerald-500 bg-emerald-500/10 text-emerald-500', inactive: 'border-edge text-content-secondary' },
+                { key: 'THIRD',    icon: Globe,          label: 'Сторонний',   desc: 'Внешняя организация',  active: 'border-amber-500 bg-amber-500/10 text-amber-500', inactive: 'border-edge text-content-secondary' },
+              ].map(({ key, icon: Icon, label, desc, active, inactive }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setExpenseType(key);
+                    setSelectedEvent('');
+                    setEventName('');
+                    setEventDate('');
+                    setLocation('');
+                  }}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${expenseType === key ? active : inactive + ' hover:border-brand-500/30'}`}
+                >
+                  <Icon size={18} />
+                  <span className="text-xs font-semibold">{label}</span>
+                  <span className={`text-[10px] leading-tight ${expenseType === key ? 'opacity-80' : 'text-content-muted'}`}>{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Country select ────────────────────────── */}
           {user.role !== 'CITY' && countries.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-content-primary mb-1">Страна</label>
@@ -627,7 +731,7 @@ export default function Expenses() {
             </div>
           )}
 
-          {/* City select for non-CITY roles */}
+          {/* ── City select ───────────────────────────── */}
           {user.role !== 'CITY' && cities.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-content-primary mb-1">Город</label>
@@ -645,18 +749,37 @@ export default function Expenses() {
             </div>
           )}
 
-          {/* IMPREZA events dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-content-primary mb-1">
-              Расход (IMPREZA)
-            </label>
-            {imprezaEvents.length > 0 ? (
+          {/* ── City balance display ──────────────────── */}
+          {(cityId || user.role === 'CITY') && (
+            <div className="p-3 rounded-lg bg-surface-secondary border border-edge">
+              <p className="text-xs text-content-muted mb-2">
+                {loadingBalance ? 'Загружаю баланс города...' : 'Доступный баланс города:'}
+              </p>
+              {!loadingBalance && cityBalance && (
+                <BraceletRow
+                  items={{ BLACK: cityBalance.black || 0, WHITE: cityBalance.white || 0, RED: cityBalance.red || 0, BLUE: cityBalance.blue || 0 }}
+                  size="sm"
+                />
+              )}
+              {!loadingBalance && !cityBalance && (
+                <p className="text-xs text-content-muted italic">Нет данных о балансе</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Event / description section ───────────── */}
+          {expenseType === 'EXTERNAL' ? (
+            <div>
+              <label className="block text-sm font-medium text-content-primary mb-1">
+                Мероприятие IMPREZA <span className="text-red-400">*</span>
+              </label>
+              {imprezaEvents.length > 0 ? (
                 <select
                   value={selectedEvent}
                   onChange={handleEventSelect}
                   className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
                 >
-                  <option value="">— Выберите расход —</option>
+                  <option value="">— Выберите мероприятие —</option>
                   {imprezaEvents.map((ev) => (
                     <option key={ev.id} value={String(ev.id)}>
                       {ev.title}
@@ -665,22 +788,22 @@ export default function Expenses() {
                 </select>
               ) : (
                 <div className="text-sm text-content-muted bg-surface-secondary px-3 py-2.5 rounded-[var(--radius-sm)]">
-                  Нет расходов IMPREZA для выбранного города
+                  {(cityId || user.role === 'CITY')
+                    ? 'Нет мероприятий IMPREZA для этого города'
+                    : 'Выберите город для загрузки мероприятий'}
                 </div>
               )}
-
-              {/* Show selected event details */}
               {selectedEvent && eventName && (
-                <div className="mt-2 bg-brand-600/10 text-brand-500 rounded-[var(--radius-sm)] px-3 py-2 text-sm space-y-0.5">
+                <div className="mt-2 bg-sky-500/10 text-sky-400 rounded-[var(--radius-sm)] px-3 py-2 text-sm space-y-0.5">
                   <div className="font-medium">{eventName}</div>
                   {eventDate && !isNaN(new Date(eventDate).getTime()) && (
-                    <div className="text-xs flex items-center gap-1">
+                    <div className="text-xs flex items-center gap-1 opacity-80">
                       <CalendarDays size={12} />
                       {new Date(eventDate).toLocaleDateString('ru-RU')}
                     </div>
                   )}
                   {location && (
-                    <div className="text-xs flex items-center gap-1">
+                    <div className="text-xs flex items-center gap-1 opacity-80">
                       <MapPin size={12} />
                       {location}
                     </div>
@@ -688,22 +811,50 @@ export default function Expenses() {
                 </div>
               )}
             </div>
+          ) : expenseType === 'INTERNAL' ? (
+            <Input
+              label="Описание расхода *"
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              placeholder="Напр: Подготовка склада, Промо-акция, Тестирование..."
+              required
+            />
+          ) : (
+            /* THIRD */
+            <Input
+              label="Название события *"
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              placeholder="Название мероприятия сторонней организации"
+              required
+            />
+          )}
 
-          {/* Bracelet quantities */}
+          {/* ── Bracelet quantities ───────────────────── */}
           <div>
-            <p className="text-sm font-medium text-content-primary mb-2">Израсходовано браслетов</p>
+            <p className="text-sm font-medium text-content-primary mb-2">Количество браслетов</p>
             <div className="grid grid-cols-2 gap-3">
-              {BRACELET_KEYS.map((key) => (
-                <Input
-                  key={key}
-                  label={ITEM_LABELS[key.toUpperCase()]}
-                  type="number"
-                  min="0"
-                  value={quantities[key]}
-                  onChange={(e) => setQuantities((p) => ({ ...p, [key]: e.target.value }))}
-                  placeholder="0"
-                />
-              ))}
+              {BRACELET_KEYS.map((key) => {
+                const available = cityBalance?.[key] ?? null;
+                const entered   = parseInt(quantities[key]) || 0;
+                const over      = available !== null && entered > available;
+                return (
+                  <div key={key}>
+                    <Input
+                      label={ITEM_LABELS[key.toUpperCase()]}
+                      type="number"
+                      min="0"
+                      value={quantities[key]}
+                      onChange={(e) => setQuantities((p) => ({ ...p, [key]: e.target.value }))}
+                      placeholder="0"
+                      className={over ? 'border-red-500 focus:border-red-500' : ''}
+                    />
+                    {over && (
+                      <p className="text-[11px] text-red-400 mt-0.5">Превышает баланс ({available})</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -718,7 +869,12 @@ export default function Expenses() {
             <div className="bg-red-500/10 text-red-400 text-sm px-3 py-2 rounded-[var(--radius-sm)]">{error}</div>
           )}
 
-          <Button type="submit" loading={sending} disabled={!selectedEvent} className="w-full">
+          <Button
+            type="submit"
+            loading={sending}
+            disabled={sending}
+            className="w-full"
+          >
             <TrendingDown size={18} /> Записать расход
           </Button>
         </form>
