@@ -4,6 +4,7 @@ import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import { usersApi } from '../api/users';
 import { accessApi } from '../api/access';
+import { eventsApi } from '../api/events';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -56,6 +57,11 @@ export default function Expenses() {
   const [targetCountryId, setTargetCountryId] = useState('');
   const [targetCitiesForAdmin, setTargetCitiesForAdmin] = useState([]);
   const [accessibleCities, setAccessibleCities] = useState([]); // for CITY role EXTERNAL
+
+  // Events
+  const [imprezaEvents, setImprezaEvents] = useState([]);
+  const [selectedEventId, setSelectedEventId] = useState('');
+  const [loadingEvents, setLoadingEvents] = useState(false);
 
   // Balance display in modal
   const [cityBalance, setCityBalance] = useState(null);
@@ -131,6 +137,19 @@ export default function Expenses() {
       setCityBalance(null);
     } finally {
       setLoadingBalance(false);
+    }
+  };
+
+  const loadEvents = async () => {
+    setLoadingEvents(true);
+    try {
+      const { data } = await eventsApi.getEvents({ active: false });
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      setImprezaEvents(Array.isArray(list) ? list : []);
+    } catch {
+      setImprezaEvents([]);
+    } finally {
+      setLoadingEvents(false);
     }
   };
 
@@ -225,10 +244,14 @@ export default function Expenses() {
     setAccessibleCities([]);
     setDescription('');
     setEventDate('');
+    setSelectedEventId('');
+    setImprezaEvents([]);
 
     if (user.role === 'CITY') {
       setCityId(user.cityId);
-      await Promise.all([loadCityBalance(user.cityId), loadAccessibleCities()]);
+      await Promise.all([loadCityBalance(user.cityId), loadAccessibleCities(), loadEvents()]);
+    } else {
+      loadEvents();
     }
   };
 
@@ -346,6 +369,8 @@ export default function Expenses() {
     setTargetCountryId('');
     setTargetCitiesForAdmin([]);
     setAccessibleCities([]);
+    setSelectedEventId('');
+    setImprezaEvents([]);
   };
 
   const handleDelete = async (id) => {
@@ -784,6 +809,47 @@ export default function Expenses() {
               )}
             </div>
           )}
+
+          {/* ── Event selector (both types) ───────────── */}
+          <div>
+            <label className="block text-sm font-medium text-content-primary mb-1">
+              Мероприятие
+              <span className="text-content-muted font-normal ml-1">(необязательно)</span>
+            </label>
+            {loadingEvents ? (
+              <div className="text-xs text-content-muted px-1 py-2">Загружаю мероприятия...</div>
+            ) : (
+              <select
+                value={selectedEventId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedEventId(id);
+                  if (id) {
+                    const ev = imprezaEvents.find((ev) => String(ev.id) === id);
+                    if (ev) {
+                      setDescription(ev.title);
+                      if (ev.date && !eventDate) setEventDate(ev.date.slice(0, 10));
+                    }
+                  }
+                }}
+                className="w-full rounded-[var(--radius-sm)] border border-edge text-sm px-3 py-2 bg-surface-card text-content-primary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+              >
+                <option value="">— Выбрать мероприятие —</option>
+                {imprezaEvents.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>
+                    {ev.date ? `${new Date(ev.date).toLocaleDateString('ru-RU')} · ` : ''}
+                    {ev.title}
+                    {ev.city ? ` (${ev.city})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            {imprezaEvents.length === 0 && !loadingEvents && (
+              <p className="text-[11px] text-content-muted mt-0.5">
+                Мероприятия недоступны — заполните описание вручную
+              </p>
+            )}
+          </div>
 
           {/* ── Description ───────────────────────────── */}
           <Input
