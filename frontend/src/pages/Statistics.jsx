@@ -163,10 +163,10 @@ export default function Statistics() {
       {/* Period selector */}
       <div className="flex items-center gap-2 justify-end">
         <div className="flex items-center gap-1 bg-surface-card rounded-xl p-1 border border-edge">
-          {['week','month','quarter','year'].map(period => (
+          {['week','month','year'].map(period => (
             <button key={period} onClick={() => setDateRange(period)}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${dateRange === period ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20' : 'hover:bg-surface-card-hover text-content-secondary'}`}>
-              {period === 'week' ? 'Неделя' : period === 'month' ? 'Месяц' : period === 'quarter' ? 'Квартал' : 'Год'}
+              {period === 'week' ? 'Неделя' : period === 'month' ? 'Месяц' : 'Год'}
             </button>
           ))}
           <button onClick={loadAllStats} className="p-2 rounded-lg hover:bg-surface-card-hover ml-1" title="Обновить"><RefreshCw size={18} className="text-content-muted" /></button>
