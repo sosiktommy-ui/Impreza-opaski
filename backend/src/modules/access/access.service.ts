@@ -24,13 +24,36 @@ export class AccessService {
     });
     if (!user) throw new NotFoundException('User not found');
 
-    return this.prisma.userAccess.findMany({
+    const accesses = await this.prisma.userAccess.findMany({
       where: { userId },
       orderBy: { grantedAt: 'desc' },
       include: {
         grantedBy: { select: { id: true, username: true, displayName: true } },
       },
     });
+
+    // Resolve target names for scoped accesses (polymorphic scopeId)
+    const cityIds = accesses.filter(a => a.scopeType === 'CITY' && a.scopeId).map(a => a.scopeId as string);
+    const countryIds = accesses.filter(a => a.scopeType === 'COUNTRY' && a.scopeId).map(a => a.scopeId as string);
+
+    const [cities, countries] = await Promise.all([
+      cityIds.length > 0
+        ? this.prisma.city.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+      countryIds.length > 0
+        ? this.prisma.country.findMany({ where: { id: { in: countryIds } }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+    ]);
+
+    const cityMap = Object.fromEntries(cities.map(c => [c.id, c.name]));
+    const countryMap = Object.fromEntries(countries.map(c => [c.id, c.name]));
+
+    return accesses.map(a => ({
+      ...a,
+      target: a.scopeId
+        ? { id: a.scopeId, name: cityMap[a.scopeId] || countryMap[a.scopeId] || a.scopeId }
+        : null,
+    }));
   }
 
   async grant(dto: GrantAccessDto, granterId: string) {

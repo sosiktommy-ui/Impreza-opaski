@@ -223,7 +223,7 @@ export default function Expenses() {
     });
 
     return list;
-  }, [expenses, filterCity, searchQuery, sortOrder]);
+  }, [expenses, filterType, filterCity, searchQuery, sortOrder]);
 
   // Available city names for filter
   const cityNames = useMemo(() => {
