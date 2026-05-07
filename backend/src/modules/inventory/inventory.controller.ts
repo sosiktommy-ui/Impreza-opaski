@@ -301,6 +301,7 @@ export class InventoryController {
       cityId: targetCityId,
       userId: consumerUserId,
       actorId: user.id,
+      actorRole: user.role,
       type: dto.type,
       targetCityId: dto.targetCityId,
     });

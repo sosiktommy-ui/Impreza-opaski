@@ -818,23 +818,24 @@ export default function Expenses() {
             let filterCityName = null;
             if (expenseType === 'INTERNAL') {
               filterCityName = user.role === 'CITY'
-                ? user.city?.name
-                : cities.find((c) => c.id === cityId)?.name;
+                ? (user.city?.name || null)
+                : (cities.find((c) => c.id === cityId)?.name || null);
             } else {
               // EXTERNAL — use target city name
               const targetCityObj =
                 accessibleCities.find((c) => c.id === targetCityId) ||
                 targetCitiesForAdmin.find((c) => c.id === targetCityId);
-              filterCityName = targetCityObj?.name;
+              filterCityName = targetCityObj?.name || null;
             }
 
+            // Filter events: if city name known → filter; otherwise show all
             const eventsForCity = filterCityName
               ? imprezaEvents.filter((ev) =>
-                  ev.city && ev.city.toLowerCase().includes(filterCityName.toLowerCase()),
+                  !ev.city || ev.city.toLowerCase().includes(filterCityName.toLowerCase()),
                 )
-              : [];
+              : imprezaEvents;
 
-            // For EXTERNAL without target selected yet — don't show selector
+            // For EXTERNAL without target city — don’t show selector yet
             if (expenseType === 'EXTERNAL' && !targetCityId) return null;
 
             return (
@@ -865,6 +866,7 @@ export default function Expenses() {
                       <option key={ev.id} value={String(ev.id)}>
                         {ev.date ? `${new Date(ev.date).toLocaleDateString('ru-RU')} · ` : ''}
                         {ev.title}
+                        {!filterCityName && ev.city ? ` (${ev.city})` : ''}
                       </option>
                     ))}
                   </select>

@@ -236,11 +236,12 @@ export class InventoryService {
     blue: number;
     notes?: string;
     actorId: string;
+    actorRole?: string;
   }) {
     const {
       cityId, userId, eventName, eventDate, location,
       type = 'INTERNAL', targetCityId,
-      black, white, red, blue, notes, actorId,
+      black, white, red, blue, notes, actorId, actorRole,
     } = params;
 
     // Validate at least one color has quantity
@@ -267,20 +268,24 @@ export class InventoryService {
       if (!targetCity) throw new NotFoundException(`Target city ${targetCityId} not found`);
 
       // Actor must have access to the target city directly or through the target country.
-      const access = await this.prisma.userAccess.findFirst({
-        where: {
-          userId: actorId,
-          OR: [
-            { scopeType: ScopeType.CITY, scopeId: targetCityId },
-            { scopeType: ScopeType.COUNTRY, scopeId: targetCity.countryId },
-          ],
-          accessType: { in: [AccessType.FULL, AccessType.PARTIAL] },
-          revokedAt: null,
-          AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
-        },
-      });
-      if (!access) {
-        throw new BadRequestException('No access to target city');
+      // ADMIN and OFFICE roles have implicit access to all cities.
+      const isPrivileged = actorRole === Role.ADMIN || actorRole === Role.OFFICE;
+      if (!isPrivileged) {
+        const access = await this.prisma.userAccess.findFirst({
+          where: {
+            userId: actorId,
+            OR: [
+              { scopeType: ScopeType.CITY, scopeId: targetCityId },
+              { scopeType: ScopeType.COUNTRY, scopeId: targetCity.countryId },
+            ],
+            accessType: { in: [AccessType.FULL, AccessType.PARTIAL] },
+            revokedAt: null,
+            AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
+          },
+        });
+        if (!access) {
+          throw new BadRequestException('No access to target city');
+        }
       }
     }
 
