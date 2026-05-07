@@ -106,6 +106,19 @@ export default function Users() {
   const handleCreate = async (e) => {
     e.preventDefault();
     setError('');
+    // Validate required geo fields by role
+    if (form.role === 'COUNTRY' && !form.countryId) {
+      setError('Для роли "Страна" необходимо выбрать страну');
+      return;
+    }
+    if (form.role === 'CITY' && !form.countryId) {
+      setError('Для роли "Город" необходимо выбрать страну');
+      return;
+    }
+    if (form.role === 'CITY' && !form.cityId) {
+      setError('Для роли "Город" необходимо выбрать конкретный город');
+      return;
+    }
     setSaving(true);
     try {
       await usersApi.create({
@@ -432,27 +445,57 @@ export default function Users() {
             ]}
           />
 
-          {(form.role === 'COUNTRY' || form.role === 'CITY') && (
-            <Select
-              label="Страна"
-              value={form.countryId}
-              onChange={handleCountryChange}
-              options={[
-                { value: '', label: '— Выберите —' },
-                ...countries.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
+          {form.role === 'OFFICE' && offices.length > 0 && (
+            <div>
+              <Select
+                label="Офис (необязательно)"
+                value={form.officeId}
+                onChange={(e) => setForm((p) => ({ ...p, officeId: e.target.value }))}
+                options={[
+                  { value: '', label: '— Без офиса —' },
+                  ...offices.map((o) => ({ value: o.id, label: o.name })),
+                ]}
+              />
+            </div>
           )}
-          {form.role === 'CITY' && cities.length > 0 && (
-            <Select
-              label="Город"
-              value={form.cityId}
-              onChange={(e) => setForm((p) => ({ ...p, cityId: e.target.value }))}
-              options={[
-                { value: '', label: '— Выберите —' },
-                ...cities.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
+
+          {(form.role === 'COUNTRY' || form.role === 'CITY') && (
+            <div>
+              <Select
+                label={form.role === 'COUNTRY' ? 'Страна (зона ответственности) *' : 'Страна *'}
+                value={form.countryId}
+                onChange={handleCountryChange}
+                options={[
+                  { value: '', label: '— Выберите —' },
+                  ...countries.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+              {form.role === 'COUNTRY' && (
+                <p className="text-xs text-content-muted mt-1">Пользователь будет видеть данные только этой страны и её городов</p>
+              )}
+            </div>
+          )}
+          {form.role === 'CITY' && (
+            <div>
+              {cities.length > 0 ? (
+                <>
+                  <Select
+                    label="Город (зона ответственности) *"
+                    value={form.cityId}
+                    onChange={(e) => setForm((p) => ({ ...p, cityId: e.target.value }))}
+                    options={[
+                      { value: '', label: '— Выберите —' },
+                      ...cities.map((c) => ({ value: c.id, label: c.name })),
+                    ]}
+                  />
+                  <p className="text-xs text-content-muted mt-1">Пользователь будет видеть и управлять данными только этого города</p>
+                </>
+              ) : form.countryId ? (
+                <div className="text-xs text-amber-400 bg-amber-500/10 px-3 py-2 rounded-[var(--radius-sm)]">В выбранной стране нет городов. Сначала создайте город на вкладке «Страны и города».</div>
+              ) : (
+                <div className="text-xs text-content-muted bg-surface-secondary px-3 py-2 rounded-[var(--radius-sm)]">Выберите страну чтобы увидеть список городов</div>
+              )}
+            </div>
           )}
 
           {error && (

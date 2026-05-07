@@ -65,9 +65,15 @@ function TransferRow({ t }) {
           ))}
           <span className="text-xs text-content-muted ml-1">Итого: {totalQty} шт</span>
         </div>
-        <p className="text-2xs text-content-muted mt-1">
-          {new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-          {t.notes && <span className="ml-2 text-content-secondary">· {t.notes}</span>}
+        <p className="text-2xs text-content-muted mt-1 flex items-center gap-2 flex-wrap">
+          <span>{new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+          {t.notes && <span className="text-content-secondary">· {t.notes}</span>}
+          {t.createdByUser && (
+            <span className="text-violet-400">· Создал: <strong>{t.createdByUser.displayName || t.createdByUser.username}</strong> ({ROLE_LABELS[t.createdByUser.role] || t.createdByUser.role})</span>
+          )}
+          {t.acceptanceRecords?.length > 0 && t.acceptanceRecords[0]?.acceptedBy && (
+            <span className="text-emerald-400">· Принял: <strong>{t.acceptanceRecords[0].acceptedBy.displayName || t.acceptanceRecords[0].acceptedBy.username}</strong></span>
+          )}
         </p>
       </div>
     </div>

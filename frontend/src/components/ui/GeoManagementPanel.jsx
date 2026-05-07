@@ -18,6 +18,9 @@ export default function GeoManagementPanel({
   const [savingCity, setSavingCity] = useState(false);
   const [errorCountry, setErrorCountry] = useState('');
   const [errorCity, setErrorCity] = useState('');
+  const [errorAccess, setErrorAccess] = useState('');
+  const [successCountry, setSuccessCountry] = useState('');
+  const [successCity, setSuccessCity] = useState('');
 
   const [countryForm, setCountryForm] = useState({
     name: '',
@@ -46,6 +49,7 @@ export default function GeoManagementPanel({
   const onCreateCountry = async (e) => {
     e.preventDefault();
     setErrorCountry('');
+    setSuccessCountry('');
     setSavingCountry(true);
     try {
       const payload = {
@@ -57,6 +61,8 @@ export default function GeoManagementPanel({
       }
       await usersApi.createCountry(payload);
       setCountryForm({ name: '', code: '', officeId: '' });
+      setSuccessCountry(`Страна "${payload.name}" создана`);
+      setTimeout(() => setSuccessCountry(''), 3000);
       await onRefresh();
     } catch (err) {
       setErrorCountry(err.response?.data?.message || 'Не удалось создать страну');
@@ -68,6 +74,7 @@ export default function GeoManagementPanel({
   const onCreateCity = async (e) => {
     e.preventDefault();
     setErrorCity('');
+    setSuccessCity('');
     setSavingCity(true);
     try {
       const payload = {
@@ -79,6 +86,8 @@ export default function GeoManagementPanel({
       }
       await usersApi.createCity(payload);
       setCityForm({ countryId: cityForm.countryId, name: '', slug: '' });
+      setSuccessCity(`Город "${payload.name}" создан`);
+      setTimeout(() => setSuccessCity(''), 3000);
       await onRefresh();
     } catch (err) {
       setErrorCity(err.response?.data?.message || 'Не удалось создать город');
@@ -89,9 +98,10 @@ export default function GeoManagementPanel({
 
   const openAccessForScope = (scopeType, scopeId, countryForCity = '') => {
     if (!selectedUser) {
-      setErrorCity('Сначала выберите пользователя для выдачи доступа');
+      setErrorAccess('Сначала выберите пользователя для выдачи доступа');
       return;
     }
+    setErrorAccess('');
     onOpenAccessManager(selectedUser, {
       initialScopeType: scopeType,
       initialScopeId: scopeId,
@@ -116,6 +126,7 @@ export default function GeoManagementPanel({
             <div className="text-[11px] text-content-muted mt-1">
               Кнопки "Дать доступ" откроют менеджер доступов для выбранного пользователя.
             </div>
+            {errorAccess && <div className="text-xs text-red-400 mt-1">{errorAccess}</div>}
           </div>
           <div className="flex items-end">
             {selectedUser && (
@@ -162,6 +173,7 @@ export default function GeoManagementPanel({
               </Select>
             )}
             {errorCountry && <div className="text-sm text-red-400">{errorCountry}</div>}
+            {successCountry && <div className="text-sm text-emerald-400">{successCountry}</div>}
             <Button type="submit" loading={savingCountry} className="w-full">
               <Plus size={16} /> Создать страну
             </Button>
@@ -197,6 +209,7 @@ export default function GeoManagementPanel({
               placeholder="auto-from-name"
             />
             {errorCity && <div className="text-sm text-red-400">{errorCity}</div>}
+            {successCity && <div className="text-sm text-emerald-400">{successCity}</div>}
             <Button type="submit" loading={savingCity} className="w-full">
               <Plus size={16} /> Создать город
             </Button>
