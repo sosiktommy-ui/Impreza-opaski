@@ -526,7 +526,7 @@ export default function Dashboard() {
               { k: 'blue',  bg: 'bg-blue-900/60',  text: 'text-blue-200', label: 'Синие' },
             ].map(c => (
               <div key={c.k} className={`${c.bg} rounded-xl p-2.5 text-center`}>
-                <div className={`text-lg font-bold tabular-nums ${c.text}`}>{systemMinus[c.k] || 0}</div>
+                <div className={`text-lg font-bold tabular-nums ${c.text}`}>{systemMinus[c.k] ? `-${systemMinus[c.k]}` : '0'}</div>
                 <div className={`text-[10px] ${c.text} opacity-60`}>{c.label}</div>
               </div>
             ))}
@@ -592,7 +592,14 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-content-primary truncate">{ex.eventName}</p>
-                      <p className="text-[10px] text-content-muted">{ex.city?.name || ''}</p>
+                      <div className="flex items-center gap-1">
+                        {ex.city?.name && <span className="text-[10px] text-content-muted">{ex.city.name}</span>}
+                        {(ex.actorUser?.displayName || ex.actorUser?.username) && (
+                          <span className="text-[10px] text-content-muted">
+                            {ex.city?.name ? '\u00b7' : ''} {ex.actorUser.displayName || ex.actorUser.username}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <span className="text-xs font-bold text-red-400">-{total}</span>
