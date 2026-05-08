@@ -223,9 +223,10 @@ export default function Dashboard() {
   const toggleBalCountry = (id) => setExpandedBalCountries(p => ({ ...p, [id]: !p[id] }));
   const toggleLossEntity = (n)  => setExpandedLossCountries(p => ({ ...p, [n]: !p[n] }));
 
-  const balanceTitle = user.role === 'ADMIN' ? 'Общий склад' :
-                       user.role === 'OFFICE' ? 'Склад офиса' :
-                       user.role === 'COUNTRY' ? 'Запасы страны' : 'Баланс города';
+  const balanceTitle = user.role === 'ADMIN' ? 'Общий баланс' :
+                       user.role === 'OFFICE' ? 'Баланс офиса' :
+                       user.role === 'COUNTRY' ? 'Баланс страны' : 'Баланс города';
+  const totalExpended = expenses.reduce((s, e) => s + (e.black||0) + (e.white||0) + (e.red||0) + (e.blue||0), 0);
 
   /* ── quick actions ───────────────────────────────────────────────── */
   const quickActions = [
@@ -328,6 +329,12 @@ export default function Dashboard() {
                   </div>
                   <span className="font-semibold text-content-primary text-sm">{balanceTitle}</span>
                   <span className="text-xs text-content-muted bg-surface-secondary px-2 py-0.5 rounded-full">{systemTotal} шт</span>
+                  {totalExpended > 0 && (
+                    <span className="text-xs font-medium text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <TrendingDown size={10} />
+                      -{totalExpended} расход
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {isAdminOrOffice && (
