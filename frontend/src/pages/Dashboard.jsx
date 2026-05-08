@@ -5,6 +5,7 @@ import { useFilterStore, useBadgeStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
 import { transfersApi } from '../api/transfers';
 import { usersApi } from '../api/users';
+import { getSenderLabel, getReceiverLabel } from '../utils/transferHelpers';
 import BraceletCard from '../components/ui/BraceletCard';
 import { DashboardSkeleton } from '../components/ui/Skeleton';
 import {
@@ -621,8 +622,9 @@ export default function Dashboard() {
                 const total = (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
                 const STATUS_COLOR = { SENT: 'text-sky-400', ACCEPTED: 'text-emerald-400', REJECTED: 'text-red-400', DISCREPANCY_FOUND: 'text-amber-400', CANCELLED: 'text-gray-400' };
                 const STATUS_LABEL = { SENT: 'Отправлен', ACCEPTED: 'Принят', REJECTED: 'Отклонён', DISCREPANCY_FOUND: 'Расхождение', CANCELLED: 'Отменён' };
-                const from = t.fromCity?.name || t.fromCountry?.name || t.fromOffice?.name || 'Склад';
-                const to   = t.toCity?.name   || t.toCountry?.name   || t.toOffice?.name   || '—';
+                const from = getSenderLabel(t);
+                const to   = getReceiverLabel(t);
+                const creator = t.createdByUser?.displayName || t.createdByUser?.username || null;
                 return (
                   <div key={t.id} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-secondary transition-colors">
                     <div className="w-7 h-7 rounded-lg bg-sky-500/10 flex items-center justify-center flex-shrink-0">
@@ -630,11 +632,14 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 text-xs font-medium text-content-primary">
-                        <span className="truncate max-w-[60px]">{from}</span>
+                        <span className="truncate max-w-[70px]">{from}</span>
                         <ArrowRight size={9} className="text-content-muted flex-shrink-0" />
-                        <span className="truncate max-w-[60px]">{to}</span>
+                        <span className="truncate max-w-[70px]">{to}</span>
                       </div>
-                      <span className={`text-[10px] font-medium ${STATUS_COLOR[t.status] || 'text-content-muted'}`}>{STATUS_LABEL[t.status] || t.status}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-medium ${STATUS_COLOR[t.status] || 'text-content-muted'}`}>{STATUS_LABEL[t.status] || t.status}</span>
+                        {creator && <span className="text-[10px] text-content-muted">· {creator}</span>}
+                      </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <span className="text-xs font-bold text-content-secondary">{total} шт</span>
