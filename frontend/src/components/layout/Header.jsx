@@ -6,7 +6,7 @@ import { useAppStore, useBadgeStore } from '../../store/useAppStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import NotificationPanel from '../ui/NotificationPanel';
-import BalanceWidget from '../ui/BalanceWidget';
+
 import { authApi } from '../../api/auth';
 
 const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
@@ -162,7 +162,6 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-2">
-        <BalanceWidget />
         <button
           onClick={toggleTheme}
           className="p-1.5 rounded-[var(--radius-sm)] hover:bg-surface-card-hover text-content-muted transition-colors"

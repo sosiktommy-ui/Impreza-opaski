@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { profileApi } from '../api/profile';
-import { balancesApi } from '../api/balances';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
-import BalanceHistoryModal from '../components/ui/BalanceHistoryModal';
-import { Lock, Save, Check, History as HistoryIcon } from 'lucide-react';
+import { Lock, Save, Check } from 'lucide-react';
 
 const ROLE_LABELS = { ADMIN: 'Администратор', OFFICE: 'Офис', COUNTRY: 'Страна', CITY: 'Город' };
 
@@ -58,24 +56,9 @@ export default function Profile() {
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState('');
 
-  // Phase 9: personal balance section (only for CITY/COUNTRY)
-  const user = useAuthStore((s) => s.user);
-  const balanceEligible = user?.role === 'CITY' || user?.role === 'COUNTRY';
-  const [balance, setBalance] = useState(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-
   useEffect(() => {
     loadProfile();
   }, []);
-
-  useEffect(() => {
-    if (!balanceEligible) return;
-    let cancelled = false;
-    balancesApi.getMine()
-      .then(({ data }) => { if (!cancelled) setBalance(data ?? null); })
-      .catch(() => { if (!cancelled) setBalance(null); });
-    return () => { cancelled = true; };
-  }, [balanceEligible]);
 
   const loadProfile = async () => {
     try {
@@ -175,41 +158,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Personal balance (CITY / COUNTRY only) */}
-      {balanceEligible && balance && (
-        <Card
-          title="Мой баланс"
-          action={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setHistoryOpen(true)}
-              title="История баланса"
-            >
-              <HistoryIcon className="w-4 h-4 mr-1" />
-              История
-            </Button>
-          }
-        >
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { key: 'black', label: 'Чёрные', dot: 'bg-zinc-800 dark:bg-zinc-200' },
-              { key: 'white', label: 'Белые',  dot: 'bg-white border border-edge' },
-              { key: 'red',   label: 'Красные', dot: 'bg-red-500' },
-              { key: 'blue',  label: 'Синие',   dot: 'bg-blue-500' },
-            ].map((c) => (
-              <div key={c.key} className="flex flex-col items-center gap-1 py-2">
-                <span className={`w-4 h-4 rounded-full ${c.dot}`} />
-                <span className="text-xs text-content-muted">{c.label}</span>
-                <span className="text-xl font-bold tabular-nums text-content-primary">
-                  {balance[c.key] ?? 0}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
       {/* Edit profile */}
       <Card title="Редактировать профиль">
         <form onSubmit={handleSave} className="space-y-4">
@@ -304,11 +252,6 @@ export default function Profile() {
         </form>
       </Card>
 
-      <BalanceHistoryModal
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        title="Моя история баланса"
-      />
     </div>
   );
 }
