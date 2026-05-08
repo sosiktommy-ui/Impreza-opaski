@@ -1,4 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+const fs = require('fs');
+const path = require('path');
+
+const content = `import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore, useBadgeStore } from '../store/useAppStore';
@@ -19,10 +22,10 @@ const timeAgo = (date) => {
   const diff = Date.now() - new Date(date).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'только что';
-  if (mins < 60) return `${mins} мин назад`;
+  if (mins < 60) return \`\${mins} мин назад\`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} ч назад`;
-  return `${Math.floor(hrs / 24)} д назад`;
+  if (hrs < 24) return \`\${hrs} ч назад\`;
+  return \`\${Math.floor(hrs / 24)} д назад\`;
 };
 
 const BRACELET_DOTS = {
@@ -39,7 +42,7 @@ function BraceletRow({ black = 0, white = 0, red = 0, blue = 0 }) {
     <div className="flex items-center gap-2 flex-wrap">
       {[['BLACK', black], ['WHITE', white], ['RED', red], ['BLUE', blue]].map(([t, v]) => (
         <span key={t} className="flex items-center gap-1 text-xs tabular-nums">
-          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${BRACELET_DOTS[t]}`} />
+          <span className={\`w-2.5 h-2.5 rounded-full flex-shrink-0 \${BRACELET_DOTS[t]}\`} />
           <span className="font-semibold text-content-secondary">{v}</span>
         </span>
       ))}
@@ -407,7 +410,7 @@ export default function Dashboard() {
                   onClick={() => navigate(action.path)}
                   className="group relative flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-secondary hover:bg-surface-card-hover border border-transparent hover:border-edge transition-all"
                 >
-                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${action.color} flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
+                  <div className={\`w-9 h-9 rounded-xl bg-gradient-to-br \${action.color} flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm\`}>
                     <action.icon size={16} className="text-white" />
                   </div>
                   <span className="text-[11px] font-medium text-content-secondary group-hover:text-content-primary text-center leading-tight transition-colors">{action.label}</span>
@@ -479,9 +482,9 @@ export default function Dashboard() {
                   { k: 'red',    label: 'Красные',bg: 'bg-red-900/70', text: 'text-red-200' },
                   { k: 'blue',   label: 'Синие',  bg: 'bg-blue-900/70',text: 'text-blue-200' },
                 ].map(c => (
-                  <div key={c.k} className={`${c.bg} rounded-xl p-2.5 text-center`}>
-                    <div className={`text-lg font-bold tabular-nums ${c.text}`}>-{data[c.k] || 0}</div>
-                    <div className={`text-[10px] ${c.text} opacity-70`}>{c.label}</div>
+                  <div key={c.k} className={\`\${c.bg} rounded-xl p-2.5 text-center\`}>
+                    <div className={\`text-lg font-bold tabular-nums \${c.text}\`}>-{data[c.k] || 0}</div>
+                    <div className={\`text-[10px] \${c.text} opacity-70\`}>{c.label}</div>
                   </div>
                 ))}
               </div>
@@ -517,9 +520,9 @@ export default function Dashboard() {
               { k: 'red',   bg: 'bg-red-900/60',   text: 'text-red-200',  label: 'Красные' },
               { k: 'blue',  bg: 'bg-blue-900/60',  text: 'text-blue-200', label: 'Синие' },
             ].map(c => (
-              <div key={c.k} className={`${c.bg} rounded-xl p-2.5 text-center`}>
-                <div className={`text-lg font-bold tabular-nums ${c.text}`}>{systemMinus[c.k] || 0}</div>
-                <div className={`text-[10px] ${c.text} opacity-60`}>{c.label}</div>
+              <div key={c.k} className={\`\${c.bg} rounded-xl p-2.5 text-center\`}>
+                <div className={\`text-lg font-bold tabular-nums \${c.text}\`}>{systemMinus[c.k] || 0}</div>
+                <div className={\`text-[10px] \${c.text} opacity-60\`}>{c.label}</div>
               </div>
             ))}
           </div>
@@ -634,7 +637,7 @@ export default function Dashboard() {
                         <ArrowRight size={9} className="text-content-muted flex-shrink-0" />
                         <span className="truncate max-w-[60px]">{to}</span>
                       </div>
-                      <span className={`text-[10px] font-medium ${STATUS_COLOR[t.status] || 'text-content-muted'}`}>{STATUS_LABEL[t.status] || t.status}</span>
+                      <span className={\`text-[10px] font-medium \${STATUS_COLOR[t.status] || 'text-content-muted'}\`}>{STATUS_LABEL[t.status] || t.status}</span>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <span className="text-xs font-bold text-content-secondary">{total} шт</span>
@@ -713,3 +716,8 @@ export default function Dashboard() {
     </div>
   );
 }
+`;
+
+const filePath = path.join(__dirname, 'frontend', 'src', 'pages', 'Dashboard.jsx');
+fs.writeFileSync(filePath, content, 'utf8');
+console.log('Dashboard.jsx written OK');
