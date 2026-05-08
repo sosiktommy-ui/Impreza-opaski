@@ -19,15 +19,22 @@ import { AccessService } from './access.service';
 import { GrantAccessDto } from './dto/grant-access.dto';
 import { UpdateAccessDto } from './dto/update-access.dto';
 
-/** All endpoints are admin-only. Manages UserAccess rows. */
+/** Manages UserAccess rows. */
 @Controller('access')
-@UseGuards(JwtAuthGuard, RolesGuard, AccessTypeGuard)
-@AllowAccessTypes(AccessType.FULL)
-@Roles(Role.ADMIN)
+@UseGuards(JwtAuthGuard)
 export class AccessController {
   constructor(private readonly accessService: AccessService) {}
 
+  /** Any authenticated user can fetch their own accesses. */
+  @Get('my')
+  getMyAccesses(@CurrentUser() user: AuthenticatedUser) {
+    return this.accessService.listForUser(user.id);
+  }
+
   @Get('users/:userId')
+  @UseGuards(RolesGuard, AccessTypeGuard)
+  @AllowAccessTypes(AccessType.FULL)
+  @Roles(Role.ADMIN)
   listForUser(@Param('userId') userId: string) {
     return this.accessService.listForUser(userId);
   }

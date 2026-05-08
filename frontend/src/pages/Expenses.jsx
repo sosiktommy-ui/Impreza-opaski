@@ -184,8 +184,8 @@ export default function Expenses() {
 
   const loadAccessibleCities = async () => {
     try {
-      const { data } = await accessApi.listForUser(user.id);
-      const list = data?.accesses ?? data?.data?.accesses ?? data ?? [];
+      const { data } = await accessApi.getMy();
+      const list = Array.isArray(data) ? data : (data?.accesses ?? data?.data?.accesses ?? data ?? []);
       const accesses = Array.isArray(list) ? list : [];
       const c = accesses
         .filter(a => !a.revokedAt && !(a.expiresAt && new Date(a.expiresAt) < new Date()))
