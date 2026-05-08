@@ -1,4 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+const fs = require('fs');
+const path = require('path');
+
+const target = path.join(__dirname, 'frontend/src/pages/Expenses.jsx');
+
+const content = `import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFilterStore } from '../store/useAppStore';
 import { inventoryApi } from '../api/inventory';
@@ -8,6 +13,7 @@ import { eventsApi } from '../api/events';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
+import { BraceletRow } from '../components/ui/BraceletBadge';
 import {
   CalendarDays, Plus, Search, TrendingDown,
   MapPin, BarChart3, Trash2, ArrowRight, Home,
@@ -35,7 +41,7 @@ const ROLE_LABELS = { ADMIN: 'Админ', OFFICE: 'Офис', COUNTRY: 'Стр�
 function StatCard({ icon: Icon, iconBg, iconColor, value, label }) {
   return (
     <div className="bg-surface-card rounded-xl border border-edge p-4 flex items-center gap-3">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+      <div className={\`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 \${iconBg}\`}>
         <Icon size={20} className={iconColor} />
       </div>
       <div>
@@ -59,7 +65,7 @@ function BraceletDots({ black = 0, white = 0, red = 0, blue = 0, size = 'md' }) 
     <div className="flex items-center gap-2.5 flex-wrap">
       {items.map(({ key, val, cls }) => (
         <span key={key} className="flex items-center gap-1">
-          <span className={`${dot} rounded-full ${cls} flex-shrink-0`} />
+          <span className={\`\${dot} rounded-full \${cls} flex-shrink-0\`} />
           <span className="text-sm font-semibold text-content-primary">{val}</span>
         </span>
       ))}
@@ -319,11 +325,11 @@ export default function Expenses() {
     if (black + white + red + blue === 0) { setError('Укажите количество браслетов'); return; }
     if (cityBalance) {
       const over = [];
-      if (black > (cityBalance.black || 0)) over.push(`чёрных (есть: ${cityBalance.black})`);
-      if (white > (cityBalance.white || 0)) over.push(`белых (есть: ${cityBalance.white})`);
-      if (red   > (cityBalance.red   || 0)) over.push(`красных (есть: ${cityBalance.red})`);
-      if (blue  > (cityBalance.blue  || 0)) over.push(`синих (есть: ${cityBalance.blue})`);
-      if (over.length) { setError(`Недостаточно: ${over.join(', ')}`); return; }
+      if (black > (cityBalance.black || 0)) over.push(\`чёрных (есть: \${cityBalance.black})\`);
+      if (white > (cityBalance.white || 0)) over.push(\`белых (есть: \${cityBalance.white})\`);
+      if (red   > (cityBalance.red   || 0)) over.push(\`красных (есть: \${cityBalance.red})\`);
+      if (blue  > (cityBalance.blue  || 0)) over.push(\`синих (есть: \${cityBalance.blue})\`);
+      if (over.length) { setError(\`Недостаточно: \${over.join(', ')}\`); return; }
     }
     setSending(true);
     try {
@@ -452,9 +458,9 @@ export default function Expenses() {
             ].filter(c => stats.byColor[c.key] > 0).map(c => (
               <div
                 key={c.key}
-                className={`${c.color} transition-all first:rounded-l-full last:rounded-r-full`}
-                style={{ width: `${(stats.byColor[c.key] / stats.totalBracelets) * 100}%` }}
-                title={`${ITEM_LABELS[c.key]}: ${stats.byColor[c.key]}`}
+                className={\`\${c.color} transition-all first:rounded-l-full last:rounded-r-full\`}
+                style={{ width: \`\${(stats.byColor[c.key] / stats.totalBracelets) * 100}%\` }}
+                title={\`\${ITEM_LABELS[c.key]}: \${stats.byColor[c.key]}\`}
               />
             ))}
           </div>
@@ -466,7 +472,7 @@ export default function Expenses() {
               { key: 'BLUE',  dot: 'bg-blue-500', label: 'Синие' },
             ].map(c => (
               <span key={c.key} className="flex items-center gap-1.5">
-                <span className={`w-2.5 h-2.5 rounded-full ${c.dot}`} />
+                <span className={\`w-2.5 h-2.5 rounded-full \${c.dot}\`} />
                 {c.label}: <strong className="text-content-primary">{stats.byColor[c.key]}</strong>
               </span>
             ))}
@@ -487,14 +493,14 @@ export default function Expenses() {
             <button
               key={t.key}
               onClick={() => setFilterType(t.key)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+              className={\`px-3 py-1.5 text-sm font-medium rounded-lg transition-all \${
                 filterType === t.key
                   ? 'bg-brand-600 text-white shadow-sm'
                   : 'text-content-secondary hover:text-content-primary hover:bg-surface-card'
-              }`}
+              }\`}
             >
               {t.label}
-              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${filterType === t.key ? 'bg-white/20' : 'bg-surface-card text-content-muted'}`}>
+              <span className={\`ml-1.5 text-xs px-1.5 py-0.5 rounded-full \${filterType === t.key ? 'bg-white/20' : 'bg-surface-card text-content-muted'}\`}>
                 {t.count}
               </span>
             </button>
@@ -568,7 +574,7 @@ export default function Expenses() {
                 {/* ── Card main row ── */}
                 <div className="flex items-stretch gap-0">
                   {/* Left color stripe */}
-                  <div className={`w-1 flex-shrink-0 ${meta.dotClass}`} />
+                  <div className={\`w-1 flex-shrink-0 \${meta.dotClass}\`} />
 
                   <div className="flex-1 px-4 py-3.5">
                     {/* Top row: event name + date + total */}
@@ -579,7 +585,7 @@ export default function Expenses() {
                           <span className="font-semibold text-content-primary text-sm leading-tight truncate">
                             {ex.eventName}
                           </span>
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.bgClass}`}>
+                          <span className={\`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border \${meta.bgClass}\`}>
                             <TypeIcon size={9} /> {meta.label}
                           </span>
                         </div>
@@ -662,8 +668,8 @@ export default function Expenses() {
         <div className="flex items-center justify-between bg-surface-card rounded-xl px-4 py-3 border border-edge">
           <span className="text-xs text-content-muted">
             {filteredExpenses.length === expenses.length
-              ? `Всего ${expenses.length} расходов`
-              : `Показано ${filteredExpenses.length} из ${expenses.length}`}
+              ? \`Всего \${expenses.length} расходов\`
+              : \`Показано \${filteredExpenses.length} из \${expenses.length}\`}
           </span>
           <span className="text-sm font-bold text-content-primary flex items-center gap-1.5">
             <TrendingDown size={14} className="text-red-500" />
@@ -707,9 +713,9 @@ export default function Expenses() {
                   key={key}
                   type="button"
                   onClick={() => { setExpenseType(key); setTargetCityId(''); setTargetCountryId(''); setTargetCitiesForAdmin([]); }}
-                  className={`flex items-start gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
+                  className={\`flex items-start gap-2.5 p-3 rounded-xl border-2 text-left transition-all \${
                     expenseType === key ? active : 'border-edge text-content-secondary hover:border-brand-500/30'
-                  }`}
+                  }\`}
                 >
                   <Icon size={16} className="mt-0.5 flex-shrink-0" />
                   <div>
@@ -819,7 +825,7 @@ export default function Expenses() {
           {(cityId || user.role === 'CITY') && (
             <div className="p-3 rounded-xl bg-surface-secondary border border-edge">
               <p className="text-xs text-content-muted mb-2 font-medium">
-                {loadingBalance ? 'Загружаю баланс...' : `Баланс ${sourceCityName || 'города'}:`}
+                {loadingBalance ? 'Загружаю баланс...' : \`Баланс \${sourceCityName || 'города'}:\`}
               </p>
               {!loadingBalance && cityBalance && (
                 <BraceletDots black={cityBalance.black} white={cityBalance.white} red={cityBalance.red} blue={cityBalance.blue} />
@@ -859,9 +865,9 @@ export default function Expenses() {
                     <option value="">— Выбрать мероприятие —</option>
                     {eventsForCity.map(ev => (
                       <option key={ev.id} value={String(ev.id)}>
-                        {ev.date ? `${new Date(ev.date).toLocaleDateString('ru-RU', {day:'2-digit',month:'short'})} · ` : ''}
+                        {ev.date ? \`\${new Date(ev.date).toLocaleDateString('ru-RU', {day:'2-digit',month:'short'})} · \` : ''}
                         {ev.title}
-                        {ev.city ? ` (${ev.city})` : ''}
+                        {ev.city ? \` (\${ev.city})\` : ''}
                       </option>
                     ))}
                   </select>
@@ -909,7 +915,7 @@ export default function Expenses() {
                 return (
                   <div key={key}>
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`w-3 h-3 rounded-full flex-shrink-0 ${BRACELET_COLORS[key]}`} />
+                      <span className={\`w-3 h-3 rounded-full flex-shrink-0 \${BRACELET_COLORS[key]}\`} />
                       <span className="text-xs font-medium text-content-secondary">{ITEM_LABELS[key.toUpperCase()]}</span>
                       {available !== null && (
                         <span className="text-[10px] text-content-muted ml-auto">ост. {available}</span>
@@ -921,11 +927,11 @@ export default function Expenses() {
                       value={quantities[key]}
                       onChange={e => setQuantities(p => ({ ...p, [key]: e.target.value }))}
                       placeholder="0"
-                      className={`w-full rounded-xl border text-sm px-3 py-2 bg-surface-card text-content-primary focus:ring-2 focus:outline-none ${
+                      className={\`w-full rounded-xl border text-sm px-3 py-2 bg-surface-card text-content-primary focus:ring-2 focus:outline-none \${
                         over
                           ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
                           : 'border-edge focus:border-brand-500 focus:ring-brand-500/20'
-                      }`}
+                      }\`}
                     />
                     {over && <p className="text-[10px] text-red-400 mt-0.5">Превышает остаток</p>}
                   </div>
@@ -955,3 +961,9 @@ export default function Expenses() {
     </div>
   );
 }
+`;
+
+fs.writeFileSync(target, content, 'utf8');
+const check = fs.readFileSync(target, 'utf8');
+const idx = check.indexOf('Израсходовано');
+console.log('Written OK, size:', fs.statSync(target).size, 'Cyrillic sample:', idx >= 0 ? 'OK' : 'MISSING');
