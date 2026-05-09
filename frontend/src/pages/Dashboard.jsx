@@ -496,14 +496,14 @@ export default function Dashboard() {
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   {[
-                    { k: 'black', label: 'Чёрные', bg: 'bg-zinc-800',     text: 'text-zinc-200' },
-                    { k: 'white', label: 'Белые',  bg: 'bg-zinc-200/20',  text: 'text-zinc-100' },
-                    { k: 'red',   label: 'Красные',bg: 'bg-red-900/50',   text: 'text-red-200' },
-                    { k: 'blue',  label: 'Синие',  bg: 'bg-blue-900/50',  text: 'text-blue-200' },
+                    { k: 'black', label: 'Чёрные', grad: 'from-zinc-600 to-zinc-900' },
+                    { k: 'white', label: 'Белые',  grad: 'from-zinc-300 to-zinc-500' },
+                    { k: 'red',   label: 'Красные',grad: 'from-red-400 to-red-700'   },
+                    { k: 'blue',  label: 'Синие',  grad: 'from-blue-400 to-blue-700'  },
                   ].map(c => (
-                    <div key={c.k} className={`${c.bg} rounded-xl p-2 text-center`}>
-                      <div className={`text-base font-black tabular-nums ${c.text}`}>-{data[c.k] || 0}</div>
-                      <div className={`text-[10px] ${c.text} opacity-60`}>{c.label}</div>
+                    <div key={c.k} className={`bg-gradient-to-br ${c.grad} rounded-xl p-2 text-center shadow-sm`}>
+                      <div className="text-base font-black tabular-nums text-white">-{data[c.k] || 0}</div>
+                      <div className="text-[10px] text-white/60">{c.label}</div>
                     </div>
                   ))}
                 </div>
@@ -535,14 +535,14 @@ export default function Dashboard() {
             </div>
             <div className="grid grid-cols-4 gap-2">
               {[
-                { k: 'black', bg: 'bg-zinc-900/80', text: 'text-zinc-300', label: 'Чёрные' },
-                { k: 'white', bg: 'bg-zinc-100/10',  text: 'text-zinc-100', label: 'Белые' },
-                { k: 'red',   bg: 'bg-red-900/50',   text: 'text-red-200',  label: 'Красные' },
-                { k: 'blue',  bg: 'bg-blue-900/50',  text: 'text-blue-200', label: 'Синие' },
+                { k: 'black', grad: 'from-zinc-600 to-zinc-900', label: 'Чёрные' },
+                { k: 'white', grad: 'from-zinc-300 to-zinc-500',  label: 'Белые'  },
+                { k: 'red',   grad: 'from-red-400 to-red-700',    label: 'Красные' },
+                { k: 'blue',  grad: 'from-blue-400 to-blue-700',  label: 'Синие'  },
               ].map(c => (
-                <div key={c.k} className={`${c.bg} rounded-xl p-2.5 text-center`}>
-                  <div className={`text-xl font-black tabular-nums ${c.text}`}>{systemMinus[c.k] ? `-${systemMinus[c.k]}` : '0'}</div>
-                  <div className={`text-[10px] ${c.text} opacity-60`}>{c.label}</div>
+                <div key={c.k} className={`bg-gradient-to-br ${c.grad} rounded-xl p-2.5 text-center shadow-sm`}>
+                  <div className="text-xl font-black tabular-nums text-white">{systemMinus[c.k] ? `-${systemMinus[c.k]}` : '0'}</div>
+                  <div className="text-[10px] text-white/60">{c.label}</div>
                 </div>
               ))}
             </div>
