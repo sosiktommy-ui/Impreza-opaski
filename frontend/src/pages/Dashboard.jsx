@@ -360,26 +360,26 @@ export default function Dashboard() {
           {/* 4 color strips */}
           <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-edge">
             {[
-              { type: 'BLACK', label: 'Чёрные',  accent: '#71717a', bar: 'bg-zinc-400' },
-              { type: 'WHITE', label: 'Белые',   accent: '#d4d4d8', bar: 'bg-zinc-300' },
-              { type: 'RED',   label: 'Красные', accent: '#ef4444', bar: 'bg-red-500'  },
-              { type: 'BLUE',  label: 'Синие',   accent: '#3b82f6', bar: 'bg-blue-500' },
-            ].map(({ type, label, accent, bar }) => {
+              { type: 'BLACK', label: 'Чёрные',  accent: '#52525b', bg: 'bg-zinc-700',       bar: 'bg-zinc-300' },
+              { type: 'WHITE', label: 'Белые',   accent: '#a1a1aa', bg: 'bg-zinc-400',        bar: 'bg-white'    },
+              { type: 'RED',   label: 'Красные', accent: '#ef4444', bg: 'bg-red-500',         bar: 'bg-red-200'  },
+              { type: 'BLUE',  label: 'Синие',   accent: '#3b82f6', bg: 'bg-blue-500',        bar: 'bg-blue-200' },
+            ].map(({ type, label, accent, bg, bar }) => {
               const qty = balance.find(b => b.itemType === type)?.quantity || 0;
               const exp = expByColor[type] || 0;
               const pct = systemTotal > 0 ? (qty / systemTotal) * 100 : 0;
               return (
-                <div key={type} className="relative px-4 py-3">
-                  <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ background: accent }} />
-                  <div className="text-2xl font-black tabular-nums text-content-primary leading-none">{qty.toLocaleString()}</div>
-                  <div className="text-xs text-content-muted mt-0.5">{label}</div>
+                <div key={type} className={`relative ${bg} px-4 py-3`}>
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full" style={{ background: accent }} />
+                  <div className="text-2xl font-black tabular-nums text-white leading-none">{qty.toLocaleString()}</div>
+                  <div className="text-xs text-white/70 mt-0.5">{label}</div>
                   {exp > 0 && (
-                    <div className="text-[11px] font-semibold text-red-400 mt-0.5 tabular-nums">-{exp} расход</div>
+                    <div className="text-[11px] font-semibold text-white/90 mt-0.5 tabular-nums">-{exp} расход</div>
                   )}
-                  <div className="mt-1.5 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                  <div className="mt-1.5 h-1 rounded-full bg-black/20 overflow-hidden">
                     <div className={`h-full rounded-full ${bar} transition-all duration-700`} style={{ width: `${pct}%` }} />
                   </div>
-                  <div className="text-[10px] text-content-muted mt-0.5">{pct.toFixed(1)}%</div>
+                  <div className="text-[10px] text-white/60 mt-0.5">{pct.toFixed(1)}%</div>
                 </div>
               );
             })}
