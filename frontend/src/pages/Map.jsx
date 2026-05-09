@@ -72,12 +72,26 @@ const TRANSFER_STATUS_COLORS = {
   CANCELLED: '#6b7280',
 };
 
+// dash pattern per status: null = solid line
+const TRANSFER_DASH = {
+  SENT:              '10 6',
+  ACCEPTED:          null,
+  REJECTED:          '3 6',
+  DISCREPANCY_FOUND: '14 4 3 4',
+  CANCELLED:         '3 10',
+};
+// base weight per status (scaled by volume on top)
+const TRANSFER_BASE_WEIGHT = {
+  SENT: 2.5, ACCEPTED: 4, REJECTED: 2, DISCREPANCY_FOUND: 2.5, CANCELLED: 1.5,
+};
+
 /* ─── Tile layers ────────────────────────────── */
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 const TILE_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>';
 
 const ZOOM_THRESHOLD = 6;
+const ZOOM_LABELS   = 8;  // show permanent stock labels on cities
 
 /* ─── Color helpers ──────────────────────────── */
 function getCountryFill(stock) {
@@ -139,9 +153,10 @@ function CountryBoundaries({ geoJsonData, countryByCode, isZoomedIn, onCountryCl
     return {
       fillColor: getCountryFill(stock),
       color: getCountryStroke(stock),
-      weight: zi ? 0.8 : 1.5,
-      fillOpacity: zi ? 0.03 : 0.35,
-      opacity: zi ? 0.2 : 0.7,
+      // Keep borders clearly visible at all zoom levels — just reduce fill when zoomed in
+      weight: zi ? 1.2 : 1.8,
+      fillOpacity: zi ? 0.04 : 0.35,
+      opacity: zi ? 0.55 : 0.75,
     };
   }, [countryByCode]);
 
@@ -187,7 +202,7 @@ function CountryBoundaries({ geoJsonData, countryByCode, isZoomedIn, onCountryCl
 }
 
 /* ─── Transfer Arrow ─────────────────────────── */
-function TransferArrow({ from, to, color, weight, opacity, children }) {
+function TransferArrow({ from, to, color, weight, opacity, dash, children }) {
   const midLat = (from[0] + to[0]) / 2;
   const midLng = (from[1] + to[1]) / 2;
   const dx = to[1] - from[1];
@@ -201,7 +216,7 @@ function TransferArrow({ from, to, color, weight, opacity, children }) {
       color={color}
       weight={weight}
       opacity={opacity}
-      dashArray="8 6"
+      dashArray={dash || undefined}
     >
       {children}
     </Polyline>
@@ -353,6 +368,7 @@ export default function MapPage() {
   const theme = useThemeStore((s) => s.theme);
   const darkMode = theme === 'dark';
   const [data, setData] = useState({ cities: [], countries: [], transferLines: [], transfers: [] });
+  const [cityExpenses, setCityExpenses] = useState({});
   const [loading, setLoading] = useState(true);
   const [countryFilter, setCountryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -366,6 +382,7 @@ export default function MapPage() {
   const mapWrapRef = useRef(null);
 
   const isZoomedIn = zoomLevel >= ZOOM_THRESHOLD;
+  const showLabels = zoomLevel >= ZOOM_LABELS;
   const handleZoomChange = useCallback((z) => setZoomLevel(z), []);
 
   const toggleFullscreen = useCallback(() => {
@@ -403,14 +420,34 @@ export default function MapPage() {
 
   const loadData = async () => {
     try {
-      const res = await inventoryApi.getMapData();
-      const payload = res.data?.data || res.data;
+      const [mapRes, expRes] = await Promise.all([
+        inventoryApi.getMapData(),
+        inventoryApi.getExpenses({ limit: 2000 }).catch(() => ({ data: [] })),
+      ]);
+      const payload = mapRes.data?.data || mapRes.data;
       setData({
         cities: payload.cities || [],
         countries: payload.countries || [],
         transferLines: payload.transferLines || [],
         transfers: payload.transfers || [],
       });
+
+      // Aggregate expenses by city
+      const expList = expRes.data?.data || expRes.data || [];
+      const expMap = {};
+      (Array.isArray(expList) ? expList : []).forEach((exp) => {
+        if (!exp.cityId) return;
+        if (!expMap[exp.cityId]) expMap[exp.cityId] = { INTERNAL: {}, EXTERNAL: {}, totalInternal: 0, totalExternal: 0 };
+        const bucket = exp.type === 'INTERNAL' ? 'INTERNAL' : 'EXTERNAL';
+        const totalKey = exp.type === 'INTERNAL' ? 'totalInternal' : 'totalExternal';
+        ['BLACK', 'WHITE', 'RED', 'BLUE'].forEach((c) => {
+          const key = c.toLowerCase();
+          const qty = exp[key] || 0;
+          expMap[exp.cityId][bucket][c] = (expMap[exp.cityId][bucket][c] || 0) + qty;
+          expMap[exp.cityId][totalKey] += qty;
+        });
+      });
+      setCityExpenses(expMap);
     } catch (err) {
       console.error('Map data error:', err);
     } finally {
@@ -614,12 +651,26 @@ export default function MapPage() {
           </span>
         ))}
         <span className="text-content-muted/30">|</span>
-        {Object.entries(TRANSFER_STATUS_COLORS).slice(0, 4).map(([status, color]) => (
-          <span key={status} className="flex items-center gap-1.5">
-            <span className="w-5 h-0 border-t-2" style={{ borderColor: color }} />
-            <span>{status === 'DISCREPANCY_FOUND' ? 'DISC' : status}</span>
-          </span>
-        ))}
+        {[
+          { status: 'ACCEPTED', label: 'Принят', dash: null },
+          { status: 'SENT', label: 'В пути', dash: '6 3' },
+          { status: 'DISCREPANCY_FOUND', label: 'Расхожд.', dash: '8 2 2 2' },
+          { status: 'REJECTED', label: 'Откл.', dash: '2 4' },
+        ].map(({ status, label, dash }) => {
+          const color = TRANSFER_STATUS_COLORS[status];
+          return (
+            <span key={status} className="flex items-center gap-1.5">
+              <svg width="24" height="6" viewBox="0 0 24 6">
+                <line x1="0" y1="3" x2="24" y2="3"
+                  stroke={color} strokeWidth="2.5"
+                  strokeDasharray={dash || undefined}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span>{label}</span>
+            </span>
+          );
+        })}
       </div>
 
       {/* Map */}
@@ -692,6 +743,9 @@ export default function MapPage() {
             const meta = STATUS_META[city.status] || { label: city.status, dot: 'bg-gray-400', text: 'text-gray-500', color: '#6b7280' };
             const balance = city.balance || {};
             const hasStock = city.totalStock > 0;
+            const exp = cityExpenses[city.id] || {};
+            const intTotal = exp.totalInternal || 0;
+            const extTotal = exp.totalExternal || 0;
             return (
               <Marker
                 key={`city-${city.id}`}
@@ -701,7 +755,22 @@ export default function MapPage() {
                   click: () => setSelectedEntity({ entity: city, type: 'city' }),
                 }}
               >
-                <Popup maxWidth={260} minWidth={200} className="map-popup-modern">
+                {/* Permanent label when sufficiently zoomed */}
+                {showLabels && (
+                  <Tooltip direction="top" offset={[0, -10]} permanent className="map-stock-tooltip">
+                    <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
+                      <div style={{ fontWeight: 700, fontSize: 11 }}>{city.name}</div>
+                      <div style={{ fontSize: 10, opacity: 0.8 }}>
+                        {city.totalStock} шт
+                        {(intTotal > 0 || extTotal > 0) && (
+                          <span style={{ color: '#ef4444' }}> · -{intTotal + extTotal}</span>
+                        )}
+                      </div>
+                    </div>
+                  </Tooltip>
+                )}
+
+                <Popup maxWidth={280} minWidth={220} className="map-popup-modern">
                   <div className="text-sm space-y-2.5 p-1">
                     <div>
                       <div className="font-bold text-base flex items-center gap-2">
@@ -739,6 +808,42 @@ export default function MapPage() {
                         <div className="text-xs text-red-400 font-medium">Нет запасов</div>
                       )}
                     </div>
+
+                    {/* Expenses breakdown */}
+                    {(intTotal > 0 || extTotal > 0) && (
+                      <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest mb-1.5">Расходы</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 p-2 text-center">
+                            <div className="text-sm font-bold text-red-600 dark:text-red-400">{intTotal}</div>
+                            <div className="text-[10px] text-gray-400">Внутр.</div>
+                          </div>
+                          <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 p-2 text-center">
+                            <div className="text-sm font-bold text-orange-600 dark:text-orange-400">{extTotal}</div>
+                            <div className="text-[10px] text-gray-400">Внешн.</div>
+                          </div>
+                        </div>
+                        {/* Per-color expense breakdown */}
+                        {Object.entries(BRACELET_COLORS).some(([type]) => (exp.INTERNAL?.[type] || 0) + (exp.EXTERNAL?.[type] || 0) > 0) && (
+                          <div className="mt-2 space-y-1">
+                            {Object.entries(BRACELET_COLORS).map(([type, info]) => {
+                              const intQ = exp.INTERNAL?.[type] || 0;
+                              const extQ = exp.EXTERNAL?.[type] || 0;
+                              if (intQ + extQ === 0) return null;
+                              return (
+                                <div key={type} className="flex items-center gap-2 text-xs">
+                                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: info.color }} />
+                                  <span className="text-gray-500 flex-1">{info.label}</span>
+                                  <span className="text-red-500 tabular-nums">−{intQ}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                                  <span className="text-orange-500 tabular-nums">−{extQ}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </Popup>
               </Marker>
@@ -772,7 +877,7 @@ export default function MapPage() {
 
           {/* TRANSFER ARROWS — aggregated (zoomed out) */}
           {!isZoomedIn && filteredLines.map((line, idx) => {
-            const weight = Math.max(2, Math.min(7, 2 + (line.volume / maxLineVolume) * 5));
+            const weight = Math.max(2.5, Math.min(8, 2 + (line.volume / maxLineVolume) * 6));
             return (
               <TransferArrow
                 key={`agg-${idx}`}
@@ -780,8 +885,15 @@ export default function MapPage() {
                 to={[line.toLat, line.toLng]}
                 color="#7c3aed"
                 weight={weight}
-                opacity={0.45}
+                opacity={0.5}
+                dash="10 6"
               >
+                <Tooltip sticky className="map-stock-tooltip">
+                  <div style={{ textAlign: 'center', lineHeight: 1.4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>Маршрут</div>
+                    <div style={{ fontSize: 10 }}>90д: {line.volume.toLocaleString()} шт</div>
+                  </div>
+                </Tooltip>
                 <Popup>
                   <div className="text-sm p-1">
                     <div className="font-semibold text-violet-600">Маршрут</div>
@@ -797,7 +909,9 @@ export default function MapPage() {
           {/* TRANSFER ARROWS — individual (zoomed in) */}
           {isZoomedIn && filteredTransfers.slice(0, 200).map((t) => {
             const color = TRANSFER_STATUS_COLORS[t.status] || '#6b7280';
-            const weight = Math.max(2, Math.min(5, 1 + (t.volume / 50)));
+            const dash = TRANSFER_DASH[t.status] || '8 5';
+            const baseW = TRANSFER_BASE_WEIGHT[t.status] || 2;
+            const weight = Math.max(baseW, Math.min(6, baseW + (t.volume / 60)));
             return (
               <TransferArrow
                 key={`t-${t.id}`}
@@ -805,7 +919,8 @@ export default function MapPage() {
                 to={[t.toLat, t.toLng]}
                 color={color}
                 weight={weight}
-                opacity={0.55}
+                opacity={t.status === 'ACCEPTED' ? 0.7 : 0.55}
+                dash={dash}
               >
                 <Popup maxWidth={240}>
                   <div className="text-sm space-y-1.5 p-1">
