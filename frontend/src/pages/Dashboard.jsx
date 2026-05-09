@@ -227,6 +227,12 @@ export default function Dashboard() {
                        user.role === 'OFFICE' ? 'Баланс офиса' :
                        user.role === 'COUNTRY' ? 'Баланс страны' : 'Баланс города';
   const totalExpended = expenses.reduce((s, e) => s + (e.black||0) + (e.white||0) + (e.red||0) + (e.blue||0), 0);
+  const expByColor = {
+    BLACK: expenses.reduce((s, e) => s + (e.black||0), 0),
+    WHITE: expenses.reduce((s, e) => s + (e.white||0), 0),
+    RED:   expenses.reduce((s, e) => s + (e.red||0), 0),
+    BLUE:  expenses.reduce((s, e) => s + (e.blue||0), 0),
+  };
 
   /* ── quick actions ───────────────────────────────────────────────── */
   const quickActions = [
@@ -354,19 +360,23 @@ export default function Dashboard() {
           {/* 4 color strips */}
           <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-edge">
             {[
-              { type: 'BLACK', label: 'Чёрные',  accent: '#27272a', bg: 'bg-zinc-900/60', text: 'text-zinc-100', bar: 'bg-zinc-500' },
-              { type: 'WHITE', label: 'Белые',   accent: '#e4e4e7', bg: 'bg-zinc-100/10', text: 'text-zinc-100', bar: 'bg-zinc-300' },
-              { type: 'RED',   label: 'Красные', accent: '#ef4444', bg: 'bg-red-950/40',  text: 'text-red-100',  bar: 'bg-red-500' },
-              { type: 'BLUE',  label: 'Синие',   accent: '#3b82f6', bg: 'bg-blue-950/40', text: 'text-blue-100', bar: 'bg-blue-500' },
-            ].map(({ type, label, accent, bg, text, bar }) => {
+              { type: 'BLACK', label: 'Чёрные',  accent: '#71717a', bar: 'bg-zinc-400' },
+              { type: 'WHITE', label: 'Белые',   accent: '#d4d4d8', bar: 'bg-zinc-300' },
+              { type: 'RED',   label: 'Красные', accent: '#ef4444', bar: 'bg-red-500'  },
+              { type: 'BLUE',  label: 'Синие',   accent: '#3b82f6', bar: 'bg-blue-500' },
+            ].map(({ type, label, accent, bar }) => {
               const qty = balance.find(b => b.itemType === type)?.quantity || 0;
+              const exp = expByColor[type] || 0;
               const pct = systemTotal > 0 ? (qty / systemTotal) * 100 : 0;
               return (
-                <div key={type} className={`relative ${bg} px-4 py-3`}>
+                <div key={type} className="relative px-4 py-3">
                   <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full" style={{ background: accent }} />
                   <div className="text-2xl font-black tabular-nums text-content-primary leading-none">{qty.toLocaleString()}</div>
                   <div className="text-xs text-content-muted mt-0.5">{label}</div>
-                  <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
+                  {exp > 0 && (
+                    <div className="text-[11px] font-semibold text-red-400 mt-0.5 tabular-nums">-{exp} расход</div>
+                  )}
+                  <div className="mt-1.5 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
                     <div className={`h-full rounded-full ${bar} transition-all duration-700`} style={{ width: `${pct}%` }} />
                   </div>
                   <div className="text-[10px] text-content-muted mt-0.5">{pct.toFixed(1)}%</div>
