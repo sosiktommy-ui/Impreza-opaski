@@ -1337,11 +1337,11 @@ export default function Inventory() {
 
       {/* Balance display for COUNTRY/CITY users (non-admin) */}
       {!isAdminOrOffice && balances.length > 0 && (() => {
-        const colorConfigs = {
-          BLACK: { gradient: 'from-gray-800 to-gray-900', icon: 'bg-gray-600', text: 'text-white', subtext: 'text-gray-300', dot: 'bg-gray-300' },
-          WHITE: { gradient: 'from-gray-100 to-gray-200 border border-gray-300', icon: 'bg-white border-2 border-gray-400', text: 'text-gray-800', subtext: 'text-gray-500', dot: 'bg-gray-600' },
-          RED: { gradient: 'from-red-500 to-red-600', icon: 'bg-red-400', text: 'text-white', subtext: 'text-red-100', dot: 'bg-white' },
-          BLUE: { gradient: 'from-blue-500 to-blue-600', icon: 'bg-blue-400', text: 'text-white', subtext: 'text-blue-100', dot: 'bg-white' },
+        const colorGrads = {
+          BLACK: 'from-zinc-600 to-zinc-900',
+          WHITE: 'from-zinc-300 to-zinc-500',
+          RED:   'from-red-400 to-red-700',
+          BLUE:  'from-blue-400 to-blue-700',
         };
         return (
           <Card>
@@ -1356,18 +1356,21 @@ export default function Inventory() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {COLORS.map((type) => {
-                const cfg = colorConfigs[type];
+                const qty = balanceMap[type] || 0;
+                const pct = totalBracelets > 0 ? (qty / totalBracelets) * 100 : 0;
                 return (
-                  <div key={type} className={`bg-gradient-to-br ${cfg.gradient} rounded-xl p-4 shadow-lg`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 ${cfg.icon} rounded-lg flex items-center justify-center shadow-inner`}>
-                        <div className={`w-4 h-4 rounded-full ${cfg.dot}`} />
+                  <div key={type} className={`bg-gradient-to-br ${colorGrads[type]} rounded-2xl p-4 shadow-md`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-2.5 h-2.5 rounded-full bg-white/80" />
                       </div>
-                      <div>
-                        <p className={`text-2xl font-bold ${cfg.text}`}>{(balanceMap[type] || 0).toLocaleString()}</p>
-                        <p className={`text-xs ${cfg.subtext}`}>{COLOR_LABELS[type]}</p>
-                      </div>
+                      <span className="text-xs font-medium text-white/70">{COLOR_LABELS[type]}</span>
                     </div>
+                    <div className="text-3xl font-black tabular-nums text-white leading-none">{qty.toLocaleString()}</div>
+                    <div className="mt-3 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                      <div className="h-full rounded-full bg-white/60 transition-all duration-700" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="text-[10px] text-white/50 mt-1">{pct.toFixed(1)}%</div>
                   </div>
                 );
               })}
