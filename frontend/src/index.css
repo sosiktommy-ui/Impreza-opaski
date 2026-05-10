@@ -4,19 +4,20 @@
 
 /* ── Design tokens ─────────────────────────── */
 :root {
-  --bg-primary: #f8f9fa;
-  --bg-secondary: #ffffff;
+  /* Light theme: violet-tinted background so white cards/sidebar pop */
+  --bg-primary: #ebe7f7;
+  --bg-secondary: #f5f2ff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f3f4f6;
+  --bg-card-hover: #f0ecff;
   --bg-elevated: #ffffff;
-  --border: #e5e7eb;
-  --border-light: #f3f4f6;
+  --border: #dcd7f0;
+  --border-light: #eae7f8;
   --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
+  --text-secondary: #5a5475;
+  --text-muted: #9490a8;
   --accent: #6c5ce7;
   --accent-hover: #7c6cf7;
-  --accent-glow: rgba(108, 92, 231, 0.15);
+  --accent-glow: rgba(108, 92, 231, 0.18);
   --success: #00b894;
   --warning: #fdcb6e;
   --danger: #e17055;
@@ -29,10 +30,11 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
-  --shadow-glow: 0 0 20px var(--accent-glow);
+  /* Brand-tinted shadows for light mode depth */
+  --shadow-sm: 0 1px 3px rgba(108,92,231,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 20px rgba(108,92,231,0.11), 0 2px 6px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 36px rgba(108,92,231,0.15), 0 4px 14px rgba(0,0,0,0.07);
+  --shadow-glow: 0 0 24px rgba(108,92,231,0.22);
 }
 
 .dark {
@@ -61,6 +63,18 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Light mode: gradient background for visual depth */
+html:not(.dark) body {
+  background: linear-gradient(145deg, #ece9f8 0%, #e8e5f5 40%, #eeeafc 100%);
+  background-attachment: fixed;
+}
+html:not(.dark) .bg-surface-primary {
+  background: transparent;
+}
+html:not(.dark) main.bg-surface-primary {
+  background: transparent;
 }
 
 /* Custom scrollbar */
