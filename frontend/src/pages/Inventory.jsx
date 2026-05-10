@@ -639,33 +639,33 @@ export default function Inventory() {
 
           {/* Balance Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
+            <div className="bg-gradient-to-br from-indigo-500 to-violet-700 rounded-2xl p-4 shadow-md">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
-                  <Package size={18} className="text-brand-500" />
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+                  <Package size={18} className="text-white" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-content-primary">{warehouseStats.total.toLocaleString()}</div>
-                  <div className="text-xs text-content-muted">Всего</div>
+                  <div className="text-2xl font-bold text-white">{warehouseStats.total.toLocaleString()}</div>
+                  <div className="text-xs text-white/70">Всего</div>
                 </div>
               </div>
             </div>
             {BRACELET_KEYS.map((key) => {
-              const colors = {
-                black: { bg: 'bg-gray-100 dark:bg-gray-800', dot: 'bg-gray-900 dark:bg-gray-300' },
-                white: { bg: 'bg-gray-50 dark:bg-gray-700', dot: 'bg-gray-300 dark:bg-gray-500 border border-gray-400' },
-                red: { bg: 'bg-red-50 dark:bg-red-900/30', dot: 'bg-red-500' },
-                blue: { bg: 'bg-blue-50 dark:bg-blue-900/30', dot: 'bg-blue-500' },
+              const grads = {
+                black: 'from-zinc-600 to-zinc-900',
+                white: 'from-zinc-300 to-zinc-500',
+                red:   'from-red-400 to-red-700',
+                blue:  'from-blue-400 to-blue-700',
               };
               return (
-                <div key={key} className="bg-surface-card rounded-[var(--radius-md)] border border-edge p-4">
+                <div key={key} className={`bg-gradient-to-br ${grads[key]} rounded-2xl p-4 shadow-md`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-[var(--radius-sm)] ${colors[key].bg} flex items-center justify-center`}>
-                      <div className={`w-4 h-4 rounded-full ${colors[key].dot}`} />
+                    <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+                      <div className="w-4 h-4 rounded-full bg-white/80" />
                     </div>
                     <div>
-                      <div className="text-2xl font-bold text-content-primary">{warehouseStats[key].toLocaleString()}</div>
-                      <div className="text-xs text-content-muted">{BRACELET_LABELS[key]}</div>
+                      <div className="text-2xl font-bold text-white">{warehouseStats[key].toLocaleString()}</div>
+                      <div className="text-xs text-white/70">{BRACELET_LABELS[key]}</div>
                     </div>
                   </div>
                 </div>
