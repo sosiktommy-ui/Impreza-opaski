@@ -231,15 +231,15 @@ export default function Layout() {
   const isDark = theme === 'dark';
 
   return (
-    <div className="h-dvh flex flex-col" style={{ background: isDark ? '#07070f' : undefined }}>
-      {/* Aurora animated background (dark mode only) */}
+    <div className="h-dvh flex flex-col" style={{ background: isDark ? '#0d0d14' : undefined }}>
+      {/* Aurora — very subtle depth layer, dark mode only */}
       {isDark && <AuroraBg />}
 
       <Header />
       <div className="flex flex-1 min-h-0" style={{ position: 'relative', zIndex: 1 }}>
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6"
-              style={{ position: 'relative', zIndex: 1 }}>
+              style={{ position: 'relative', zIndex: 1, background: isDark ? '#0d0d14' : undefined }}>
           {showFilterBar && <GlobalFilterBar />}
           <Outlet />
         </main>

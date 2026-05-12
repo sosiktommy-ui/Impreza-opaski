@@ -38,22 +38,22 @@
   --shadow-glow:0 0 24px rgba(108,92,231,0.22);
 }
 
-/* ── Dark / glassmorphism tokens ── */
+/* ── Dark tokens — professional, low saturation ── */
 .dark {
-  --bg-primary:    #07070f;
-  --bg-secondary:  rgba(10, 10, 22, 0.55);
-  --bg-card:       rgba(255, 255, 255, 0.045);
-  --bg-card-hover: rgba(255, 255, 255, 0.08);
-  --bg-elevated:   rgba(255, 255, 255, 0.07);
-  --border:        rgba(255, 255, 255, 0.085);
-  --border-light:  rgba(255, 255, 255, 0.05);
-  --text-primary:  #f0f0f5;
-  --text-secondary:#8888a2;
-  --text-muted:    #55556e;
-  --shadow-sm:  0 1px 4px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
-  --shadow-md:  0 4px 20px rgba(0,0,0,0.45);
-  --shadow-lg:  0 8px 40px rgba(0,0,0,0.55);
-  --shadow-glow:0 0 28px rgba(124,108,247,0.35);
+  --bg-primary:    #0d0d14;
+  --bg-secondary:  #111119;
+  --bg-card:       #16161f;
+  --bg-card-hover: #1c1c28;
+  --bg-elevated:   #1e1e2a;
+  --border:        #252535;
+  --border-light:  #1e1e2c;
+  --text-primary:  #e8e8f0;
+  --text-secondary:#7a7a90;
+  --text-muted:    #4a4a60;
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.6);
+  --shadow-glow:0 0 20px rgba(99,102,241,0.2);
 }
 
 * { -webkit-tap-highlight-color: transparent; }
@@ -67,22 +67,11 @@ body {
   transition: background 0.4s, color 0.3s;
 }
 
-/* Dark: solid near-black base so aurora pops through glass */
-.dark body { background: #07070f; }
+/* Dark: solid professional background */
+.dark body { background: #0d0d14; }
 
-/* Glass backdrop for structural dark surfaces */
-.dark .bg-surface-card {
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-}
-.dark .bg-surface-secondary {
-  backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
-}
-.dark .bg-surface-elevated {
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-}
+/* Sidebar and header: fully solid — no bleed-through from aurora */
+.dark .bg-surface-secondary { background: #111119 !important; }
 
 /* Light mode: gradient background for visual depth */
 html:not(.dark) body {
@@ -123,12 +112,13 @@ html:not(.dark) main.bg-surface-primary {
 .aurora-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(90px);
+  filter: blur(120px);
   opacity: 0;
   will-change: transform;
   transition: opacity 0.6s;
 }
-.dark .aurora-blob { opacity: 1; }
+/* Very subtle — just a faint depth hint, not a disco show */
+.dark .aurora-blob { opacity: 0.55; }
 
 .aurora-grain {
   position: absolute;
@@ -163,35 +153,36 @@ html:not(.dark) main.bg-surface-primary {
   45%     { transform: translate(-5vw,-6vh) scale(1.14); }
 }
 
+/* Muted, desaturated blobs — barely visible, just depth */
 .aurora-blob.a1 {
-  width: 65vw; height: 60vh;
-  background: radial-gradient(circle, #6c5ce7 0%, transparent 70%);
-  top: -10%; left: -10%;
-  animation: auroraFloat1 28s ease-in-out infinite;
+  width: 70vw; height: 65vh;
+  background: radial-gradient(circle, #2d2060 0%, transparent 70%);
+  top: -20%; left: -20%;
+  animation: auroraFloat1 35s ease-in-out infinite;
 }
 .aurora-blob.a2 {
   width: 55vw; height: 55vh;
-  background: radial-gradient(circle, #4f46e5 0%, transparent 70%);
-  top: 0%; right: -15%;
-  animation: auroraFloat2 34s ease-in-out infinite;
+  background: radial-gradient(circle, #1a1a40 0%, transparent 70%);
+  top: 5%; right: -20%;
+  animation: auroraFloat2 42s ease-in-out infinite;
 }
 .aurora-blob.a3 {
-  width: 60vw; height: 50vh;
-  background: radial-gradient(circle, #7c3aed 0%, transparent 70%);
-  bottom: -15%; left: 20%;
-  animation: auroraFloat3 30s ease-in-out infinite;
+  width: 65vw; height: 55vh;
+  background: radial-gradient(circle, #231850 0%, transparent 70%);
+  bottom: -20%; left: 15%;
+  animation: auroraFloat3 38s ease-in-out infinite;
 }
 .aurora-blob.a4 {
   width: 40vw; height: 45vh;
-  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
-  bottom: 10%; right: 5%;
-  animation: auroraFloat4 38s ease-in-out infinite;
+  background: radial-gradient(circle, #12183a 0%, transparent 70%);
+  bottom: 5%; right: 0%;
+  animation: auroraFloat4 48s ease-in-out infinite;
 }
 .aurora-blob.a5 {
   width: 50vw; height: 40vh;
-  background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
-  top: 40%; left: 30%;
-  animation: auroraFloat5 25s ease-in-out infinite;
+  background: radial-gradient(circle, #1f1545 0%, transparent 70%);
+  top: 35%; left: 25%;
+  animation: auroraFloat5 30s ease-in-out infinite;
 }
 
 /* ═══════════════════════════════════════════
