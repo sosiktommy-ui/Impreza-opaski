@@ -3,10 +3,8 @@ import { useState, useEffect } from 'react';
 import { Globe, MapPin, Calendar, X, ChevronDown, Search } from 'lucide-react';
 import Header from './Header';
 import Sidebar from './Sidebar';
-import AuroraBg from '../ui/AuroraBg';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useFilterStore } from '../../store/useAppStore';
-import { useThemeStore } from '../../store/useThemeStore';
 import { usersApi } from '../../api/users';
 import { eventsApi } from '../../api/events';
 
@@ -227,19 +225,13 @@ function GlobalFilterBar() {
 export default function Layout() {
   const location = useLocation();
   const showFilterBar = !EXCLUDED_PATHS.some(p => location.pathname.startsWith(p));
-  const theme = useThemeStore((s) => s.theme);
-  const isDark = theme === 'dark';
 
   return (
-    <div className="h-dvh flex flex-col" style={{ background: isDark ? '#0d0d14' : undefined }}>
-      {/* Aurora — very subtle depth layer, dark mode only */}
-      {isDark && <AuroraBg />}
-
+    <div className="h-dvh flex flex-col bg-surface-primary">
       <Header />
-      <div className="flex flex-1 min-h-0" style={{ position: 'relative', zIndex: 1 }}>
+      <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6"
-              style={{ position: 'relative', zIndex: 1, background: isDark ? '#0d0d14' : undefined }}>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {showFilterBar && <GlobalFilterBar />}
           <Outlet />
         </main>

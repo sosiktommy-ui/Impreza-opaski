@@ -38,22 +38,22 @@
   --shadow-glow:0 0 24px rgba(108,92,231,0.22);
 }
 
-/* ── Dark tokens — professional, low saturation ── */
+/* ── Dark tokens — deep navy, Apple-level refinement ── */
 .dark {
-  --bg-primary:    #0d0d14;
-  --bg-secondary:  #111119;
-  --bg-card:       #16161f;
-  --bg-card-hover: #1c1c28;
-  --bg-elevated:   #1e1e2a;
-  --border:        #252535;
-  --border-light:  #1e1e2c;
-  --text-primary:  #e8e8f0;
-  --text-secondary:#7a7a90;
-  --text-muted:    #4a4a60;
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
-  --shadow-md:  0 4px 16px rgba(0,0,0,0.5);
-  --shadow-lg:  0 8px 32px rgba(0,0,0,0.6);
-  --shadow-glow:0 0 20px rgba(99,102,241,0.2);
+  --bg-primary:    #0c0c18;
+  --bg-secondary:  #101020;
+  --bg-card:       #15152a;
+  --bg-card-hover: #1a1a32;
+  --bg-elevated:   #1c1c30;
+  --border:        rgba(255,255,255,0.07);
+  --border-light:  rgba(255,255,255,0.04);
+  --text-primary:  #e8e8f2;
+  --text-secondary:#6868a0;
+  --text-muted:    #404060;
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+  --shadow-lg:  0 12px 40px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05);
+  --shadow-glow:0 0 24px rgba(99,102,241,0.22);
 }
 
 * { -webkit-tap-highlight-color: transparent; }
@@ -67,11 +67,23 @@ body {
   transition: background 0.4s, color 0.3s;
 }
 
-/* Dark: solid professional background */
-.dark body { background: #0d0d14; }
+/* Dark: Apple-style mesh gradient — deep navy with subtle colour at corners */
+.dark body {
+  background:
+    radial-gradient(ellipse 90% 70% at -5% -10%, rgba(88,80,200,0.13) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 60% at 108% 108%, rgba(67,56,202,0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 100%, rgba(45,40,100,0.08) 0%, transparent 60%),
+    #0c0c18;
+  background-attachment: fixed;
+}
 
-/* Sidebar and header: fully solid — no bleed-through from aurora */
-.dark .bg-surface-secondary { background: #111119 !important; }
+/* Sidebar and header: frosted glass — macOS style */
+.dark .bg-surface-secondary {
+  background: rgba(14, 14, 26, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border-color: rgba(255,255,255,0.07) !important;
+}
 
 /* Light mode: gradient background for visual depth */
 html:not(.dark) body {
