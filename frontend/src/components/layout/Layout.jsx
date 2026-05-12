@@ -3,8 +3,10 @@ import { useState, useEffect } from 'react';
 import { Globe, MapPin, Calendar, X, ChevronDown, Search } from 'lucide-react';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import AuroraBg from '../ui/AuroraBg';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useFilterStore } from '../../store/useAppStore';
+import { useThemeStore } from '../../store/useThemeStore';
 import { usersApi } from '../../api/users';
 import { eventsApi } from '../../api/events';
 
@@ -225,13 +227,19 @@ function GlobalFilterBar() {
 export default function Layout() {
   const location = useLocation();
   const showFilterBar = !EXCLUDED_PATHS.some(p => location.pathname.startsWith(p));
+  const theme = useThemeStore((s) => s.theme);
+  const isDark = theme === 'dark';
 
   return (
-    <div className="h-dvh flex flex-col bg-surface-primary">
+    <div className="h-dvh flex flex-col" style={{ background: isDark ? '#07070f' : undefined }}>
+      {/* Aurora animated background (dark mode only) */}
+      {isDark && <AuroraBg />}
+
       <Header />
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0" style={{ position: 'relative', zIndex: 1 }}>
         <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-surface-primary p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6"
+              style={{ position: 'relative', zIndex: 1 }}>
           {showFilterBar && <GlobalFilterBar />}
           <Outlet />
         </main>

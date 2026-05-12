@@ -149,7 +149,7 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-surface-secondary border-b border-edge px-4 h-14 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-surface-secondary border-b border-edge px-4 h-14 flex items-center justify-between" style={{ position: 'relative', zIndex: 30 }}>
       <div className="flex items-center gap-3">
         <button
           onClick={toggleSidebar}

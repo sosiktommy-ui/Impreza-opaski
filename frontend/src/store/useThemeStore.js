@@ -8,7 +8,7 @@ const getInitialTheme = () => {
     if (stored === 'dark' || stored === 'light') return stored;
     if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
   } catch {}
-  return 'light';
+  return 'dark'; // default to dark — animated aurora theme
 };
 
 export const useThemeStore = create((set) => ({
