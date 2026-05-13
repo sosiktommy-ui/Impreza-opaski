@@ -57,8 +57,9 @@ async function main() {
     );
     if (hasCityId[0]?.exists) {
       // Ensure primary_city_id column exists (it may already from a previous partial run)
+      // Prisma maps String → TEXT in PostgreSQL
       await prisma.$executeRawUnsafe(
-        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "primary_city_id" UUID`,
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "primary_city_id" TEXT`,
       );
       await prisma.$executeRawUnsafe(`
         UPDATE "users"
