@@ -17,29 +17,20 @@ export class EventsController {
   ) {}
 
   @Get()
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   async getEvents(
     @Query('city') city?: string,
     @Query('country') country?: string,
     @Query('active') active?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
-    // Auto-filter for CITY role: always force their city scope
-    if (user?.role === Role.CITY && user.cityId) {
+    // Auto-filter for USER role: show events for their primary city
+    if (user?.role === Role.USER && user.primaryCityId) {
       const cityEntity = await this.prisma.city.findUnique({
-        where: { id: user.cityId },
+        where: { id: user.primaryCityId },
         select: { name: true },
       });
-      if (cityEntity) city = cityEntity.name;
-    }
-
-    // Auto-filter for COUNTRY role: always force their country scope
-    if (user?.role === Role.COUNTRY && user.countryId) {
-      const countryEntity = await this.prisma.country.findUnique({
-        where: { id: user.countryId },
-        select: { code: true },
-      });
-      if (countryEntity) country = countryEntity.code;
+      if (cityEntity && !city) city = cityEntity.name;
     }
 
     return this.eventsService.getEvents({ city, country, active: active === 'true' });

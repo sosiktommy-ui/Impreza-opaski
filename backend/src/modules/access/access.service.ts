@@ -34,7 +34,7 @@ export class AccessService {
 
     // Resolve target names for scoped accesses (polymorphic scopeId)
     const cityIds = accesses.filter(a => a.scopeType === 'CITY' && a.scopeId).map(a => a.scopeId as string);
-    const countryIds = accesses.filter(a => a.scopeType === 'COUNTRY' && a.scopeId).map(a => a.scopeId as string);
+    const countryIds = accesses.filter(a => a.scopeType === ('COUNTRY' as any) && a.scopeId).map(a => a.scopeId as string);
 
     const [cities, countries] = await Promise.all([
       cityIds.length > 0
@@ -158,7 +158,7 @@ export class AccessService {
       accessType === AccessType.PARTIAL &&
       (scopeType === ScopeType.GLOBAL || scopeType === ScopeType.OFFICE)
     ) {
-      throw new BadRequestException('PARTIAL access is allowed only for COUNTRY and CITY scopes');
+      throw new BadRequestException('PARTIAL access is allowed only for CITY scope');
     }
   }
 
@@ -177,7 +177,7 @@ export class AccessService {
     if (scopeType === ScopeType.OFFICE) {
       const office = await this.prisma.office.findUnique({ where: { id: scopeId } });
       if (!office) throw new BadRequestException('Office not found');
-    } else if (scopeType === ScopeType.COUNTRY) {
+    } else if ((scopeType as string) === 'COUNTRY') {
       const country = await this.prisma.country.findUnique({ where: { id: scopeId } });
       if (!country) throw new BadRequestException('Country not found');
     } else if (scopeType === ScopeType.CITY) {

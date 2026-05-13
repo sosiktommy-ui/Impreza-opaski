@@ -28,10 +28,9 @@ import {
 } from 'class-validator';
 
 const ROLE_HIERARCHY: Record<string, number> = {
-  [Role.ADMIN]: 4,
-  [Role.OFFICE]: 3,
-  [Role.COUNTRY]: 2,
-  [Role.CITY]: 1,
+  [Role.ADMIN]: 3,
+  [Role.OFFICE]: 2,
+  [Role.USER]: 1,
 };
 
 class CreateUserDto {
@@ -138,8 +137,7 @@ export class UsersController {
   getCountries(@CurrentUser() user?: AuthenticatedUser) {
     return this.usersService.getCountries({
       role: user?.role,
-      countryId: user?.countryId ?? undefined,
-      cityId: user?.cityId ?? undefined,
+      cityId: user?.primaryCityId ?? undefined,
     });
   }
 
@@ -157,9 +155,7 @@ export class UsersController {
     // COUNTRY role can only see cities in its own country.
     // CITY can pick cities in any country (for outgoing transfers).
     let scopedCountryId = countryId;
-    if (user.role === 'COUNTRY') {
-      scopedCountryId = user.countryId ?? undefined;
-    }
+    // No COUNTRY role exists — all users use primaryCityId
     return this.usersService.getCities(scopedCountryId);
   }
 

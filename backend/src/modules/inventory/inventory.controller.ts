@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -8,11 +8,8 @@ import {
   Query,
   UseGuards,
   BadRequestException,
-  ForbiddenException,
   Logger,
-  Req,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { InventoryService } from './inventory.service';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -21,41 +18,18 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AllowAccessTypes } from '../auth/decorators/allow-access-types.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthenticatedUser, JwtPayload } from '../auth/auth.service';
-import { AccessType, Role, EntityType, ItemType, ScopeType } from '@prisma/client';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
-
-class AdjustBalanceDto {
-  @IsEnum(EntityType)
-  entityType!: EntityType;
-
-  @IsString()
-  @IsNotEmpty()
-  entityId!: string;
-
-  @IsEnum(ItemType)
-  itemType!: ItemType;
-
-  @IsInt()
-  delta!: number;
-
-  @IsString()
-  @IsNotEmpty()
-  reason!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  password!: string;
-}
+import { AuthenticatedUser } from '../auth/auth.service';
+import { AccessType, Role } from '@prisma/client';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 class CreateExpenseDto {
   @IsString()
-  @IsOptional()
-  cityId?: string;
+  @IsNotEmpty()
+  cityId!: string;
 
   @IsString()
-  @IsOptional()
-  userId?: string;
+  @IsNotEmpty()
+  userId!: string; // creator — balance deducted from this person
 
   @IsString()
   @IsNotEmpty()
@@ -71,11 +45,7 @@ class CreateExpenseDto {
 
   @IsString()
   @IsOptional()
-  type?: string; // INTERNAL or EXTERNAL
-
-  @IsString()
-  @IsOptional()
-  targetCityId?: string; // required when type=EXTERNAL
+  type?: string;
 
   @IsInt()
   @Min(0)
@@ -99,6 +69,10 @@ class CreateExpenseDto {
 }
 
 class CreateBraceletsDto {
+  @IsString()
+  @IsNotEmpty()
+  recipientUserId!: string; // USER whose balance receives the bracelets
+
   @IsInt()
   @Min(0)
   black!: number;
@@ -121,18 +95,14 @@ class CreateBraceletsDto {
 
   @IsString()
   @IsOptional()
-  officeId?: string; // For ADMIN to specify which office
-
-  @IsString()
-  @IsOptional()
-  password?: string; // For 2FA verification
+  password?: string;
 }
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, RolesGuard, AccessTypeGuard)
 export class InventoryController {
   private readonly logger = new Logger('InventoryController');
-  
+
   constructor(
     private readonly inventoryService: InventoryService,
     private readonly authService: AuthService,
@@ -140,49 +110,42 @@ export class InventoryController {
 
   @Get('map')
   getMapData(@CurrentUser() user: AuthenticatedUser) {
-    return this.inventoryService.getMapData(user);
-  }
-
-  @Get()
-  @Roles(Role.ADMIN, Role.OFFICE)
-  getAllBalances(
-    @Query('countryId') countryId?: string,
-    @Query('cityId') cityId?: string,
-  ) {
-    // ADMIN and OFFICE both see system-wide inventory across every country/city/office
-    return this.inventoryService.getAllBalances({ countryId, cityId });
+    return this.inventoryService.getMapData({
+      role: user.role,
+      officeId: user.officeId,
+      primaryCityId: (user as any).primaryCityId ?? null,
+    });
   }
 
   @Get('my')
-  getMyBalance(@CurrentUser() user: AuthenticatedUser) {
-    if (user.role === Role.CITY && user.cityId) {
-      return this.inventoryService.getBalance(EntityType.CITY, user.cityId);
+  async getMyBalance(@CurrentUser() user: AuthenticatedUser) {
+    if (user.role === Role.USER) {
+      const primaryCityId = (user as any).primaryCityId;
+      if (primaryCityId) return this.inventoryService.getBalance(primaryCityId);
+      return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
     }
-    if (user.role === Role.COUNTRY && user.countryId) {
-      return this.inventoryService.getBalancesByCountry(user.countryId);
-    }
-    if (user.role === Role.ADMIN || user.role === Role.OFFICE) {
-      return this.inventoryService.getAllBalances();
-    }
-    return {};
+    // ADMIN/OFFICE: no personal balance — return empty
+    return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+  }
+
+  @Get('city/:cityId')
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
+  getByCity(@Param('cityId') cityId: string) {
+    return this.inventoryService.getBalance(cityId);
   }
 
   @Get('country/:countryId')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
-  getByCountry(
-    @Param('countryId') countryId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    // COUNTRY can only view their own country
-    if (user.role === Role.COUNTRY && user.countryId !== countryId) {
-      throw new ForbiddenException('Access denied to this country');
-    }
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getByCountry(@Param('countryId') countryId: string) {
     return this.inventoryService.getBalancesByCountry(countryId);
   }
 
-  // Static routes MUST come before parameterised routes
+  // ──────────────────────────────────────────────
+  // EXPENSES
+  // ──────────────────────────────────────────────
+
   @Get('expenses')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   getExpenses(
     @Query('cityId') cityId?: string,
     @Query('countryId') countryId?: string,
@@ -190,202 +153,76 @@ export class InventoryController {
     @Query('type') type?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
-    @Query('includeTargeted') includeTargeted?: string,
     @CurrentUser() user?: AuthenticatedUser,
   ) {
     let scopedCityId = cityId;
-    let scopedCountryId = countryId;
     let scopedUserId = userId;
-    let shouldIncludeTargeted = includeTargeted === 'true';
 
-    if (user?.role === Role.CITY) {
-      // CITY users see expenses for their city (both internal and incoming external)
-      scopedCityId = user.cityId ?? cityId;
-      scopedUserId = undefined;
-      scopedCountryId = undefined;
-      shouldIncludeTargeted = true;
-    } else if (user?.role === Role.COUNTRY && user.countryId) {
-      scopedCountryId = user.countryId;
+    // USER sees only their own primary city expenses
+    if (user?.role === Role.USER) {
+      scopedUserId = user.id;
+      scopedCityId = undefined;
     }
 
     return this.inventoryService.getExpenses({
       cityId: scopedCityId,
-      countryId: scopedCountryId,
+      countryId,
       userId: scopedUserId,
       type,
       page,
       limit,
-      includeTargeted: shouldIncludeTargeted,
-    });
-  }
-
-  // NOTE: Parametric route moved to the end of controller to avoid matching before static routes
-
-  @Post('adjust')
-  @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE)
-  async adjustBalance(
-    @Body() dto: AdjustBalanceDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    // Verify password for 2FA
-    const isValid = await this.authService.verifyPassword(user.id, dto.password);
-    if (!isValid) {
-      throw new BadRequestException('Неверный пароль');
-    }
-    return this.inventoryService.adjustBalance({
-      entityType: dto.entityType,
-      entityId: dto.entityId,
-      itemType: dto.itemType,
-      delta: dto.delta,
-      reason: dto.reason,
-      actorId: user.id,
     });
   }
 
   @Post('expense')
   @AllowAccessTypes(AccessType.FULL, AccessType.PARTIAL)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE)
   async createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Req() request: Request,
   ) {
-    // CITY role always uses own cityId
-    // ADMIN/OFFICE/COUNTRY must provide cityId in dto
-    let targetCityId = dto.cityId;
-    if (user.role === Role.CITY && user.cityId) {
-      targetCityId = user.cityId;
-    }
-    if (!targetCityId) {
-      throw new BadRequestException('cityId is required');
-    }
+    if (!dto.cityId) throw new BadRequestException('cityId is required');
+    if (!dto.userId) throw new BadRequestException('userId is required');
 
-    const payload = (request as any).jwtPayload as JwtPayload | undefined;
-    if (payload?.accessType === AccessType.PARTIAL) {
-      const expenseType = (dto.type ?? 'INTERNAL').toUpperCase();
-      if (expenseType !== 'EXTERNAL') {
-        throw new ForbiddenException('PARTIAL access can create only EXTERNAL expenses');
-      }
-
-      if (payload.scopeType === ScopeType.CITY) {
-        if (!payload.scopeId || targetCityId !== payload.scopeId) {
-          throw new ForbiddenException('PARTIAL CITY access can spend only from its own city');
-        }
-      } else if (payload.scopeType === ScopeType.COUNTRY) {
-        if (!payload.scopeId) {
-          throw new ForbiddenException('PARTIAL COUNTRY access is invalid');
-        }
-        const sourceCountryId = await this.inventoryService.getCityCountryId(targetCityId);
-        if (!sourceCountryId || sourceCountryId !== payload.scopeId) {
-          throw new ForbiddenException('PARTIAL COUNTRY access can spend only from its own country');
-        }
-      } else {
-        throw new ForbiddenException('PARTIAL access is allowed only for COUNTRY or CITY scopes');
-      }
-    }
-    // COUNTRY can only create expenses for cities in their own country
-    if (user.role === Role.COUNTRY && user.countryId) {
-      const cityCountryId = await this.inventoryService.getCityCountryId(targetCityId);
-      if (cityCountryId !== user.countryId) {
-        throw new ForbiddenException('Вы можете добавлять расходы только для своих городов');
-      }
-    }
-    // Phase 5: «whose balance». CITY/COUNTRY → self by default; ADMIN/OFFICE may pass explicit userId.
-    let consumerUserId: string | null = dto.userId ?? null;
-    if (!consumerUserId && (user.role === Role.CITY || user.role === Role.COUNTRY)) {
-      consumerUserId = user.id;
-    }
     return this.inventoryService.createExpense({
-      ...dto,
-      cityId: targetCityId,
-      userId: consumerUserId,
-      actorId: user.id,
-      actorRole: user.role,
+      cityId: dto.cityId,
+      userId: dto.userId,
+      eventName: dto.eventName,
+      eventDate: dto.eventDate,
+      location: dto.location,
       type: dto.type,
-      targetCityId: dto.targetCityId,
+      black: dto.black,
+      white: dto.white,
+      red: dto.red,
+      blue: dto.blue,
+      notes: dto.notes,
+      actorId: user.id,
     });
   }
 
   @Delete('expense/:id')
   @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
-  deleteExpense(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  deleteExpense(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.inventoryService.deleteExpense(id, user.id);
   }
 
   // ──────────────────────────────────────────────
-  // WAREHOUSE ENDPOINTS (ADMIN/OFFICE)
+  // WAREHOUSE
   // ──────────────────────────────────────────────
-
-  @Get('warehouse/balance')
-  @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE)
-  async getWarehouseBalance(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query('officeId') queryOfficeId?: string,
-  ) {
-    this.logger.log(`getWarehouseBalance: user=${user.id}, role=${user.role}, queryOfficeId=${queryOfficeId}`);
-    
-    try {
-      if (user.role === Role.ADMIN) {
-        if (queryOfficeId) {
-          this.logger.log(`ADMIN viewing OFFICE balance for ${queryOfficeId}`);
-          return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, queryOfficeId);
-        }
-        this.logger.log(`ADMIN viewing own ADMIN balance only`);
-        return await this.inventoryService.getWarehouseBalance(EntityType.ADMIN);
-      } else {
-        return await this.inventoryService.getWarehouseBalance(EntityType.OFFICE, user.officeId!);
-      }
-    } catch (error: any) {
-      this.logger.error(`getWarehouseBalance error: ${error?.message}`, error?.stack);
-      // Return empty balance instead of 500 to avoid CORS blocking
-      return { black: 0, white: 0, red: 0, blue: 0 };
-    }
-  }
 
   @Get('warehouse/creation-history')
   @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
   async getWarehouseHistory(
-    @CurrentUser() user: AuthenticatedUser,
+    @Query('recipientUserId') recipientUserId?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
-    @Query('officeId') queryOfficeId?: string,
   ) {
-    this.logger.log(`getWarehouseHistory: user=${user.id}, role=${user.role}, queryOfficeId=${queryOfficeId}`);
-    
     try {
-      if (user.role === Role.ADMIN) {
-        if (queryOfficeId) {
-          return await this.inventoryService.getWarehouseCreationHistory({
-            entityType: EntityType.OFFICE,
-            officeId: queryOfficeId,
-            page,
-            limit,
-          });
-        }
-        // Show only ADMIN's own creations
-        return await this.inventoryService.getWarehouseCreationHistory({
-          entityType: EntityType.ADMIN,
-          page,
-          limit,
-        });
-      } else {
-        return await this.inventoryService.getWarehouseCreationHistory({
-          entityType: EntityType.OFFICE,
-          officeId: user.officeId!,
-          page,
-          limit,
-        });
-      }
+      return await this.inventoryService.getWarehouseCreationHistory({ recipientUserId, page, limit });
     } catch (error: any) {
       this.logger.error(`getWarehouseHistory error: ${error?.message}`, error?.stack);
-      // Return empty history instead of 500 to avoid CORS blocking
       return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     }
   }
@@ -397,30 +234,14 @@ export class InventoryController {
     @Body() dto: CreateBraceletsDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    this.logger.log(`=== CREATE BRACELETS REQUEST ===`);
-    this.logger.log(`User: ${user.id}, Role: ${user.role}, OfficeId: ${user.officeId}`);
-    this.logger.log(`DTO: ${JSON.stringify(dto)}`);
-    
-    // Determine entity type and officeId
-    const entityType = user.role === Role.ADMIN ? EntityType.ADMIN : EntityType.OFFICE;
-    
-    // ADMIN can specify officeId from request, OFFICE uses their own officeId
-    let officeId: string | undefined;
-    if (user.role === Role.ADMIN) {
-      // If ADMIN specifies officeId, use OFFICE entity type instead of ADMIN
-      officeId = dto.officeId || undefined;
-    } else {
-      officeId = user.officeId || undefined;
+    // Optional 2FA password check
+    if (dto.password) {
+      const isValid = await this.authService.verifyPassword(user.id, dto.password);
+      if (!isValid) throw new BadRequestException('Неверный пароль');
     }
 
-    // If ADMIN specified an officeId, treat as OFFICE creation, else as ADMIN creation
-    const finalEntityType = (user.role === Role.ADMIN && officeId) ? EntityType.OFFICE : entityType;
-    
-    this.logger.log(`Final: entityType=${finalEntityType}, officeId=${officeId}`);
-
-    const result = await this.inventoryService.createBracelets({
-      entityType: finalEntityType,
-      officeId,
+    return this.inventoryService.createBracelets({
+      recipientUserId: dto.recipientUserId,
       black: dto.black,
       white: dto.white,
       red: dto.red,
@@ -428,33 +249,20 @@ export class InventoryController {
       notes: dto.notes,
       actorId: user.id,
     });
-    
-    this.logger.log(`Created: ${JSON.stringify(result)}`);
-    return result;
   }
 
   // ──────────────────────────────────────────────
-  // COMPANY LOSSES ENDPOINTS
+  // COMPANY LOSSES
   // ──────────────────────────────────────────────
 
   @Get('company-losses/summary')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE)
   async getCompanyLossesSummary(
     @Query('countryId') countryId?: string,
     @Query('cityId') cityId?: string,
-    @Query('scope') scope?: string,
-    @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
-      // Force scope for COUNTRY/CITY roles
-      let scopedCountryId = countryId;
-      let scopedCityId = cityId;
-      if (user?.role === Role.CITY && user.cityId) {
-        scopedCityId = user.cityId;
-      } else if (user?.role === Role.COUNTRY && user.countryId) {
-        scopedCountryId = user.countryId;
-      }
-      return await this.inventoryService.getCompanyLossesSummary({ countryId: scopedCountryId, cityId: scopedCityId, scope });
+      return await this.inventoryService.getCompanyLossesSummary({ countryId, cityId });
     } catch (error: any) {
       this.logger.error(`getCompanyLossesSummary error: ${error?.message}`, error?.stack);
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
@@ -462,37 +270,16 @@ export class InventoryController {
   }
 
   @Get('company-losses')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE)
   async getCompanyLosses(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('countryId') countryId?: string,
-    @Query('cityId') cityId?: string,
-    @Query('scope') scope?: string,
     @Query('search') search?: string,
-    @CurrentUser() user?: AuthenticatedUser,
   ) {
     try {
-      // Force scope for COUNTRY/CITY roles
-      let scopedCountryId = countryId;
-      let scopedCityId = cityId;
-      if (user?.role === Role.CITY && user.cityId) {
-        scopedCityId = user.cityId;
-      } else if (user?.role === Role.COUNTRY && user.countryId) {
-        scopedCountryId = user.countryId;
-      }
-      return await this.inventoryService.getCompanyLosses({
-        page,
-        limit,
-        startDate,
-        endDate,
-        countryId: scopedCountryId,
-        cityId: scopedCityId,
-        scope,
-        search,
-      });
+      return await this.inventoryService.getCompanyLosses({ page, limit, startDate, endDate, search });
     } catch (error: any) {
       this.logger.error(`getCompanyLosses error: ${error?.message}`, error?.stack);
       return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
@@ -500,7 +287,7 @@ export class InventoryController {
   }
 
   // ──────────────────────────────────────────────
-  // SYSTEM MINUS: Total Created - All Balances
+  // SYSTEM MINUS & LOSSES
   // ──────────────────────────────────────────────
 
   @Get('system-minus/summary')
@@ -514,10 +301,6 @@ export class InventoryController {
     }
   }
 
-  // ──────────────────────────────────────────────
-  // SYSTEM LOSSES ENDPOINTS (Company + Account Shortages)
-  // ──────────────────────────────────────────────
-
   @Get('system-losses/summary')
   @Roles(Role.ADMIN, Role.OFFICE)
   async getSystemLossesSummary() {
@@ -528,67 +311,5 @@ export class InventoryController {
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
     }
   }
-
-  @Get('system-losses')
-  @Roles(Role.ADMIN, Role.OFFICE)
-  async getSystemLosses(
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-  ) {
-    try {
-      return await this.inventoryService.getSystemLosses({ page, limit });
-    } catch (error: any) {
-      this.logger.error(`getSystemLosses error: ${error?.message}`, error?.stack);
-      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
-    }
-  }
-
-  @Get('account-losses/:entityType/:entityId')
-  @Roles(Role.ADMIN, Role.OFFICE)
-  async getAccountLosses(
-    @Param('entityType') entityType: string,
-    @Param('entityId') entityId: string,
-  ) {
-    try {
-      return await this.inventoryService.getAccountLosses(entityType, entityId);
-    } catch (error: any) {
-      this.logger.error(`getAccountLosses error: ${error?.message}`, error?.stack);
-      return { data: [], summary: { total: 0, black: 0, white: 0, red: 0, blue: 0 } };
-    }
-  }
-
-  // ──────────────────────────────────────────────
-  // PARAMETRIC ROUTE - MUST BE LAST!
-  // ──────────────────────────────────────────────
-  // This route catches :entityType/:entityId patterns.
-  // It MUST be after all static routes like warehouse/balance, company-losses/summary
-  // otherwise NestJS will match those requests to this parametric route.
-
-  @Get(':entityType/:entityId')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
-  async getBalance(
-    @Param('entityType') entityType: EntityType,
-    @Param('entityId') entityId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    // Scope check: COUNTRY can only view own country or own cities
-    if (user.role === Role.COUNTRY && user.countryId) {
-      if (entityType === EntityType.COUNTRY && entityId !== user.countryId) {
-        throw new ForbiddenException('Access denied');
-      }
-      if (entityType === EntityType.CITY) {
-        const city = await this.inventoryService.getCityCountryId(entityId);
-        if (city !== user.countryId) {
-          throw new ForbiddenException('Access denied');
-        }
-      }
-    }
-    // Scope check: CITY can only view own city
-    if (user.role === Role.CITY && user.cityId) {
-      if (entityType !== EntityType.CITY || entityId !== user.cityId) {
-        throw new ForbiddenException('Access denied');
-      }
-    }
-    return this.inventoryService.getBalance(entityType, entityId);
-  }
 }
+

@@ -54,8 +54,7 @@ export interface AuthenticatedUser {
   displayName: string;
   avatarUrl?: string | null;
   officeId: string | null;
-  countryId: string | null;
-  cityId: string | null;
+  primaryCityId: string | null;
 }
 
 @Injectable()
@@ -111,8 +110,7 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       officeId: user.officeId,
-      countryId: user.countryId,
-      cityId: user.cityId,
+      primaryCityId: user.primaryCityId ?? null,
     };
   }
 
@@ -164,14 +162,6 @@ export class AuthService {
     }
     if (access.scopeType === ScopeType.OFFICE) {
       return { officeId: access.scopeId, countryId: null, cityId: null };
-    }
-    if (access.scopeType === ScopeType.COUNTRY) {
-      const country = await this.prisma.country.findUnique({
-        where: { id: access.scopeId },
-        select: { id: true, officeId: true },
-      });
-      if (!country) throw new UnauthorizedException('Country no longer exists');
-      return { officeId: country.officeId ?? null, countryId: country.id, cityId: null };
     }
     if (access.scopeType === ScopeType.CITY) {
       const city = await this.prisma.city.findUnique({
@@ -229,6 +219,12 @@ export class AuthService {
       throw new UnauthorizedException('No full access available for this user');
     }
 
+    // USER role can log in directly without scope selection (they have CITY scope)
+    if (user.role === Role.USER) {
+      const cityAccess = fullAccesses.find((a) => a.scopeType === ScopeType.CITY);
+      if (cityAccess) return cityAccess;
+    }
+
     if (user.role !== Role.ADMIN && user.role !== Role.OFFICE) {
       throw new UnauthorizedException('Scope selection is required for this account');
     }
@@ -236,14 +232,13 @@ export class AuthService {
     // Prefer access matching legacy user fields
     const legacyMatch = fullAccesses.find((a) => {
       if (a.scopeType === ScopeType.OFFICE && a.scopeId === user.officeId) return true;
-      if (a.scopeType === ScopeType.COUNTRY && a.scopeId === user.countryId) return true;
-      if (a.scopeType === ScopeType.CITY && a.scopeId === user.cityId) return true;
+      if (a.scopeType === ScopeType.CITY && a.scopeId === user.primaryCityId) return true;
       if (a.scopeType === ScopeType.GLOBAL && user.role === Role.ADMIN) return true;
       return false;
     });
     if (legacyMatch) return legacyMatch;
 
-    const priority: ScopeType[] = [ScopeType.GLOBAL, ScopeType.OFFICE, ScopeType.COUNTRY, ScopeType.CITY];
+    const priority: ScopeType[] = [ScopeType.GLOBAL, ScopeType.OFFICE, ScopeType.CITY];
     for (const t of priority) {
       const match = fullAccesses.find((a) => a.scopeType === t);
       if (match) return match;
@@ -292,8 +287,7 @@ export class AuthService {
       displayName: storedToken.user.displayName,
       avatarUrl: storedToken.user.avatarUrl,
       officeId: storedToken.user.officeId,
-      countryId: storedToken.user.countryId,
-      cityId: storedToken.user.cityId,
+      primaryCityId: storedToken.user.primaryCityId ?? null,
     };
 
     // If the previous access was bound to a specific scope and that scope is
@@ -404,8 +398,15 @@ export class AuthService {
       where: { id: payload.sub },
       include: {
         office: { select: { id: true, name: true, code: true } },
-        country: { select: { id: true, name: true, code: true } },
-        city: { select: { id: true, name: true, slug: true, countryId: true } },
+        primaryCity: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            countryId: true,
+            country: { select: { id: true, name: true, code: true } },
+          },
+        },
       },
     });
 
@@ -430,12 +431,10 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       officeId: payload.officeId ?? user.officeId,
-      countryId: payload.countryId ?? user.countryId,
-      cityId: payload.cityId ?? user.cityId,
+      primaryCityId: user.primaryCityId ?? payload.cityId ?? null,
       office: user.office || undefined,
-      country: user.country || undefined,
-      city: user.city || undefined,
-    } as AuthenticatedUser & { office?: any; country?: any; city?: any };
+      primaryCity: user.primaryCity || undefined,
+    } as AuthenticatedUser & { office?: any; primaryCity?: any };
   }
 
   /**
@@ -472,8 +471,15 @@ export class AuthService {
       where: { id: userId },
       include: {
         office: { select: { id: true, name: true, code: true } },
-        country: { select: { id: true, name: true, code: true } },
-        city: { select: { id: true, name: true, slug: true, countryId: true } },
+        primaryCity: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            countryId: true,
+            country: { select: { id: true, name: true, code: true } },
+          },
+        },
       },
     });
     if (!userRow || !userRow.isActive || userRow.loginDisabled) {
@@ -488,8 +494,7 @@ export class AuthService {
       displayName: userRow.displayName,
       avatarUrl: userRow.avatarUrl,
       officeId: userRow.officeId,
-      countryId: userRow.countryId,
-      cityId: userRow.cityId,
+      primaryCityId: userRow.primaryCityId ?? null,
     };
 
     await this.writeActiveScope(userId, access);
@@ -525,27 +530,9 @@ export class AuthService {
    * Update User.activeCityId / activeCountryId based on the chosen scope.
    * GLOBAL/OFFICE leave both null.
    */
-  private async writeActiveScope(userId: string, access: UserAccess): Promise<void> {
-    let activeCityId: string | null = null;
-    let activeCountryId: string | null = null;
-
-    if (access.scopeType === ScopeType.CITY && access.scopeId) {
-      const city = await this.prisma.city.findUnique({
-        where: { id: access.scopeId },
-        select: { id: true, countryId: true },
-      });
-      if (city) {
-        activeCityId = city.id;
-        activeCountryId = city.countryId;
-      }
-    } else if (access.scopeType === ScopeType.COUNTRY && access.scopeId) {
-      activeCountryId = access.scopeId;
-    }
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { activeCityId, activeCountryId },
-    });
+  private async writeActiveScope(_userId: string, _access: UserAccess): Promise<void> {
+    // No-op: activeCityId / activeCountryId removed from schema.
+    // Primary city is stored on User.primaryCityId directly.
   }
 
   /**
@@ -563,15 +550,11 @@ export class AuthService {
     });
 
     const officeIds = accesses.filter((a) => a.scopeType === ScopeType.OFFICE && a.scopeId).map((a) => a.scopeId as string);
-    const countryIds = accesses.filter((a) => a.scopeType === ScopeType.COUNTRY && a.scopeId).map((a) => a.scopeId as string);
     const cityIds = accesses.filter((a) => a.scopeType === ScopeType.CITY && a.scopeId).map((a) => a.scopeId as string);
 
-    const [offices, countries, cities] = await Promise.all([
+    const [offices, cities] = await Promise.all([
       officeIds.length
         ? this.prisma.office.findMany({ where: { id: { in: officeIds } }, select: { id: true, name: true, code: true } })
-        : Promise.resolve([]),
-      countryIds.length
-        ? this.prisma.country.findMany({ where: { id: { in: countryIds } }, select: { id: true, name: true, code: true } })
         : Promise.resolve([]),
       cityIds.length
         ? this.prisma.city.findMany({
@@ -582,13 +565,11 @@ export class AuthService {
     ]);
 
     const officeMap = new Map(offices.map((o) => [o.id, o]));
-    const countryMap = new Map(countries.map((c) => [c.id, c]));
     const cityMap = new Map(cities.map((c) => [c.id, c]));
 
     return accesses.map((a) => {
       let target: any = null;
       if (a.scopeType === ScopeType.OFFICE && a.scopeId) target = officeMap.get(a.scopeId) ?? null;
-      else if (a.scopeType === ScopeType.COUNTRY && a.scopeId) target = countryMap.get(a.scopeId) ?? null;
       else if (a.scopeType === ScopeType.CITY && a.scopeId) target = cityMap.get(a.scopeId) ?? null;
       return {
         id: a.id,
@@ -621,11 +602,6 @@ export class AuthService {
     let target: any = null;
     if (access.scopeType === ScopeType.OFFICE && access.scopeId) {
       target = await this.prisma.office.findUnique({
-        where: { id: access.scopeId },
-        select: { id: true, name: true, code: true },
-      });
-    } else if (access.scopeType === ScopeType.COUNTRY && access.scopeId) {
-      target = await this.prisma.country.findUnique({
         where: { id: access.scopeId },
         select: { id: true, name: true, code: true },
       });

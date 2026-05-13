@@ -14,8 +14,7 @@ datasource db {
 enum Role {
   ADMIN
   OFFICE
-  COUNTRY
-  CITY
+  USER
 }
 
 enum ItemType {
@@ -39,23 +38,15 @@ enum CityStatus {
   INACTIVE
 }
 
-enum EntityType {
-  ADMIN
-  OFFICE
-  COUNTRY
-  CITY
-}
-
 enum ScopeType {
   GLOBAL
   OFFICE
-  COUNTRY
   CITY
 }
 
 enum AccessType {
   FULL    // Can switch into this scope and do everything
-  PARTIAL // Can only create external expenses for this city, no scope switch
+  PARTIAL // Can only create external expenses, no scope switch
 }
 
 enum ExpenseType {
@@ -118,9 +109,9 @@ enum ResolutionType {
 }
 
 enum ShortageReason {
-  SENDER_BLAMED // Receiver was correct, sender loses
+  SENDER_BLAMED   // Receiver was correct, sender loses
   RECEIVER_BLAMED // Sender was correct, receiver loses
-  SPLIT_LOSS // Both share responsibility
+  SPLIT_LOSS      // Both share responsibility
 }
 
 // ──────────────────────────────────────────────
@@ -138,27 +129,24 @@ model User {
   isActive        Boolean @default(true) @map("is_active")
   avatarUrl       String? @map("avatar_url")
 
-  // Scope — determines what this user manages
-  officeId  String? @map("office_id")
-  countryId String? @map("country_id")
-  cityId    String? @map("city_id")
+  // Office scope (for OFFICE role)
+  officeId String? @map("office_id")
+  office   Office? @relation(fields: [officeId], references: [id])
 
-  office  Office?  @relation(fields: [officeId], references: [id])
-  country Country? @relation(fields: [countryId], references: [id])
-  city    City?    @relation(fields: [cityId], references: [id])
+  // Primary city — home city for USER role.
+  // Balance of the city = SUM of all users with this primaryCityId.
+  primaryCityId String? @map("primary_city_id")
+  primaryCity   City?   @relation("UserPrimaryCity", fields: [primaryCityId], references: [id])
 
-  // Phase 4 (foundation): personal balances, active scope, login control
-  balanceBlack    Int     @default(0) @map("balance_black")
-  balanceWhite    Int     @default(0) @map("balance_white")
-  balanceRed      Int     @default(0) @map("balance_red")
-  balanceBlue     Int     @default(0) @map("balance_blue")
-  balanceVersion  Int     @default(0) @map("balance_version")
-  activeCityId    String? @map("active_city_id")
-  activeCountryId String? @map("active_country_id")
-  loginDisabled   Boolean @default(false) @map("login_disabled")
+  // Personal balances — source of truth for USER role.
+  // ADMIN/OFFICE balances are always 0 (they manage, not carry).
+  balanceBlack   Int @default(0) @map("balance_black")
+  balanceWhite   Int @default(0) @map("balance_white")
+  balanceRed     Int @default(0) @map("balance_red")
+  balanceBlue    Int @default(0) @map("balance_blue")
+  balanceVersion Int @default(0) @map("balance_version")
 
-  activeCity    City?    @relation("UserActiveCity", fields: [activeCityId], references: [id])
-  activeCountry Country? @relation("UserActiveCountry", fields: [activeCountryId], references: [id])
+  loginDisabled Boolean @default(false) @map("login_disabled")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -166,19 +154,25 @@ model User {
   // Relations
   refreshTokens         RefreshToken[]
   notifications         Notification[]
-  auditLogs             AuditLog[]         @relation("AuditActor")
+  auditLogs             AuditLog[]          @relation("AuditActor")
   acceptanceRecords     AcceptanceRecord[]
-  chatMessagesSent      ChatMessage[]      @relation("ChatSender")
-  chatMessagesReceived  ChatMessage[]      @relation("ChatReceiver")
+  chatMessagesSent      ChatMessage[]       @relation("ChatSender")
+  chatMessagesReceived  ChatMessage[]       @relation("ChatReceiver")
   companyLossesResolved CompanyLoss[]
-  accesses              UserAccess[]       @relation("AccessHolder")
-  accessesGranted       UserAccess[]       @relation("AccessGranter")
+  accesses              UserAccess[]        @relation("AccessHolder")
+  accessesGranted       UserAccess[]        @relation("AccessGranter")
+  transfersSent         Transfer[]          @relation("TransferFromUser")
+  transfersReceived     Transfer[]          @relation("TransferToUser")
+  warehouseCreations    WarehouseCreation[] @relation("WarehouseRecipient")
+  shortages             Shortage[]
+  expensesCreated       Expense[]           @relation("ExpenseCreator")
+  adjustments           Adjustment[]        @relation("AdjustmentTarget")
 
   @@map("users")
 }
 
 // ──────────────────────────────────────────────
-// SCOPE ACCESS (Phase 4 foundation — additive)
+// SCOPE ACCESS
 // ──────────────────────────────────────────────
 
 model UserAccess {
@@ -188,9 +182,9 @@ model UserAccess {
 
   scopeType  ScopeType  @map("scope_type")
   accessType AccessType @default(FULL) @map("access_type")
-  scopeId    String?    @map("scope_id") // NULL when scopeType=GLOBAL; polymorphic ref to Office/Country/City otherwise
+  scopeId    String?    @map("scope_id") // NULL when GLOBAL; Office.id when OFFICE; City.id when CITY
 
-  expiresAt DateTime? @map("expires_at") // NULL = permanent
+  expiresAt DateTime? @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
 
   grantedById String   @map("granted_by_id")
@@ -225,17 +219,11 @@ model RefreshToken {
 model Office {
   id        String   @id @default(uuid())
   name      String   @unique
-  code      String   @unique // e.g. "office-1", "office-2"
+  code      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
 
-  // Relations
-  users              User[]
-  countries          Country[]
-  inventory          Inventory[]
-  transfersSent      Transfer[]          @relation("SenderOffice")
-  transfersReceived  Transfer[]          @relation("ReceiverOffice")
-  warehouseCreations WarehouseCreation[]
-  shortages          Shortage[]
+  users     User[]
+  countries Country[]
 
   @@map("offices")
 }
@@ -247,21 +235,14 @@ model Office {
 model Country {
   id        String   @id @default(uuid())
   name      String   @unique
-  code      String   @unique // ISO-like: de, pl, nl, etc.
+  code      String   @unique
   latitude  Float    @default(0)
   longitude Float    @default(0)
   officeId  String?  @map("office_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  // Relations
-  office            Office?     @relation(fields: [officeId], references: [id])
-  cities            City[]
-  users             User[]
-  activeUsers       User[]      @relation("UserActiveCountry")
-  inventory         Inventory[]
-  transfersSent     Transfer[]  @relation("SenderCountry")
-  transfersReceived Transfer[]  @relation("ReceiverCountry")
-  shortages         Shortage[]
+  office Office? @relation(fields: [officeId], references: [id])
+  cities City[]
 
   @@map("countries")
 }
@@ -269,7 +250,7 @@ model Country {
 model City {
   id        String     @id @default(uuid())
   name      String
-  slug      String     @unique // berlin, warsaw, etc.
+  slug      String     @unique
   status    CityStatus @default(ACTIVE)
   latitude  Float      @default(0)
   longitude Float      @default(0)
@@ -277,82 +258,44 @@ model City {
   country   Country    @relation(fields: [countryId], references: [id])
   createdAt DateTime   @default(now()) @map("created_at")
 
-  // Relations
-  users             User[]
-  activeUsers       User[]      @relation("UserActiveCity")
-  inventory         Inventory[]
-  expenses          Expense[]
-  transfersSent     Transfer[]  @relation("SenderCity")
-  transfersReceived Transfer[]  @relation("ReceiverCity")
-  shortages         Shortage[]
+  // Users whose home city is this city
+  primaryUsers User[]    @relation("UserPrimaryCity")
+  expenses     Expense[]
 
   @@unique([countryId, slug])
   @@map("cities")
 }
 
 // ──────────────────────────────────────────────
-// INVENTORY
-// ──────────────────────────────────────────────
-
-model Inventory {
-  id         String     @id @default(uuid())
-  entityType EntityType @map("entity_type")
-  officeId   String?    @map("office_id")
-  countryId  String?    @map("country_id")
-  cityId     String?    @map("city_id")
-  itemType   ItemType   @map("item_type")
-  quantity   Int        @default(0)
-  updatedAt  DateTime   @updatedAt @map("updated_at")
-
-  office  Office?  @relation(fields: [officeId], references: [id])
-  country Country? @relation(fields: [countryId], references: [id])
-  city    City?    @relation(fields: [cityId], references: [id])
-
-  // Unique per entity+item combination
-  @@unique([entityType, officeId, countryId, cityId, itemType], name: "unique_inventory_entry")
-  @@index([itemType])
-  @@index([entityType, officeId])
-  @@index([entityType, countryId])
-  @@index([entityType, cityId])
-  @@map("inventory")
-}
-
-// ──────────────────────────────────────────────
-// TRANSFERS
+// TRANSFERS (User → User)
 // ──────────────────────────────────────────────
 
 model Transfer {
   id String @id @default(uuid())
 
-  // Sender
-  senderType      EntityType @map("sender_type")
-  senderOfficeId  String?    @map("sender_office_id")
-  senderCountryId String?    @map("sender_country_id")
-  senderCityId    String?    @map("sender_city_id")
-
-  // Receiver
-  receiverType      EntityType @map("receiver_type")
-  receiverOfficeId  String?    @map("receiver_office_id")
-  receiverCountryId String?    @map("receiver_country_id")
-  receiverCityId    String?    @map("receiver_city_id")
+  fromUserId String @map("from_user_id")
+  toUserId   String @map("to_user_id")
+  fromUser   User   @relation("TransferFromUser", fields: [fromUserId], references: [id])
+  toUser     User   @relation("TransferToUser", fields: [toUserId], references: [id])
 
   status  TransferStatus @default(SENT)
-  version Int            @default(0) // Optimistic locking
+  version Int            @default(0)
   notes   String?
 
   createdBy  String    @map("created_by")
   createdAt  DateTime  @default(now()) @map("created_at")
   sentAt     DateTime? @map("sent_at")
   acceptedAt DateTime? @map("accepted_at")
+  acceptedBy String?   @map("accepted_by")
+  rejectedAt DateTime? @map("rejected_at")
+  rejectedBy String?   @map("rejected_by")
+  cancelledAt DateTime? @map("cancelled_at")
+  cancelledBy String?   @map("cancelled_by")
+  resolvedAt  DateTime? @map("resolved_at")
+  resolvedBy  String?   @map("resolved_by")
+  discrepancyNotes String? @map("discrepancy_notes")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  // Relations
-  senderOffice      Office?            @relation("SenderOffice", fields: [senderOfficeId], references: [id])
-  senderCountry     Country?           @relation("SenderCountry", fields: [senderCountryId], references: [id])
-  senderCity        City?              @relation("SenderCity", fields: [senderCityId], references: [id])
-  receiverOffice    Office?            @relation("ReceiverOffice", fields: [receiverOfficeId], references: [id])
-  receiverCountry   Country?           @relation("ReceiverCountry", fields: [receiverCountryId], references: [id])
-  receiverCity      City?              @relation("ReceiverCity", fields: [receiverCityId], references: [id])
   items             TransferItem[]
   rejection         TransferRejection?
   acceptanceRecords AcceptanceRecord[]
@@ -360,12 +303,8 @@ model Transfer {
   shortages         Shortage[]
 
   @@index([status])
-  @@index([senderType, senderOfficeId])
-  @@index([senderType, senderCountryId])
-  @@index([senderType, senderCityId])
-  @@index([receiverType, receiverOfficeId])
-  @@index([receiverType, receiverCountryId])
-  @@index([receiverType, receiverCityId])
+  @@index([fromUserId])
+  @@index([toUserId])
   @@index([createdBy])
   @@map("transfers")
 }
@@ -400,9 +339,9 @@ model AcceptanceRecord {
   transferId       String   @map("transfer_id")
   transfer         Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
   itemType         ItemType @map("item_type")
-  sentQuantity     Int      @map("sent_quantity") // What was actually sent (hidden from receiver until accepted)
-  receivedQuantity Int      @map("received_quantity") // What receiver counted
-  discrepancy      Int      @default(0) // sent - received (positive = shortage, negative = surplus)
+  sentQuantity     Int      @map("sent_quantity")
+  receivedQuantity Int      @map("received_quantity")
+  discrepancy      Int      @default(0)
   acceptedById     String   @map("accepted_by_id")
   acceptedBy       User     @relation(fields: [acceptedById], references: [id])
   createdAt        DateTime @default(now()) @map("created_at")
@@ -413,36 +352,34 @@ model AcceptanceRecord {
 }
 
 // ──────────────────────────────────────────────
-// ADJUSTMENTS (Admin manual changes)
+// ADJUSTMENTS (Admin manual corrections — on users)
 // ──────────────────────────────────────────────
 
 model Adjustment {
-  id         String     @id @default(uuid())
-  entityType EntityType @map("entity_type")
-  officeId   String?    @map("office_id")
-  countryId  String?    @map("country_id")
-  cityId     String?    @map("city_id")
-  itemType   ItemType   @map("item_type")
-  delta      Int // positive = add, negative = deduct
-  reason     String
-  createdBy  String     @map("created_by")
-  createdAt  DateTime   @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation("AdjustmentTarget", fields: [userId], references: [id])
+  itemType  ItemType @map("item_type")
+  delta     Int
+  reason    String
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([entityType, officeId])
-  @@index([entityType, countryId])
-  @@index([entityType, cityId])
+  @@index([userId])
+  @@index([createdBy])
   @@map("adjustments")
 }
 
 // ──────────────────────────────────────────────
-// EXPENSES (Events / Мероприятия)
+// EXPENSES (Events — creator's balance is deducted)
 // ──────────────────────────────────────────────
 
 model Expense {
   id        String      @id @default(uuid())
   cityId    String      @map("city_id")
   city      City        @relation(fields: [cityId], references: [id])
-  userId    String?     @map("user_id")
+  userId    String      @map("user_id")
+  creator   User        @relation("ExpenseCreator", fields: [userId], references: [id])
   eventName String      @map("event_name")
   eventDate DateTime?   @map("event_date")
   location  String?
@@ -455,15 +392,10 @@ model Expense {
   createdBy String      @map("created_by")
   createdAt DateTime    @default(now()) @map("created_at")
 
-  // External expense fields (type = EXTERNAL)
-  targetCityId String? @map("target_city_id") // city receiving the external expense
-  actorUserId  String? @map("actor_user_id")  // personal user who triggered it
-
   @@index([cityId])
+  @@index([userId])
   @@index([eventDate])
   @@index([createdBy])
-  @@index([userId])
-  @@index([targetCityId])
   @@map("expenses")
 }
 
@@ -498,7 +430,7 @@ model AuditLog {
   action     AuditAction
   entityType String      @map("entity_type")
   entityId   String      @map("entity_id")
-  metadata   Json? // before/after snapshots
+  metadata   Json?
   ipAddress  String?     @map("ip_address")
   userAgent  String?     @map("user_agent")
   createdAt  DateTime    @default(now()) @map("created_at")
@@ -560,24 +492,19 @@ model CompanyLoss {
   transferId String   @map("transfer_id")
   transfer   Transfer @relation(fields: [transferId], references: [id])
 
-  // Lost quantities by color
   black       Int @default(0)
   white       Int @default(0)
   red         Int @default(0)
   blue        Int @default(0)
   totalAmount Int @map("total_amount")
 
-  // Resolution details
   resolutionType ResolutionType @map("resolution_type")
   resolvedBy     String         @map("resolved_by")
   resolver       User           @relation(fields: [resolvedBy], references: [id])
   resolvedAt     DateTime       @default(now()) @map("resolved_at")
 
-  // Transfer context (denormalized for quick display)
   senderName       String  @map("sender_name")
-  senderCity       String? @map("sender_city")
   receiverName     String  @map("receiver_name")
-  receiverCity     String? @map("receiver_city")
   originalSent     Int     @map("original_sent")
   originalReceived Int     @map("original_received")
   notes            String?
@@ -589,44 +516,29 @@ model CompanyLoss {
 }
 
 // ──────────────────────────────────────────────
-// SHORTAGES (Entity-specific shortage tracking from discrepancy resolution)
+// SHORTAGES (Per-user shortage from discrepancy resolution)
 // ──────────────────────────────────────────────
 
 model Shortage {
-  id String @id @default(uuid())
-
-  // Which entity has this shortage assigned
-  entityType EntityType @map("entity_type")
-  officeId   String?    @map("office_id")
-  countryId  String?    @map("country_id")
-  cityId     String?    @map("city_id")
-
-  // Link to transfer
-  transferId String   @map("transfer_id")
+  id         String @id @default(uuid())
+  userId     String @map("user_id")
+  user       User   @relation(fields: [userId], references: [id])
+  transferId String @map("transfer_id")
   transfer   Transfer @relation(fields: [transferId], references: [id])
 
-  // Shortage amounts by color
   black       Int @default(0)
   white       Int @default(0)
   red         Int @default(0)
   blue        Int @default(0)
   totalAmount Int @map("total_amount")
 
-  // Resolution details
   reason         ShortageReason
   resolutionType ResolutionType @map("resolution_type")
   resolvedBy     String         @map("resolved_by")
   createdAt      DateTime       @default(now()) @map("created_at")
   notes          String?
 
-  // Relations for filtering
-  office  Office?  @relation(fields: [officeId], references: [id])
-  country Country? @relation(fields: [countryId], references: [id])
-  city    City?    @relation(fields: [cityId], references: [id])
-
-  @@index([entityType, officeId])
-  @@index([entityType, countryId])
-  @@index([entityType, cityId])
+  @@index([userId])
   @@index([transferId])
   @@index([resolvedBy])
   @@index([createdAt])
@@ -634,29 +546,28 @@ model Shortage {
 }
 
 // ──────────────────────────────────────────────
-// WAREHOUSE CREATION LOG (ADMIN/OFFICE bracelet creation)
+// WAREHOUSE CREATION LOG
+// Admin/Office assigns bracelets directly to a specific user.
 // ──────────────────────────────────────────────
 
 model WarehouseCreation {
-  id         String     @id @default(uuid())
-  entityType EntityType @map("entity_type") // ADMIN or OFFICE
-  officeId   String?    @map("office_id")
-  office     Office?    @relation(fields: [officeId], references: [id])
+  id              String @id @default(uuid())
+  recipientUserId String @map("recipient_user_id")
+  recipientUser   User   @relation("WarehouseRecipient", fields: [recipientUserId], references: [id])
 
-  // Created quantities by color
   black       Int @default(0)
   white       Int @default(0)
   red         Int @default(0)
   blue        Int @default(0)
   totalAmount Int @map("total_amount")
 
-  // Audit
   createdBy String   @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
   notes     String?
 
-  @@index([entityType, officeId])
+  @@index([recipientUserId])
   @@index([createdBy])
   @@index([createdAt])
   @@map("warehouse_creations")
 }
+

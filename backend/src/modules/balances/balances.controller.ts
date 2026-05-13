@@ -1,7 +1,6 @@
-import {
+﻿import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Param,
   Post,
@@ -22,7 +21,7 @@ import { AdjustBalanceDto } from './dto/adjust-balance.dto';
 export class BalancesController {
   constructor(private readonly balancesService: BalancesService) {}
 
-  /** Caller's own balance (CITY/COUNTRY only). Returns null for ADMIN/OFFICE. */
+  /** Caller's own balance (USER only). Returns null for ADMIN/OFFICE. */
   @Get('me')
   getMine(@CurrentUser() user: AuthenticatedUser) {
     return this.balancesService.getMine(user.id);
@@ -41,45 +40,54 @@ export class BalancesController {
     });
   }
 
-  /** Paginated list of users with personal balances. Admin/Office only. */
+  /** Paginated list of USER accounts with personal balances. Admin/Office only. */
   @Get()
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.OFFICE)
   list(
     @Query('search') search?: string,
-    @Query('role') role?: Role,
-    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
     @Query('officeId') officeId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.balancesService.list({
       search,
-      role,
-      countryId,
+      cityId,
       officeId,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 
-  /** Specific user's balance. Admin/Office/Country may view subordinates. */
+  /** Aggregate balance for a city (SUM of all user balances in city). */
+  @Get('city/:cityId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getCityBalance(@Param('cityId') cityId: string) {
+    return this.balancesService.getCityBalance(cityId);
+  }
+
+  /** Aggregate balance for a country (SUM of all city balances). */
+  @Get('country/:countryId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getCountryBalance(@Param('countryId') countryId: string) {
+    return this.balancesService.getCountryBalance(countryId);
+  }
+
+  /** Specific user's balance. Admin/Office only. */
   @Get('users/:userId')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
-  getForUser(
-    @Param('userId') userId: string,
-    @CurrentUser() actor: AuthenticatedUser,
-  ) {
-    // Country users can only see their own country; ADMIN/OFFICE — anything.
-    // Cheap guard — full scope check belongs to ScopeAccessGuard (Phase 5+).
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getForUser(@Param('userId') userId: string) {
     return this.balancesService.getForUser(userId);
   }
 
-  /** Specific user's balance history. Admin/Office/Country only. */
+  /** Specific user's balance history. Admin/Office only. */
   @Get('users/:userId/history')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE)
   getUserHistory(
     @Param('userId') userId: string,
     @Query('page') page?: string,
@@ -108,3 +116,4 @@ export class BalancesController {
     });
   }
 }
+

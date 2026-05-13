@@ -23,11 +23,15 @@ export class ProfileService {
         avatarUrl: true,
         isActive: true,
         officeId: true,
-        countryId: true,
-        cityId: true,
+        primaryCityId: true,
         office: { select: { id: true, name: true } },
-        country: { select: { id: true, name: true } },
-        city: { select: { id: true, name: true } },
+        primaryCity: {
+          select: {
+            id: true,
+            name: true,
+            country: { select: { id: true, name: true } },
+          },
+        },
         createdAt: true,
       },
     });

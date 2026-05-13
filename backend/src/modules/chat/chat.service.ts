@@ -158,56 +158,9 @@ export class ChatService {
   }
 
   async getUsers(currentUser: AuthenticatedUser) {
-    const { id, role, countryId, cityId } = currentUser;
+    const { id } = currentUser;
     const where: any = { id: { not: id }, isActive: true };
-
-    if (role === Role.CITY) {
-      // CITY sees: ADMIN + OFFICE + COUNTRY of same country + other CITY in same country
-      let myCountryId = countryId;
-      if (!myCountryId && cityId) {
-        const city = await this.prisma.city.findUnique({
-          where: { id: cityId },
-          select: { countryId: true },
-        });
-        myCountryId = city?.countryId || null;
-      }
-      const siblingCityIds = myCountryId
-        ? (
-            await this.prisma.city.findMany({
-              where: { countryId: myCountryId },
-              select: { id: true },
-            })
-          ).map((c) => c.id)
-        : [];
-      where.OR = [
-        { role: Role.ADMIN },
-        { role: Role.OFFICE },
-        ...(myCountryId
-          ? [{ role: Role.COUNTRY, countryId: myCountryId }]
-          : []),
-        ...(siblingCityIds.length > 0
-          ? [{ role: Role.CITY, cityId: { in: siblingCityIds } }]
-          : []),
-      ];
-    } else if (role === Role.COUNTRY) {
-      // COUNTRY sees: ADMIN + OFFICE + other COUNTRY + CITY in own country's cities
-      const myCities = countryId
-        ? await this.prisma.city.findMany({
-            where: { countryId },
-            select: { id: true },
-          })
-        : [];
-      const cityIds = myCities.map((c) => c.id);
-      where.OR = [
-        { role: Role.ADMIN },
-        { role: Role.OFFICE },
-        { role: Role.COUNTRY },
-        ...(cityIds.length > 0
-          ? [{ role: Role.CITY, cityId: { in: cityIds } }]
-          : []),
-      ];
-    }
-    // ADMIN / OFFICE — no extra filter, sees everyone
+    // All roles can see all active users
 
     return this.prisma.user.findMany({
       where,
@@ -227,60 +180,12 @@ export class ChatService {
     sender: AuthenticatedUser,
     receiverId: string,
   ): Promise<void> {
-    if (sender.role === Role.ADMIN || sender.role === Role.OFFICE) return;
-
+    // All active users can message each other
     const receiver = await this.prisma.user.findUnique({
       where: { id: receiverId },
-      select: { role: true, countryId: true, cityId: true },
+      select: { role: true },
     });
     if (!receiver) throw new NotFoundException('Получатель не найден');
-
-    if (
-      receiver.role === Role.ADMIN ||
-      receiver.role === Role.OFFICE
-    ) {
-      return; // Everyone can write to ADMIN/OFFICE
-    }
-
-    if (sender.role === Role.CITY) {
-      // CITY can write to: COUNTRY of same country + CITY in same country
-      let senderCountryId = sender.countryId;
-      if (!senderCountryId && sender.cityId) {
-        const city = await this.prisma.city.findUnique({
-          where: { id: sender.cityId },
-          select: { countryId: true },
-        });
-        senderCountryId = city?.countryId || null;
-      }
-      if (
-        receiver.role === Role.COUNTRY &&
-        receiver.countryId === senderCountryId
-      ) {
-        return;
-      }
-      if (receiver.role === Role.CITY && receiver.cityId) {
-        const receiverCity = await this.prisma.city.findUnique({
-          where: { id: receiver.cityId },
-          select: { countryId: true },
-        });
-        if (receiverCity?.countryId === senderCountryId) return;
-      }
-      throw new ForbiddenException('Вы не можете писать этому пользователю');
-    }
-
-    if (sender.role === Role.COUNTRY) {
-      // COUNTRY can write to: other COUNTRY + CITY in own cities
-      if (receiver.role === Role.COUNTRY) return;
-      if (receiver.role === Role.CITY && receiver.cityId) {
-        const city = await this.prisma.city.findUnique({
-          where: { id: receiver.cityId },
-          select: { countryId: true },
-        });
-        if (city?.countryId === sender.countryId) return;
-      }
-      throw new ForbiddenException('Вы не можете писать этому пользователю');
-    }
-
-    throw new ForbiddenException('Вы не можете писать этому пользователю');
+    return;
   }
 }

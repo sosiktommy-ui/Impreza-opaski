@@ -1,17 +1,13 @@
-import {
+﻿import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-  EntityType,
-  ItemType,
   Prisma,
   Role,
-  ScopeType,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { BALANCE_COLORS, BalanceColor } from './dto/adjust-balance.dto';
@@ -32,8 +28,7 @@ interface BalanceFieldMap {
 
 interface ListFilters {
   search?: string;
-  role?: Role;
-  countryId?: string;
+  cityId?: string;
   officeId?: string;
 }
 
@@ -70,7 +65,7 @@ export class BalancesService {
     };
   }
 
-  /** GET /balances/me — caller's own balance. CITY/COUNTRY only. */
+  /** GET /balances/me вЂ” caller's own balance. USER role. */
   async getMine(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -85,14 +80,14 @@ export class BalancesService {
       },
     });
     if (!user) throw new NotFoundException('User not found');
-    if (user.role !== Role.CITY && user.role !== Role.COUNTRY) {
-      // ADMIN/OFFICE don't carry personal balances yet.
+    if (user.role !== Role.USER) {
+      // ADMIN/OFFICE don't carry personal balances.
       return null;
     }
     return this.format(user);
   }
 
-  /** GET /balances/users/:userId — admin/office/country can view. */
+  /** GET /balances/users/:userId вЂ” view any user's balance. */
   async getForUser(targetUserId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: targetUserId },
@@ -110,19 +105,114 @@ export class BalancesService {
     return this.format(user);
   }
 
-  /** GET /balances — paginated list, ADMIN/OFFICE only. */
+  /**
+   * GET /balances/city/:cityId
+   * Aggregate balance for a city = SUM of all active USER balances with primaryCityId=cityId.
+   */
+  async getCityBalance(cityId: string) {
+    const city = await this.prisma.city.findUnique({
+      where: { id: cityId },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!city) throw new NotFoundException('City not found');
+
+    const agg = await this.prisma.user.aggregate({
+      where: { primaryCityId: cityId, isActive: true, role: Role.USER },
+      _sum: {
+        balanceBlack: true,
+        balanceWhite: true,
+        balanceRed: true,
+        balanceBlue: true,
+      },
+    });
+
+    const black = agg._sum.balanceBlack ?? 0;
+    const white = agg._sum.balanceWhite ?? 0;
+    const red = agg._sum.balanceRed ?? 0;
+    const blue = agg._sum.balanceBlue ?? 0;
+
+    return {
+      cityId,
+      city,
+      black,
+      white,
+      red,
+      blue,
+      total: black + white + red + blue,
+    };
+  }
+
+  /**
+   * GET /balances/country/:countryId
+   * Aggregate balance for a country = SUM of all cities' aggregates.
+   */
+  async getCountryBalance(countryId: string) {
+    const country = await this.prisma.country.findUnique({
+      where: { id: countryId },
+      select: { id: true, name: true, code: true, cities: { select: { id: true, name: true, slug: true } } },
+    });
+    if (!country) throw new NotFoundException('Country not found');
+
+    const cityIds = country.cities.map((c) => c.id);
+
+    const agg = await this.prisma.user.aggregate({
+      where: { primaryCityId: { in: cityIds }, isActive: true, role: Role.USER },
+      _sum: {
+        balanceBlack: true,
+        balanceWhite: true,
+        balanceRed: true,
+        balanceBlue: true,
+      },
+    });
+
+    const black = agg._sum.balanceBlack ?? 0;
+    const white = agg._sum.balanceWhite ?? 0;
+    const red = agg._sum.balanceRed ?? 0;
+    const blue = agg._sum.balanceBlue ?? 0;
+
+    // Per-city breakdown
+    const cityBreakdown = await Promise.all(
+      country.cities.map(async (city) => {
+        const cityAgg = await this.prisma.user.aggregate({
+          where: { primaryCityId: city.id, isActive: true, role: Role.USER },
+          _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+        });
+        const cb = cityAgg._sum.balanceBlack ?? 0;
+        const cw = cityAgg._sum.balanceWhite ?? 0;
+        const cr = cityAgg._sum.balanceRed ?? 0;
+        const cbl = cityAgg._sum.balanceBlue ?? 0;
+        return { cityId: city.id, city, black: cb, white: cw, red: cr, blue: cbl, total: cb + cw + cr + cbl };
+      }),
+    );
+
+    return {
+      countryId,
+      country: { id: country.id, name: country.name, code: country.code },
+      black,
+      white,
+      red,
+      blue,
+      total: black + white + red + blue,
+      cities: cityBreakdown,
+    };
+  }
+
+  /** GET /balances вЂ” paginated list of USER accounts, ADMIN/OFFICE only. */
   async list(filters: ListFilters & { page?: number; limit?: number }) {
-    const { search, role, countryId, officeId } = filters;
+    const { search, cityId, officeId } = filters;
     const page = Math.max(1, filters.page ?? 1);
     const limit = Math.min(200, Math.max(1, filters.limit ?? 50));
     const skip = (page - 1) * limit;
 
     const where: Prisma.UserWhereInput = {
       isActive: true,
-      role: { in: role ? [role] : [Role.CITY, Role.COUNTRY] },
+      role: Role.USER,
     };
-    if (countryId) where.countryId = countryId;
-    if (officeId) where.officeId = officeId;
+    if (cityId) where.primaryCityId = cityId;
+    if (officeId) {
+      // Filter users whose primaryCity belongs to a country in this office
+      where.primaryCity = { country: { officeId } };
+    }
     if (search?.trim()) {
       const q = search.trim();
       where.OR = [
@@ -140,17 +230,22 @@ export class BalancesService {
           username: true,
           displayName: true,
           role: true,
-          countryId: true,
-          cityId: true,
+          primaryCityId: true,
           balanceBlack: true,
           balanceWhite: true,
           balanceRed: true,
           balanceBlue: true,
           balanceVersion: true,
-          country: { select: { id: true, name: true, code: true } },
-          city: { select: { id: true, name: true, slug: true } },
+          primaryCity: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              country: { select: { id: true, name: true, code: true } },
+            },
+          },
         },
-        orderBy: [{ role: 'asc' }, { displayName: 'asc' }],
+        orderBy: [{ displayName: 'asc' }],
         skip,
         take: limit,
       }),
@@ -163,14 +258,13 @@ export class BalancesService {
         username: u.username,
         displayName: u.displayName,
         role: u.role,
-        country: u.country,
-        city: u.city,
+        primaryCity: u.primaryCity,
       })),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
-  /** POST /balances/adjust — manual correction. ADMIN/OFFICE only. */
+  /** POST /balances/adjust вЂ” manual correction. ADMIN/OFFICE only. */
   async adjust(params: {
     userId: string;
     color: BalanceColor;
@@ -200,10 +294,8 @@ export class BalancesService {
         },
       });
       if (!user) throw new NotFoundException('User not found');
-      if (user.role !== Role.CITY && user.role !== Role.COUNTRY) {
-        throw new BadRequestException(
-          'Only CITY/COUNTRY users have personal balances',
-        );
+      if (user.role !== Role.USER) {
+        throw new BadRequestException('Only USER-role accounts have personal balances');
       }
 
       const before = user[field];
@@ -222,8 +314,18 @@ export class BalancesService {
         },
       });
 
+      await tx.adjustment.create({
+        data: {
+          userId,
+          itemType: color as any,
+          delta,
+          reason,
+          createdBy: actorId,
+        },
+      });
+
       this.logger.log(
-        `Balance adjusted: user ${userId} ${color} ${delta > 0 ? '+' : ''}${delta} (${before} → ${after}) by ${actorId}`,
+        `Balance adjusted: user ${userId} ${color} ${delta > 0 ? '+' : ''}${delta} (${before} в†’ ${after}) by ${actorId}`,
       );
 
       this.eventEmitter.emit('balance.adjusted', {
@@ -249,7 +351,7 @@ export class BalancesService {
   }
 
   /**
-   * GET /balances/users/:userId/history — timeline of audit events
+   * GET /balances/users/:userId/history вЂ” timeline of audit events
    * affecting this user's personal balance.
    */
   async getHistory(targetUserId: string, params: { page?: number; limit?: number } = {}) {
@@ -263,22 +365,14 @@ export class BalancesService {
     });
     if (!user) throw new NotFoundException('User not found');
 
-    // Events touching this user:
-    //  • BALANCE_ADJUSTED on entity=User/userId
-    //  • EXPENSE_CREATED / EXPENSE_DELETED with metadata.userId === userId
     const where: Prisma.AuditLogWhereInput = {
       OR: [
-        {
-          action: 'BALANCE_ADJUSTED',
-          entityType: 'User',
-          entityId: targetUserId,
-        },
+        { action: 'BALANCE_ADJUSTED', entityType: 'User', entityId: targetUserId },
         {
           action: { in: ['EXPENSE_CREATED', 'EXPENSE_DELETED'] },
           metadata: { path: ['userId'], equals: targetUserId },
         },
         {
-          // Phase 7: transfer events (single audit row per transfer with affectedUserIds[])
           action: {
             in: [
               'TRANSFER_SENT',
@@ -317,73 +411,5 @@ export class BalancesService {
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
-
-  // ──────────────────────────────────────────────
-  // SYNC HOOK (called from inventory.service)
-  // ──────────────────────────────────────────────
-
-  /**
-   * Mirror Inventory(CITY|COUNTRY, scopeId).quantity into User.balance_* for
-   * every active UserAccess targeting that scope. ADMIN/OFFICE skipped.
-   * Idempotent — safe to call after every inventory write.
-   *
-   * Acceptable to skip silently on errors; caller stays in its own tx.
-   */
-  async syncFromInventory(
-    tx: Prisma.TransactionClient,
-    entityType: EntityType,
-    entityId: string,
-  ) {
-    if (entityType !== EntityType.CITY && entityType !== EntityType.COUNTRY) {
-      return;
-    }
-    const scopeType: ScopeType =
-      entityType === EntityType.CITY ? ScopeType.CITY : ScopeType.COUNTRY;
-
-    // Read current inventory for this scope.
-    const where =
-      entityType === EntityType.CITY
-        ? { entityType: EntityType.CITY, cityId: entityId }
-        : { entityType: EntityType.COUNTRY, countryId: entityId };
-
-    const items = await tx.inventory.findMany({ where });
-    const totals: Record<ItemType, number> = {
-      BLACK: 0,
-      WHITE: 0,
-      RED: 0,
-      BLUE: 0,
-    } as any;
-    for (const it of items) {
-      totals[it.itemType] = it.quantity;
-    }
-
-    // Find active accesses for that scope.
-    const now = new Date();
-    const accesses = await tx.userAccess.findMany({
-      where: {
-        scopeType,
-        scopeId: entityId,
-        revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      select: { userId: true },
-    });
-    if (accesses.length === 0) return;
-
-    const userIds = Array.from(new Set(accesses.map((a) => a.userId)));
-
-    await tx.user.updateMany({
-      where: {
-        id: { in: userIds },
-        role: { in: [Role.CITY, Role.COUNTRY] },
-      },
-      data: {
-        balanceBlack: totals.BLACK,
-        balanceWhite: totals.WHITE,
-        balanceRed: totals.RED,
-        balanceBlue: totals.BLUE,
-        balanceVersion: { increment: 1 },
-      },
-    });
-  }
 }
+

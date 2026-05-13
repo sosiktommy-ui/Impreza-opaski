@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -7,10 +7,8 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AccessType, EntityType, ItemType, CityStatus, Prisma, Role, ScopeType } from '@prisma/client';
+import { CityStatus, Prisma, Role } from '@prisma/client';
 import { BalancesService } from '../balances/balances.service';
-
-const CACHE_TTL = 300; // 5 minutes
 
 @Injectable()
 export class InventoryService {
@@ -23,302 +21,94 @@ export class InventoryService {
     private readonly balances: BalancesService,
   ) {}
 
-  // ──────────────────────────────────────────────
-  // HELPER: Get city's country ID for scope checks
-  // ──────────────────────────────────────────────
+  // ────────────────────────────────────────────────
+  // CITY BALANCE  (aggregate of all USER balances in city)
+  // ────────────────────────────────────────────────
 
-  async getCityCountryId(cityId: string): Promise<string | null> {
-    const city = await this.prisma.city.findUnique({
-      where: { id: cityId },
-      select: { countryId: true },
-    });
-    return city?.countryId || null;
-  }
-
-  // ──────────────────────────────────────────────
-  // GET BALANCE
-  // ──────────────────────────────────────────────
-
-  async getBalance(entityType: EntityType, entityId: string) {
-    const cacheKey = `inventory:${entityType}:${entityId}`;
-    const cached = await this.redis.get<Record<string, number>>(cacheKey);
-    if (cached) return cached;
-
-    const inventory = await this.prisma.inventory.findMany({
-      where: this.buildInventoryWhere(entityType, entityId),
-    });
-
-    const balance: Record<string, number> = {};
-    for (const itemType of Object.values(ItemType)) {
-      const entry = inventory.find((i) => i.itemType === itemType);
-      balance[itemType] = entry?.quantity ?? 0;
-    }
-
-    await this.redis.set(cacheKey, balance, CACHE_TTL);
-    return balance;
-  }
-
-  async getAllBalances(filters?: { countryId?: string; cityId?: string; officeId?: string }) {
-    const where: any = {};
-    if (filters?.cityId) {
-      where.entityType = 'CITY';
-      where.cityId = filters.cityId;
-    } else if (filters?.countryId) {
-      // Get all cities in this country, plus the country itself
-      where.OR = [
-        { entityType: 'COUNTRY', countryId: filters.countryId },
-        { entityType: 'CITY', city: { countryId: filters.countryId } },
-      ];
-    } else if (filters?.officeId) {
-      // Get office warehouse + all countries in this office + their cities
-      where.OR = [
-        { entityType: 'OFFICE', officeId: filters.officeId },
-        { entityType: 'COUNTRY', country: { officeId: filters.officeId } },
-        { entityType: 'CITY', city: { country: { officeId: filters.officeId } } },
-      ];
-    }
-
-    const inventory = await this.prisma.inventory.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
-      include: {
-        office: { select: { id: true, name: true, code: true } },
-        country: { select: { id: true, name: true, code: true } },
-        city: { select: { id: true, name: true, slug: true, countryId: true } },
-      },
-      orderBy: [{ entityType: 'asc' }, { itemType: 'asc' }],
-    });
-
-    return inventory;
+  async getBalance(cityId: string) {
+    return this.balances.getCityBalance(cityId);
   }
 
   async getBalancesByCountry(countryId: string) {
-    // Get country balance
-    const countryBalance = await this.getBalance(EntityType.COUNTRY, countryId);
-
-    // Get all cities in this country with their balances
-    const cities = await this.prisma.city.findMany({
-      where: { countryId },
-      orderBy: { name: 'asc' },
-    });
-
-    const cityBalances = await Promise.all(
-      cities.map(async (city) => ({
-        city: { id: city.id, name: city.name, slug: city.slug, status: city.status },
-        balance: await this.getBalance(EntityType.CITY, city.id),
-      })),
-    );
-
-    return {
-      country: countryBalance,
-      cities: cityBalances,
-    };
+    return this.balances.getCountryBalance(countryId);
   }
 
-  // ──────────────────────────────────────────────
-  // ADJUST BALANCE (Admin only)
-  // ──────────────────────────────────────────────
-
-  async adjustBalance(params: {
-    entityType: EntityType;
-    entityId: string;
-    itemType: ItemType;
-    delta: number;
-    reason: string;
-    actorId: string;
-  }) {
-    const { entityType, entityId, itemType, delta, reason, actorId } = params;
-
-    if (delta === 0) {
-      throw new BadRequestException('Delta cannot be zero');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      // Find or create inventory entry
-      const where = this.buildInventoryWhere(entityType, entityId);
-      let inventory = await tx.inventory.findFirst({
-        where: { ...where, itemType },
-      });
-
-      if (!inventory) {
-        // Create entry
-        inventory = await tx.inventory.create({
-          data: {
-            entityType,
-            ...(entityType === EntityType.OFFICE
-              ? { officeId: entityId }
-              : entityType === EntityType.COUNTRY
-              ? { countryId: entityId }
-              : entityType === EntityType.CITY
-              ? { cityId: entityId }
-              : {}),
-            itemType,
-            quantity: 0,
-          },
-        });
-      }
-
-      const newQuantity = inventory.quantity + delta;
-      if (newQuantity < 0) {
-        throw new BadRequestException(
-          `Insufficient stock: current ${inventory.quantity}, delta ${delta}`,
-        );
-      }
-
-      // Update inventory
-      await tx.inventory.update({
-        where: { id: inventory.id },
-        data: { quantity: newQuantity },
-      });
-
-      // Create adjustment record
-      const adjustment = await tx.adjustment.create({
-        data: {
-          entityType,
-          ...(entityType === EntityType.OFFICE
-            ? { officeId: entityId }
-            : entityType === EntityType.COUNTRY
-            ? { countryId: entityId }
-            : entityType === EntityType.CITY
-            ? { cityId: entityId }
-            : {}),
-          itemType,
-          delta,
-          reason,
-          createdBy: actorId,
-        },
-      });
-
-      // Update city status if applicable
-      if (entityType === EntityType.CITY) {
-        await this.updateCityStatus(tx, entityId);
-      }
-
-      // Mirror inventory into personal user balances (CITY/COUNTRY only)
-      await this.balances.syncFromInventory(tx, entityType, entityId);
-
-      // Invalidate cache
-      await this.redis.invalidateInventory(entityType, entityId);
-
-      this.logger.log(
-        `Balance adjusted: ${entityType}:${entityId} ${itemType} ${delta > 0 ? '+' : ''}${delta} by ${actorId}`,
-      );
-
-      // Emit event
-      this.eventEmitter.emit('inventory.adjusted', {
-        entityType,
-        entityId,
-        itemType,
-        delta,
-        newQuantity,
-        reason,
-        actorId,
-      });
-
-      return adjustment;
-    });
-  }
-
-  // ──────────────────────────────────────────────
-  // CREATE EXPENSE (City only — event/мероприятие)
-  // ──────────────────────────────────────────────
+  // ────────────────────────────────────────────────
+  // EXPENSES  (deducted from creator's personal balance)
+  // ────────────────────────────────────────────────
 
   async createExpense(params: {
     cityId: string;
-    userId?: string | null;
+    userId: string; // creator — balance deducted from this person
     eventName: string;
     eventDate?: string;
     location?: string;
     type?: string;
-    targetCityId?: string | null;
     black: number;
     white: number;
     red: number;
     blue: number;
     notes?: string;
     actorId: string;
-    actorRole?: string;
   }) {
     const {
       cityId, userId, eventName, eventDate, location,
-      type = 'INTERNAL', targetCityId,
-      black, white, red, blue, notes, actorId, actorRole,
+      type = 'INTERNAL',
+      black, white, red, blue, notes, actorId,
     } = params;
 
-    // Validate at least one color has quantity
     if (black <= 0 && white <= 0 && red <= 0 && blue <= 0) {
       throw new BadRequestException('At least one bracelet color must have quantity > 0');
     }
 
-    // Validate city exists
     const city = await this.prisma.city.findUnique({ where: { id: cityId } });
     if (!city) throw new NotFoundException(`City ${cityId} not found`);
 
-    // For EXTERNAL expenses, validate targetCityId and actor access
-    if (type === 'EXTERNAL') {
-      if (!targetCityId) {
-        throw new BadRequestException('targetCityId is required for external expenses');
-      }
-      if (targetCityId === cityId) {
-        throw new BadRequestException('targetCityId must differ from sourceCityId');
-      }
-      const targetCity = await this.prisma.city.findUnique({
-        where: { id: targetCityId },
-        select: { id: true, countryId: true },
-      });
-      if (!targetCity) throw new NotFoundException(`Target city ${targetCityId} not found`);
-
-      // Actor must have access to the target city directly or through the target country.
-      // ADMIN and OFFICE roles have implicit access to all cities.
-      const isPrivileged = actorRole === Role.ADMIN || actorRole === Role.OFFICE;
-      if (!isPrivileged) {
-        const access = await this.prisma.userAccess.findFirst({
-          where: {
-            userId: actorId,
-            OR: [
-              { scopeType: ScopeType.CITY, scopeId: targetCityId },
-              { scopeType: ScopeType.COUNTRY, scopeId: targetCity.countryId },
-            ],
-            accessType: { in: [AccessType.FULL, AccessType.PARTIAL] },
-            revokedAt: null,
-            AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
-          },
-        });
-        if (!access) {
-          throw new BadRequestException('No access to target city');
-        }
-      }
+    const creator = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, role: true,
+        balanceBlack: true, balanceWhite: true,
+        balanceRed: true, balanceBlue: true, balanceVersion: true,
+      },
+    });
+    if (!creator) throw new NotFoundException(`User ${userId} not found`);
+    if (creator.role !== Role.USER) {
+      throw new BadRequestException('Only USER-role accounts can have expenses deducted');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // Check and deduct balance for each color
-      const colors = [
-        { type: ItemType.BLACK, qty: black },
-        { type: ItemType.WHITE, qty: white },
-        { type: ItemType.RED, qty: red },
-        { type: ItemType.BLUE, qty: blue },
-      ];
+    if (creator.balanceBlack < black) throw new BadRequestException(`Insufficient BLACK balance: have ${creator.balanceBlack}, need ${black}`);
+    if (creator.balanceWhite < white) throw new BadRequestException(`Insufficient WHITE balance: have ${creator.balanceWhite}, need ${white}`);
+    if (creator.balanceRed < red) throw new BadRequestException(`Insufficient RED balance: have ${creator.balanceRed}, need ${red}`);
+    if (creator.balanceBlue < blue) throw new BadRequestException(`Insufficient BLUE balance: have ${creator.balanceBlue}, need ${blue}`);
 
-      for (const { type, qty } of colors) {
-        if (qty > 0) {
-          const where = { entityType: EntityType.CITY, cityId, itemType: type };
-          const inventory = await tx.inventory.findFirst({ where });
-          if (!inventory || inventory.quantity < qty) {
-            throw new BadRequestException(
-              `Insufficient ${type} stock: have ${inventory?.quantity ?? 0}, need ${qty}`,
-            );
-          }
-          await tx.inventory.update({
-            where: { id: inventory.id },
-            data: { quantity: inventory.quantity - qty },
-          });
-        }
+    return this.prisma.$transaction(async (tx) => {
+      // Optimistic-lock deduction
+      const updated = await tx.user.updateMany({
+        where: {
+          id: userId,
+          balanceVersion: creator.balanceVersion,
+          balanceBlack: { gte: black },
+          balanceWhite: { gte: white },
+          balanceRed: { gte: red },
+          balanceBlue: { gte: blue },
+        },
+        data: {
+          balanceBlack: { decrement: black },
+          balanceWhite: { decrement: white },
+          balanceRed: { decrement: red },
+          balanceBlue: { decrement: blue },
+          balanceVersion: { increment: 1 },
+        },
+      });
+      if (updated.count === 0) {
+        throw new BadRequestException('Balance has changed, please retry');
       }
 
-      // Create expense record
       const expense = await tx.expense.create({
         data: {
           cityId,
-          userId: userId ?? null,
+          userId,
           eventName,
           eventDate: eventDate && !isNaN(new Date(eventDate).getTime()) ? new Date(eventDate) : new Date(),
           location: location || null,
@@ -329,51 +119,31 @@ export class InventoryService {
           blue,
           notes: notes || null,
           createdBy: actorId,
-          targetCityId: targetCityId ?? null,
-          actorUserId: actorId,
         },
         include: {
           city: { select: { id: true, name: true, slug: true } },
+          creator: { select: { id: true, username: true, displayName: true } },
         },
       });
 
-      // Update city status
       await this.updateCityStatus(tx, cityId);
 
-      // Sync user personal balances
-      await this.balances.syncFromInventory(tx, EntityType.CITY, cityId);
-
-      // Audit log
       await tx.auditLog.create({
         data: {
           action: 'EXPENSE_CREATED',
           entityType: 'Expense',
           entityId: expense.id,
           actorId,
-          metadata: {
-            eventName,
-            cityId,
-            userId: userId ?? null,
-            black,
-            white,
-            red,
-            blue,
-          },
+          metadata: { eventName, cityId, userId, black, white, red, blue },
         },
       });
 
-      // Invalidate cache
-      await this.redis.invalidateInventory(EntityType.CITY, cityId);
-
-      this.logger.log(
-        `Expense created: ${eventName} in ${city.name} — B:${black} W:${white} R:${red} BL:${blue}`,
-      );
-
+      this.logger.log(`Expense: ${eventName} in ${city.name} by user ${userId} — B:${black} W:${white} R:${red} BL:${blue}`);
+      await this.redis.del(`balance:user:${userId}`);
       return expense;
     });
   }
 
-  // Get expenses (for events list)
   async getExpenses(params: {
     cityId?: string;
     countryId?: string;
@@ -381,21 +151,14 @@ export class InventoryService {
     type?: string;
     page?: number;
     limit?: number;
-    includeTargeted?: boolean; // also return external expenses where this city is targetCityId
   }) {
-    const { cityId, countryId, userId, type, page = 1, limit = 20, includeTargeted = false } = params;
+    const { cityId, countryId, userId, type, page = 1, limit = 20 } = params;
     const skip = (page - 1) * limit;
 
-    let where: Prisma.ExpenseWhereInput = {};
-
-    if (cityId && includeTargeted) {
-      // Show both expenses made BY this city AND external expenses made FOR this city
-      where = { OR: [{ cityId }, { targetCityId: cityId }] };
-    } else {
-      if (cityId) where.cityId = cityId;
-      if (countryId) where.city = { countryId };
-      if (userId) where.userId = userId;
-    }
+    const where: Prisma.ExpenseWhereInput = {};
+    if (cityId) where.cityId = cityId;
+    if (countryId) where.city = { countryId };
+    if (userId) where.userId = userId;
     if (type) (where as any).type = type;
 
     const [expenses, total] = await Promise.all([
@@ -404,12 +167,11 @@ export class InventoryService {
         include: {
           city: {
             select: {
-              id: true,
-              name: true,
-              slug: true,
+              id: true, name: true, slug: true,
               country: { select: { id: true, name: true, code: true } },
             },
           },
+          creator: { select: { id: true, username: true, displayName: true, role: true } },
         },
         orderBy: { eventDate: 'desc' },
         skip,
@@ -418,81 +180,27 @@ export class InventoryService {
       this.prisma.expense.count({ where }),
     ]);
 
-    // Hydrate consumer user and actor info
-    const allUserIds = Array.from(
-      new Set([
-        ...expenses.map((e) => e.userId).filter((v): v is string => !!v),
-        ...expenses.map((e) => e.actorUserId).filter((v): v is string => !!v),
-        ...expenses.map((e) => e.createdBy).filter((v): v is string => !!v),
-      ]),
-    );
-    const users = allUserIds.length
-      ? await this.prisma.user.findMany({
-          where: { id: { in: allUserIds } },
-          select: { id: true, username: true, displayName: true, role: true },
-        })
-      : [];
-    const userMap = new Map(users.map((u) => [u.id, u]));
-
-    // Hydrate targetCity names for EXTERNAL expenses
-    const targetCityIds = Array.from(
-      new Set(expenses.map((e) => e.targetCityId).filter((v): v is string => !!v)),
-    );
-    const targetCities = targetCityIds.length
-      ? await this.prisma.city.findMany({
-          where: { id: { in: targetCityIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const targetCityMap = new Map(targetCities.map((c) => [c.id, c]));
-
-    return {
-      data: expenses.map((e) => ({
-        ...e,
-        user: e.userId ? userMap.get(e.userId) ?? null : null,
-        actorUser: e.actorUserId ? userMap.get(e.actorUserId) ?? (e.createdBy ? userMap.get(e.createdBy) ?? null : null) : (e.createdBy ? userMap.get(e.createdBy) ?? null : null),
-        targetCity: e.targetCityId ? (targetCityMap.get(e.targetCityId) ?? null) : null,
-      })),
-
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+    return { data: expenses, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  // Delete expense and restore inventory
   async deleteExpense(expenseId: string, actorId: string) {
-    const expense = await this.prisma.expense.findUnique({
-      where: { id: expenseId },
-      include: { city: true },
-    });
-    if (!expense) {
-      throw new Error('Expense not found');
-    }
+    const expense = await this.prisma.expense.findUnique({ where: { id: expenseId } });
+    if (!expense) throw new NotFoundException('Expense not found');
 
     await this.prisma.$transaction(async (tx) => {
-      // Restore inventory for each color
-      const colors: Array<{ type: ItemType; qty: number }> = [
-        { type: 'BLACK' as ItemType, qty: expense.black },
-        { type: 'WHITE' as ItemType, qty: expense.white },
-        { type: 'RED' as ItemType, qty: expense.red },
-        { type: 'BLUE' as ItemType, qty: expense.blue },
-      ];
+      await tx.user.update({
+        where: { id: expense.userId },
+        data: {
+          balanceBlack: { increment: expense.black },
+          balanceWhite: { increment: expense.white },
+          balanceRed: { increment: expense.red },
+          balanceBlue: { increment: expense.blue },
+          balanceVersion: { increment: 1 },
+        },
+      });
 
-      for (const { type, qty } of colors) {
-        if (qty > 0) {
-          await tx.inventory.updateMany({
-            where: { entityType: 'CITY', cityId: expense.cityId, itemType: type },
-            data: { quantity: { increment: qty } },
-          });
-        }
-      }
-
-      // Delete the expense record
       await tx.expense.delete({ where: { id: expenseId } });
 
-      // Sync user personal balances after restoring stock
-      await this.balances.syncFromInventory(tx, EntityType.CITY, expense.cityId);
-
-      // Create audit log
       await tx.auditLog.create({
         data: {
           action: 'EXPENSE_DELETED',
@@ -503,156 +211,238 @@ export class InventoryService {
             eventName: expense.eventName,
             cityId: expense.cityId,
             userId: expense.userId,
-            black: expense.black,
-            white: expense.white,
-            red: expense.red,
-            blue: expense.blue,
+            black: expense.black, white: expense.white, red: expense.red, blue: expense.blue,
           },
         },
       });
+
+      await this.updateCityStatus(tx, expense.cityId);
     });
 
+    await this.redis.del(`balance:user:${expense.userId}`);
     return { success: true };
   }
 
-  // ──────────────────────────────────────────────
-  // MAP DATA — cities + inventory + transfer summaries
-  // ──────────────────────────────────────────────
+  // ────────────────────────────────────────────────
+  // WAREHOUSE — create bracelets → credit to a recipient USER
+  // ────────────────────────────────────────────────
 
-  async getMapData(user: {
-    role: Role;
-    officeId?: string | null;
-    countryId?: string | null;
-    cityId?: string | null;
+  async createBracelets(params: {
+    recipientUserId: string;
+    black: number;
+    white: number;
+    red: number;
+    blue: number;
+    notes?: string;
+    actorId: string;
   }) {
-    const { role, countryId, cityId } = user;
+    const { recipientUserId, black, white, red, blue, notes, actorId } = params;
 
-    // Build city filter based on role
-    const cityWhere: Prisma.CityWhereInput = {};
-    if (role === Role.COUNTRY && countryId) {
-      cityWhere.countryId = countryId;
-    } else if (role === Role.CITY && cityId) {
-      // Find the country for this city, show all sibling cities
-      const myCity = await this.prisma.city.findUnique({
-        where: { id: cityId },
-        select: { countryId: true },
-      });
-      if (myCity?.countryId) {
-        cityWhere.countryId = myCity.countryId;
-      } else {
-        cityWhere.id = cityId;
-      }
+    if (black <= 0 && white <= 0 && red <= 0 && blue <= 0) {
+      throw new BadRequestException('At least one bracelet color must have quantity > 0');
     }
-    // ADMIN / OFFICE — no filter
 
-    // Get cities with inventory
+    const recipient = await this.prisma.user.findUnique({
+      where: { id: recipientUserId },
+      select: { id: true, role: true, displayName: true },
+    });
+    if (!recipient) throw new NotFoundException(`Recipient user ${recipientUserId} not found`);
+    if (recipient.role !== Role.USER) {
+      throw new BadRequestException('Bracelets can only be assigned to USER-role accounts');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: recipientUserId },
+        data: {
+          balanceBlack: { increment: black },
+          balanceWhite: { increment: white },
+          balanceRed: { increment: red },
+          balanceBlue: { increment: blue },
+          balanceVersion: { increment: 1 },
+        },
+      });
+
+      const creation = await tx.warehouseCreation.create({
+        data: {
+          recipientUserId,
+          black, white, red, blue,
+          totalAmount: black + white + red + blue,
+          createdBy: actorId,
+          notes: notes || null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: 'BALANCE_TOPUP',
+          entityType: 'User',
+          entityId: recipientUserId,
+          actorId,
+          metadata: { black, white, red, blue, totalAmount: black + white + red + blue, notes, recipientUserId },
+        },
+      });
+
+      this.logger.log(`Bracelets created for ${recipient.displayName} — B:${black} W:${white} R:${red} BL:${blue} by ${actorId}`);
+      await this.redis.del(`balance:user:${recipientUserId}`);
+      return creation;
+    });
+  }
+
+  async getWarehouseCreationHistory(params: {
+    recipientUserId?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { recipientUserId, page = 1, limit = 20 } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.WarehouseCreationWhereInput = {};
+    if (recipientUserId) where.recipientUserId = recipientUserId;
+
+    const [creations, total] = await Promise.all([
+      this.prisma.warehouseCreation.findMany({
+        where,
+        include: {
+          recipientUser: {
+            select: {
+              id: true, username: true, displayName: true,
+              primaryCity: { select: { id: true, name: true, slug: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.warehouseCreation.count({ where }),
+    ]);
+
+    const userIds = [...new Set(creations.map((c) => c.createdBy).filter(Boolean))] as string[];
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, username: true, displayName: true, role: true },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    return {
+      data: creations.map((c) => ({ ...c, createdByUser: userMap.get(c.createdBy) ?? null })),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  // ────────────────────────────────────────────────
+  // MAP DATA
+  // ────────────────────────────────────────────────
+
+  async getMapData(user: { role: Role; officeId?: string | null; primaryCityId?: string | null }) {
+    const { role, officeId, primaryCityId } = user;
+
+    const cityWhere: Prisma.CityWhereInput = {};
+    if (role === Role.USER && primaryCityId) {
+      const myCity = await this.prisma.city.findUnique({ where: { id: primaryCityId }, select: { countryId: true } });
+      if (myCity) cityWhere.countryId = myCity.countryId;
+    }
+    if (role === Role.OFFICE && officeId) {
+      cityWhere.country = { officeId };
+    }
+
     const cities = await this.prisma.city.findMany({
       where: cityWhere,
-      include: {
-        country: { select: { id: true, name: true, code: true } },
-      },
+      include: { country: { select: { id: true, name: true, code: true } } },
       orderBy: { name: 'asc' },
     });
 
-    const cityIds = cities.map((c) => c.id);
+    const cityData = await Promise.all(
+      cities
+        .filter((c) => c.latitude && c.longitude)
+        .map(async (city) => {
+          const agg = await this.prisma.user.aggregate({
+            where: { primaryCityId: city.id, isActive: true, role: Role.USER },
+            _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+          });
+          const black = agg._sum.balanceBlack ?? 0;
+          const white = agg._sum.balanceWhite ?? 0;
+          const red = agg._sum.balanceRed ?? 0;
+          const blue = agg._sum.balanceBlue ?? 0;
+          return {
+            id: city.id, name: city.name, slug: city.slug,
+            status: city.status,
+            latitude: city.latitude, longitude: city.longitude,
+            countryId: city.countryId,
+            countryName: city.country?.name || '',
+            countryCode: city.country?.code || '',
+            balance: { BLACK: black, WHITE: white, RED: red, BLUE: blue },
+            totalStock: black + white + red + blue,
+          };
+        }),
+    );
 
-    // Batch get inventory for all cities
-    const inventories = await this.prisma.inventory.findMany({
-      where: {
-        entityType: EntityType.CITY,
-        cityId: { in: cityIds },
-      },
-    });
-
-    // Aggregate transfer volumes between locations (last 90 days)
     const since = new Date();
     since.setDate(since.getDate() - 90);
 
-    const transferSummary = await this.prisma.transfer.findMany({
+    const recentTransfers = await this.prisma.transfer.findMany({
       where: {
         createdAt: { gte: since },
         status: { in: ['SENT', 'ACCEPTED', 'DISCREPANCY_FOUND'] },
-        OR: [
-          { senderCityId: { in: cityIds } },
-          { receiverCityId: { in: cityIds } },
-        ],
       },
       select: {
-        senderType: true,
-        senderCityId: true,
-        senderCountryId: true,
-        receiverType: true,
-        receiverCityId: true,
-        receiverCountryId: true,
-        status: true,
+        id: true, status: true, createdAt: true, notes: true,
+        fromUserId: true, toUserId: true,
+        fromUser: {
+          select: {
+            id: true, displayName: true,
+            primaryCity: { select: { id: true, name: true, latitude: true, longitude: true, countryId: true } },
+          },
+        },
+        toUser: {
+          select: {
+            id: true, displayName: true,
+            primaryCity: { select: { id: true, name: true, latitude: true, longitude: true, countryId: true } },
+          },
+        },
         items: { select: { itemType: true, quantity: true } },
-        senderCity: { select: { latitude: true, longitude: true } },
-        senderCountry: { select: { latitude: true, longitude: true } },
-        receiverCity: { select: { latitude: true, longitude: true } },
-        receiverCountry: { select: { latitude: true, longitude: true } },
       },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
     });
 
-    // Build city data with inventory
-    const cityData = cities
-      .filter((c) => c.latitude && c.longitude)
-      .map((city) => {
-        const inv = inventories.filter((i) => i.cityId === city.id);
-        const balance: Record<string, number> = {};
-        for (const itemType of Object.values(ItemType)) {
-          const entry = inv.find((i) => i.itemType === itemType);
-          balance[itemType] = entry?.quantity ?? 0;
-        }
-        const total = Object.values(balance).reduce((a, b) => a + b, 0);
-
+    const transferData = recentTransfers
+      .filter((t) => {
+        const fc = t.fromUser?.primaryCity;
+        const tc = t.toUser?.primaryCity;
+        return fc?.latitude && tc?.latitude && fc.latitude !== 0 && tc.latitude !== 0;
+      })
+      .map((t) => {
+        const fc = t.fromUser!.primaryCity!;
+        const tc = t.toUser!.primaryCity!;
         return {
-          id: city.id,
-          name: city.name,
-          slug: city.slug,
-          status: city.status,
-          latitude: city.latitude,
-          longitude: city.longitude,
-          countryId: city.countryId,
-          countryName: city.country?.name || '',
-          countryCode: city.country?.code || '',
-          balance,
-          totalStock: total,
+          id: t.id, status: t.status, createdAt: t.createdAt,
+          senderName: t.fromUser?.displayName || '—',
+          receiverName: t.toUser?.displayName || '—',
+          senderCityId: fc.id, receiverCityId: tc.id,
+          senderCountryId: fc.countryId, receiverCountryId: tc.countryId,
+          fromLat: fc.latitude!, fromLng: fc.longitude!,
+          toLat: tc.latitude!, toLng: tc.longitude!,
+          volume: t.items.reduce((s, i) => s + i.quantity, 0),
+          items: t.items,
         };
       });
 
-    // Aggregate transfer lines between locations
-    const lineMap = new Map<
-      string,
-      { fromLat: number; fromLng: number; toLat: number; toLng: number; volume: number }
-    >();
-    for (const t of transferSummary) {
-      const from = t.senderCity || t.senderCountry;
-      const to = t.receiverCity || t.receiverCountry;
-      if (!from?.latitude || !to?.latitude) continue;
-      if (from.latitude === 0 || to.latitude === 0) continue;
-
-      const key = `${from.latitude},${from.longitude}-${to.latitude},${to.longitude}`;
-      const vol = t.items.reduce((s, i) => s + i.quantity, 0);
+    const lineMap = new Map<string, { fromLat: number; fromLng: number; toLat: number; toLng: number; volume: number }>();
+    for (const t of transferData) {
+      const key = `${t.fromLat},${t.fromLng}-${t.toLat},${t.toLng}`;
       const existing = lineMap.get(key);
-      if (existing) {
-        existing.volume += vol;
-      } else {
-        lineMap.set(key, {
-          fromLat: from.latitude,
-          fromLng: from.longitude,
-          toLat: to.latitude,
-          toLng: to.longitude,
-          volume: vol,
-        });
-      }
+      if (existing) existing.volume += t.volume;
+      else lineMap.set(key, { fromLat: t.fromLat, fromLng: t.fromLng, toLat: t.toLat, toLng: t.toLng, volume: t.volume });
     }
 
-    // Get countries for the scope
     const countryWhere: Prisma.CountryWhereInput = {};
-    if (role === Role.COUNTRY && countryId) {
-      countryWhere.id = countryId;
-    } else if (role === Role.CITY && cityId) {
-      const myCity = cities.find((c) => c.id === cityId);
+    if (role === Role.OFFICE && officeId) countryWhere.officeId = officeId;
+    if (role === Role.USER && primaryCityId) {
+      const myCity = cities.find((c) => c.id === primaryCityId);
       if (myCity) countryWhere.id = myCity.countryId;
     }
 
@@ -662,856 +452,198 @@ export class InventoryService {
       orderBy: { name: 'asc' },
     });
 
-    // Country-level inventory totals
-    const countryInventories = await this.prisma.inventory.findMany({
-      where: {
-        entityType: EntityType.COUNTRY,
-        countryId: { in: countries.map((c) => c.id) },
-      },
-    });
-
-    // Also aggregate city inventories per country
     const countryData = countries.map((country) => {
-      // Country's own inventory
-      const ownInv = countryInventories.filter((i) => i.countryId === country.id);
-      const ownBalance: Record<string, number> = {};
-      for (const t of Object.values(ItemType)) {
-        ownBalance[t] = ownInv.find((i) => i.itemType === t)?.quantity ?? 0;
-      }
-
-      // Sum of all cities in this country
-      const countryCities = cityData.filter((c) => c.countryId === country.id);
-      const cityTotal: Record<string, number> = {};
-      for (const t of Object.values(ItemType)) {
-        cityTotal[t] = countryCities.reduce((sum, c) => sum + (c.balance[t] || 0), 0);
-      }
-
-      const totalOwn = Object.values(ownBalance).reduce((a, b) => a + b, 0);
-      const totalCities = Object.values(cityTotal).reduce((a, b) => a + b, 0);
-
-      return {
-        ...country,
-        balance: ownBalance,
-        cityBalance: cityTotal,
-        totalStock: totalOwn + totalCities,
-        cityCount: countryCities.length,
-      };
+      const cc = cityData.filter((c) => c.countryId === country.id);
+      const bal = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
+      for (const c of cc) { bal.BLACK += c.balance.BLACK; bal.WHITE += c.balance.WHITE; bal.RED += c.balance.RED; bal.BLUE += c.balance.BLUE; }
+      return { ...country, balance: bal, totalStock: bal.BLACK + bal.WHITE + bal.RED + bal.BLUE, cityCount: cc.length };
     });
 
-    // Individual recent transfers (last 90 days) with details
-    const recentTransfers = await this.prisma.transfer.findMany({
-      where: {
-        createdAt: { gte: since },
-        OR: [
-          { senderCityId: { in: cityIds } },
-          { receiverCityId: { in: cityIds } },
-        ],
-      },
-      select: {
-        id: true,
-        status: true,
-        createdAt: true,
-        notes: true,
-        senderType: true,
-        senderCityId: true,
-        senderCountryId: true,
-        receiverType: true,
-        receiverCityId: true,
-        receiverCountryId: true,
-        items: { select: { itemType: true, quantity: true } },
-        senderCity: { select: { name: true, latitude: true, longitude: true, countryId: true } },
-        senderCountry: { select: { name: true, latitude: true, longitude: true } },
-        receiverCity: { select: { name: true, latitude: true, longitude: true, countryId: true } },
-        receiverCountry: { select: { name: true, latitude: true, longitude: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
-
-    const transferData = recentTransfers
-      .filter((t) => {
-        const from = t.senderCity || t.senderCountry;
-        const to = t.receiverCity || t.receiverCountry;
-        return from?.latitude && to?.latitude && from.latitude !== 0 && to.latitude !== 0;
-      })
-      .map((t) => {
-        const from = t.senderCity || t.senderCountry;
-        const to = t.receiverCity || t.receiverCountry;
-        const volume = t.items.reduce((s, i) => s + i.quantity, 0);
-        return {
-          id: t.id,
-          status: t.status,
-          createdAt: t.createdAt,
-          senderName: t.senderCity?.name || t.senderCountry?.name || '—',
-          receiverName: t.receiverCity?.name || t.receiverCountry?.name || '—',
-          senderCountryId: t.senderCity?.countryId || t.senderCountryId,
-          receiverCountryId: t.receiverCity?.countryId || t.receiverCountryId,
-          fromLat: from!.latitude,
-          fromLng: from!.longitude,
-          toLat: to!.latitude,
-          toLng: to!.longitude,
-          volume,
-          items: t.items,
-        };
-      });
-
-    return {
-      cities: cityData,
-      countries: countryData,
-      transferLines: Array.from(lineMap.values()),
-      transfers: transferData,
-    };
+    return { cities: cityData, countries: countryData, transferLines: Array.from(lineMap.values()), transfers: transferData };
   }
 
-  // ──────────────────────────────────────────────
-  // INTERNAL: Update city status based on inventory
-  // ──────────────────────────────────────────────
+  // ────────────────────────────────────────────────
+  // CITY STATUS — based on aggregate user balances
+  // ────────────────────────────────────────────────
 
-  async updateCityStatus(
-    tx: Prisma.TransactionClient,
-    cityId: string,
-  ): Promise<void> {
-    const inventories = await tx.inventory.findMany({
-      where: { entityType: EntityType.CITY, cityId },
+  async updateCityStatus(tx: Prisma.TransactionClient, cityId: string): Promise<void> {
+    const agg = await tx.user.aggregate({
+      where: { primaryCityId: cityId, isActive: true, role: Role.USER },
+      _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
     });
+    const total = (agg._sum.balanceBlack ?? 0) + (agg._sum.balanceWhite ?? 0)
+      + (agg._sum.balanceRed ?? 0) + (agg._sum.balanceBlue ?? 0);
 
-    const allZero = inventories.every((i) => i.quantity === 0);
-    const anyLow = inventories.some((i) => i.quantity < 200 && i.quantity > 0);
-
-    let newStatus: CityStatus;
-    if (allZero || inventories.length === 0) {
-      newStatus = CityStatus.INACTIVE;
-    } else if (anyLow) {
-      newStatus = CityStatus.LOW;
-    } else {
-      newStatus = CityStatus.ACTIVE;
-    }
+    const newStatus: CityStatus = total === 0 ? CityStatus.INACTIVE : total < 200 ? CityStatus.LOW : CityStatus.ACTIVE;
 
     const city = await tx.city.findUnique({
       where: { id: cityId },
       include: { country: { select: { name: true } } },
     });
     if (city && city.status !== newStatus) {
-      await tx.city.update({
-        where: { id: cityId },
-        data: { status: newStatus },
-      });
-
-      this.logger.log(`City ${cityId} status changed: ${city.status} → ${newStatus}`);
-
-      const totalBalance = inventories.reduce((sum, i) => sum + i.quantity, 0);
-
-      // Emit notification events for LOW / INACTIVE
+      await tx.city.update({ where: { id: cityId }, data: { status: newStatus } });
+      this.logger.log(`City ${cityId} status: ${city.status} → ${newStatus} (total=${total})`);
       if (newStatus === CityStatus.LOW) {
-        this.eventEmitter.emit('city.lowStock', {
-          cityId,
-          cityName: city.name,
-          countryName: city.country?.name || '',
-          totalBalance,
-          inventories,
-        });
+        this.eventEmitter.emit('city.lowStock', { cityId, cityName: city.name, countryName: city.country?.name || '', total });
       } else if (newStatus === CityStatus.INACTIVE) {
-        this.eventEmitter.emit('city.zeroStock', {
-          cityId,
-          cityName: city.name,
-          countryName: city.country?.name || '',
-        });
+        this.eventEmitter.emit('city.zeroStock', { cityId, cityName: city.name, countryName: city.country?.name || '' });
       }
     }
   }
 
-  // ──────────────────────────────────────────────
-  // INTERNAL: Build where clause
-  // ──────────────────────────────────────────────
+  // ────────────────────────────────────────────────
+  // COMPANY LOSSES
+  // ────────────────────────────────────────────────
 
-  private buildInventoryWhere(entityType: EntityType, entityId: string) {
-    const where: Prisma.InventoryWhereInput = { entityType };
-    if (entityType === EntityType.OFFICE) {
-      where.officeId = entityId;
-    } else if (entityType === EntityType.COUNTRY) {
-      where.countryId = entityId;
-    } else if (entityType === EntityType.CITY) {
-      where.cityId = entityId;
-    }
-    return where;
-  }
-
-  // ──────────────────────────────────────────────
-  // WAREHOUSE: Create bracelets (ADMIN/OFFICE)
-  // ──────────────────────────────────────────────
-
-  async createBracelets(params: {
-    entityType: EntityType;
-    officeId?: string;
-    black: number;
-    white: number;
-    red: number;
-    blue: number;
-    notes?: string;
-    actorId: string;
-  }) {
-    const { entityType, officeId, black, white, red, blue, notes, actorId } = params;
-
-    // Validate entityType is ADMIN or OFFICE
-    if (entityType !== EntityType.ADMIN && entityType !== EntityType.OFFICE) {
-      throw new BadRequestException('Warehouse creation only available for ADMIN/OFFICE');
-    }
-
-    // Validate at least one color has quantity
-    if (black <= 0 && white <= 0 && red <= 0 && blue <= 0) {
-      throw new BadRequestException('At least one bracelet color must have quantity > 0');
-    }
-
-    const totalAmount = black + white + red + blue;
-
-    return this.prisma.$transaction(async (tx) => {
-      const colors = [
-        { type: ItemType.BLACK, qty: black },
-        { type: ItemType.WHITE, qty: white },
-        { type: ItemType.RED, qty: red },
-        { type: ItemType.BLUE, qty: blue },
-      ];
-
-      // Add to inventory for each color
-      for (const { type, qty } of colors) {
-        if (qty > 0) {
-          const where = entityType === EntityType.ADMIN
-            ? { entityType, officeId: null, countryId: null, cityId: null, itemType: type }
-            : { entityType, officeId, itemType: type };
-
-          let inventory = await tx.inventory.findFirst({
-            where: {
-              entityType,
-              ...(entityType === EntityType.OFFICE ? { officeId } : { officeId: null, countryId: null, cityId: null }),
-              itemType: type,
-            },
-          });
-
-          if (inventory) {
-            await tx.inventory.update({
-              where: { id: inventory.id },
-              data: { quantity: inventory.quantity + qty },
-            });
-          } else {
-            await tx.inventory.create({
-              data: {
-                entityType,
-                ...(entityType === EntityType.OFFICE ? { officeId } : {}),
-                itemType: type,
-                quantity: qty,
-              },
-            });
-          }
-        }
-      }
-
-      // Create warehouse creation log
-      const creation = await (tx as any).warehouseCreation.create({
-        data: {
-          entityType,
-          officeId: entityType === EntityType.OFFICE ? officeId : null,
-          black,
-          white,
-          red,
-          blue,
-          totalAmount,
-          createdBy: actorId,
-          notes: notes || null,
-        },
-      });
-
-      // Create audit log
-      await tx.auditLog.create({
-        data: {
-          action: 'BALANCE_TOPUP',
-          entityType: entityType === EntityType.ADMIN ? 'Admin' : 'Office',
-          entityId: officeId || 'admin',
-          actorId,
-          metadata: { black, white, red, blue, totalAmount, notes },
-        },
-      });
-
-      // Invalidate cache
-      if (entityType === EntityType.OFFICE && officeId) {
-        await this.redis.invalidateInventory(EntityType.OFFICE, officeId);
-      }
-      await this.redis.del('inventory:all');
-
-      this.logger.log(
-        `Warehouse bracelets created: ${entityType}${officeId ? ':' + officeId : ''} — B:${black} W:${white} R:${red} BL:${blue} by ${actorId}`,
-      );
-
-      return creation;
-    });
-  }
-
-  // Get warehouse creation history
-  async getWarehouseCreationHistory(params: {
-    entityType?: EntityType;
-    officeId?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    const { entityType, officeId, page = 1, limit = 20 } = params;
-    const skip = (page - 1) * limit;
-
+  async getCompanyLossesSummary(filters?: { cityId?: string; countryId?: string }) {
     try {
-      this.logger.log(`getWarehouseCreationHistory: entityType=${entityType}, officeId=${officeId}, page=${page}, limit=${limit}`);
-      
-      const where: any = {};
-      if (entityType) where.entityType = entityType;
-      if (officeId) where.officeId = officeId;
-
-      // Check if warehouseCreation model exists on prisma client
-      if (!(this.prisma as any).warehouseCreation) {
-        this.logger.error('warehouseCreation model not found on Prisma client - run prisma generate');
-        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
-      }
-
-      const [creations, total] = await Promise.all([
-        (this.prisma as any).warehouseCreation.findMany({
-          where,
-          include: {
-            office: { select: { id: true, name: true, code: true } },
-          },
-          orderBy: { createdAt: 'desc' },
-          skip,
-          take: limit,
-        }),
-        (this.prisma as any).warehouseCreation.count({ where }),
-      ]);
-
-      // Fetch creator user info for each creation
-      const userIds = [...new Set(creations.map((c: any) => c.createdBy).filter(Boolean))] as string[];
-      const users = userIds.length > 0 
-        ? await this.prisma.user.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, username: true, displayName: true, role: true },
-          })
-        : [];
-      const userMap = new Map(users.map(u => [u.id, u]));
-
-      // Attach user info to each creation
-      const creationsWithUser = creations.map((c: any) => ({
-        ...c,
-        createdByUser: userMap.get(c.createdBy) || null,
-      }));
-
-      this.logger.log(`getWarehouseCreationHistory: found ${total} records`);
-      return {
-        data: creationsWithUser,
-        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-      };
-    } catch (error: any) {
-      this.logger.error(`getWarehouseCreationHistory ERROR: ${error?.message}`, error?.stack);
-      // Return empty result instead of throwing to prevent 503
-      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
-    }
-  }
-
-  // Get warehouse balance for ADMIN or specific OFFICE
-  async getWarehouseBalance(entityType: EntityType, officeId?: string) {
-    try {
-      this.logger.log(`getWarehouseBalance: entityType=${entityType}, officeId=${officeId}`);
-      
-      if (entityType !== EntityType.ADMIN && entityType !== EntityType.OFFICE) {
-        throw new BadRequestException('Only ADMIN or OFFICE entityType supported');
-      }
-
-      const where: Prisma.InventoryWhereInput = { entityType };
-      if (entityType === EntityType.OFFICE) {
-        where.officeId = officeId;
-      } else {
-        // ADMIN: no office/country/city
-        where.officeId = null;
-        where.countryId = null;
-        where.cityId = null;
-      }
-
-      const inventory = await this.prisma.inventory.findMany({ where });
-
-      // Return lowercase keys to match frontend expectations
-      const balance = {
-        black: 0,
-        white: 0,
-        red: 0,
-        blue: 0,
-      };
-      for (const entry of inventory) {
-        const key = entry.itemType.toLowerCase() as keyof typeof balance;
-        if (key in balance) {
-          balance[key] = entry.quantity;
-        }
-      }
-
-      this.logger.log(`getWarehouseBalance: ${entityType}${officeId ? ':' + officeId : ''} => ${JSON.stringify(balance)}`);
-      return balance;
-    } catch (error: any) {
-      this.logger.error(`getWarehouseBalance ERROR: ${error?.message}`, error?.stack);
-      // Return empty balance instead of throwing to prevent 503
-      return { black: 0, white: 0, red: 0, blue: 0 };
-    }
-  }
-
-  // Get total warehouse balance (ADMIN + all OFFICE entities combined)
-  async getWarehouseTotalBalance() {
-    try {
-      this.logger.log('getWarehouseTotalBalance: summing ADMIN + all offices');
-
-      const inventory = await this.prisma.inventory.findMany({
-        where: {
-          entityType: { in: [EntityType.ADMIN, EntityType.OFFICE] },
-        },
-      });
-
-      const balance = { black: 0, white: 0, red: 0, blue: 0 };
-      for (const entry of inventory) {
-        const key = entry.itemType.toLowerCase() as keyof typeof balance;
-        if (key in balance) {
-          balance[key] += entry.quantity;
-        }
-      }
-
-      this.logger.log(`getWarehouseTotalBalance => ${JSON.stringify(balance)}`);
-      return balance;
-    } catch (error: any) {
-      this.logger.error(`getWarehouseTotalBalance ERROR: ${error?.message}`, error?.stack);
-      return { black: 0, white: 0, red: 0, blue: 0 };
-    }
-  }
-
-  // ──────────────────────────────────────────────
-  // COMPANY LOSSES: Summary and list
-  // ──────────────────────────────────────────────
-
-  async getCompanyLossesSummary(filters?: { countryId?: string; cityId?: string; scope?: string }) {
-    try {
-      this.logger.log('getCompanyLossesSummary: starting...');
-      
-      // Check if companyLoss model exists on prisma client
-      if (!(this.prisma as any).companyLoss) {
-        this.logger.error('companyLoss model not found on Prisma client - run prisma generate');
-        return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
-      }
-
-      const where: any = {};
-      // For CITY/COUNTRY scoped queries, exclude ACCEPT_AS_IS (company-level losses)
-      if (filters?.cityId || filters?.countryId) {
-        where.NOT = { resolutionType: 'ACCEPT_AS_IS' };
-      }
+      const where: Prisma.CompanyLossWhereInput = {};
       if (filters?.cityId) {
         where.transfer = {
           OR: [
-            { senderCityId: filters.cityId },
-            { receiverCityId: filters.cityId },
+            { fromUser: { primaryCityId: filters.cityId } },
+            { toUser: { primaryCityId: filters.cityId } },
           ],
         };
       } else if (filters?.countryId) {
-        if (filters.scope === 'own') {
-          // Only losses from transfers where the COUNTRY account is a direct party
-          where.transfer = {
-            OR: [
-              { senderCountryId: filters.countryId, senderType: 'COUNTRY' },
-              { receiverCountryId: filters.countryId, receiverType: 'COUNTRY' },
-            ],
-          };
-        } else if (filters.scope === 'cities') {
-          // Only losses from transfers where subordinate cities are involved
-          where.transfer = {
-            OR: [
-              { senderCity: { countryId: filters.countryId }, senderType: 'CITY' },
-              { receiverCity: { countryId: filters.countryId }, receiverType: 'CITY' },
-            ],
-          };
-        } else {
-          // Default: all losses involving the country (own + cities)
-          where.transfer = {
-            OR: [
-              { senderCountryId: filters.countryId },
-              { receiverCountryId: filters.countryId },
-              { senderCity: { countryId: filters.countryId } },
-              { receiverCity: { countryId: filters.countryId } },
-            ],
-          };
-        }
+        where.transfer = {
+          OR: [
+            { fromUser: { primaryCity: { countryId: filters.countryId } } },
+            { toUser: { primaryCity: { countryId: filters.countryId } } },
+          ],
+        };
       }
-      
-      const losses = await (this.prisma as any).companyLoss.findMany({ where });
-      this.logger.log(`getCompanyLossesSummary: found ${losses?.length || 0} losses`);
-
-      const summary = {
-        total: 0,
-        black: 0,
-        white: 0,
-        red: 0,
-        blue: 0,
-        count: losses?.length || 0,
-      };
-
-      for (const loss of (losses || [])) {
-        summary.total += loss.totalAmount || 0;
-        summary.black += loss.black || 0;
-        summary.white += loss.white || 0;
-        summary.red += loss.red || 0;
-        summary.blue += loss.blue || 0;
+      const losses = await this.prisma.companyLoss.findMany({ where });
+      const summary = { total: 0, black: 0, white: 0, red: 0, blue: 0, count: losses.length };
+      for (const loss of losses) {
+        summary.total += loss.totalAmount ?? 0;
+        summary.black += loss.black ?? 0;
+        summary.white += loss.white ?? 0;
+        summary.red += loss.red ?? 0;
+        summary.blue += loss.blue ?? 0;
       }
-
       return summary;
     } catch (error: any) {
-      this.logger.error(`getCompanyLossesSummary ERROR: ${error?.message}`, error?.stack);
-      // Return empty result instead of throwing to prevent 503
+      this.logger.error(`getCompanyLossesSummary ERROR: ${error?.message}`);
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, count: 0 };
     }
   }
 
   async getCompanyLosses(params: {
-    page?: number;
-    limit?: number;
-    startDate?: string;
-    endDate?: string;
-    countryId?: string;
-    cityId?: string;
-    scope?: string;
-    search?: string;
+    page?: number; limit?: number; startDate?: string; endDate?: string; search?: string;
   }) {
-    const { page = 1, limit = 20, startDate, endDate, countryId, cityId, scope, search } = params;
+    const { page = 1, limit = 20, startDate, endDate, search } = params;
     const skip = (page - 1) * limit;
 
-    try {
-      this.logger.log(`getCompanyLosses: page=${page}, limit=${limit}`);
-      
-      // Check if companyLoss model exists on prisma client
-      if (!(this.prisma as any).companyLoss) {
-        this.logger.error('companyLoss model not found on Prisma client - run prisma generate');
-        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
-      }
-
-      const where: any = {};
-      if (startDate) {
-        where.resolvedAt = { ...where.resolvedAt, gte: new Date(startDate) };
-      }
-      if (endDate) {
-        where.resolvedAt = { ...where.resolvedAt, lte: new Date(endDate) };
-      }
-      if (search) {
-        where.OR = [
-          { senderName: { contains: search, mode: 'insensitive' } },
-          { receiverName: { contains: search, mode: 'insensitive' } },
-          { senderCity: { contains: search, mode: 'insensitive' } },
-          { receiverCity: { contains: search, mode: 'insensitive' } },
-        ];
-      }
-      // For CITY/COUNTRY scoped queries, exclude ACCEPT_AS_IS (company-level losses)
-      if (cityId || countryId) {
-        where.NOT = { resolutionType: 'ACCEPT_AS_IS' };
-      }
-      if (cityId) {
-        where.transfer = {
-          OR: [
-            { senderCityId: cityId },
-            { receiverCityId: cityId },
-          ],
-        };
-      } else if (countryId) {
-        if (scope === 'own') {
-          where.transfer = {
-            OR: [
-              { senderCountryId: countryId, senderType: 'COUNTRY' },
-              { receiverCountryId: countryId, receiverType: 'COUNTRY' },
-            ],
-          };
-        } else if (scope === 'cities') {
-          where.transfer = {
-            OR: [
-              { senderCity: { countryId }, senderType: 'CITY' },
-              { receiverCity: { countryId }, receiverType: 'CITY' },
-            ],
-          };
-        } else {
-          where.transfer = {
-            OR: [
-              { senderCountryId: countryId },
-              { receiverCountryId: countryId },
-              { senderCity: { countryId } },
-              { receiverCity: { countryId } },
-            ],
-          };
-        }
-      }
-
-      const [losses, total] = await Promise.all([
-        (this.prisma as any).companyLoss.findMany({
-          where,
-          include: {
-            transfer: {
-              select: {
-                id: true,
-                status: true,
-                senderType: true,
-                receiverType: true,
-                senderCity: { select: { id: true, name: true } },
-                senderCountry: { select: { id: true, name: true } },
-                receiverCity: { select: { id: true, name: true } },
-                receiverCountry: { select: { id: true, name: true } },
-              },
-            },
-            resolver: { select: { id: true, displayName: true, username: true } },
-          },
-          orderBy: { resolvedAt: 'desc' },
-          skip,
-          take: limit,
-        }),
-        (this.prisma as any).companyLoss.count({ where }),
-      ]);
-
-      this.logger.log(`getCompanyLosses: found ${total} records`);
-      return {
-        data: losses,
-        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-      };
-    } catch (error: any) {
-      this.logger.error(`getCompanyLosses ERROR: ${error?.message}`, error?.stack);
-      // Return empty result instead of throwing to prevent 503
-      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    const where: Prisma.CompanyLossWhereInput = {};
+    if (startDate) (where as any).resolvedAt = { ...(where as any).resolvedAt, gte: new Date(startDate) };
+    if (endDate) (where as any).resolvedAt = { ...(where as any).resolvedAt, lte: new Date(endDate) };
+    if (search) {
+      where.OR = [
+        { senderName: { contains: search, mode: 'insensitive' } },
+        { receiverName: { contains: search, mode: 'insensitive' } },
+      ];
     }
+
+    const [losses, total] = await Promise.all([
+      this.prisma.companyLoss.findMany({
+        where,
+        include: {
+          transfer: {
+            select: {
+              id: true, status: true,
+              fromUser: { select: { id: true, displayName: true, primaryCity: { select: { id: true, name: true } } } },
+              toUser: { select: { id: true, displayName: true, primaryCity: { select: { id: true, name: true } } } },
+            },
+          },
+          resolver: { select: { id: true, displayName: true, username: true } },
+        },
+        orderBy: { resolvedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.companyLoss.count({ where }),
+    ]);
+
+    return { data: losses, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  // ──────────────────────────────────────────────
-  // SYSTEM MINUS: Total Created - Sum of All Balances
-  // ──────────────────────────────────────────────
+  // ────────────────────────────────────────────────
+  // SYSTEM MINUS  (Created total – Sum of all user balances)
+  // ────────────────────────────────────────────────
 
   async getSystemMinusSummary() {
     try {
-      this.logger.log('getSystemMinusSummary: starting...');
-
-      // 1. Total created (from WarehouseCreation)
-      const created = { black: 0, white: 0, red: 0, blue: 0 };
-      if ((this.prisma as any).warehouseCreation) {
-        const creations = await (this.prisma as any).warehouseCreation.findMany({
-          select: { black: true, white: true, red: true, blue: true },
-        });
-        for (const c of creations) {
-          created.black += c.black || 0;
-          created.white += c.white || 0;
-          created.red += c.red || 0;
-          created.blue += c.blue || 0;
-        }
-      }
-
-      // 2. Sum of all account balances (excluding ADMIN entity)
-      const allInventory = await this.prisma.inventory.findMany({
-        where: { entityType: { not: EntityType.ADMIN } },
-        select: { itemType: true, quantity: true },
+      const creationAgg = await this.prisma.warehouseCreation.aggregate({
+        _sum: { black: true, white: true, red: true, blue: true },
       });
-      const balances = { BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 };
-      for (const inv of allInventory) {
-        if (balances[inv.itemType] !== undefined) {
-          balances[inv.itemType] += inv.quantity || 0;
-        }
-      }
+      const created = {
+        black: creationAgg._sum.black ?? 0,
+        white: creationAgg._sum.white ?? 0,
+        red: creationAgg._sum.red ?? 0,
+        blue: creationAgg._sum.blue ?? 0,
+      };
 
-      // 3. System minus = created - distributed balances
-      const result = {
-        black: created.black - balances.BLACK,
-        white: created.white - balances.WHITE,
-        red: created.red - balances.RED,
-        blue: created.blue - balances.BLUE,
+      const userAgg = await this.prisma.user.aggregate({
+        where: { role: Role.USER, isActive: true },
+        _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+      });
+      const bals = {
+        black: userAgg._sum.balanceBlack ?? 0,
+        white: userAgg._sum.balanceWhite ?? 0,
+        red: userAgg._sum.balanceRed ?? 0,
+        blue: userAgg._sum.balanceBlue ?? 0,
+      };
+
+      const diff = {
+        black: created.black - bals.black,
+        white: created.white - bals.white,
+        red: created.red - bals.red,
+        blue: created.blue - bals.blue,
         total: 0,
         totalCreated: created.black + created.white + created.red + created.blue,
-        totalBalances: balances.BLACK + balances.WHITE + balances.RED + balances.BLUE,
+        totalBalances: bals.black + bals.white + bals.red + bals.blue,
       };
-      result.total = result.black + result.white + result.red + result.blue;
-
-      this.logger.log(`getSystemMinusSummary: created=${result.totalCreated}, balances=${result.totalBalances}, minus=${result.total}`);
-      return result;
+      diff.total = diff.black + diff.white + diff.red + diff.blue;
+      return diff;
     } catch (error: any) {
-      this.logger.error(`getSystemMinusSummary ERROR: ${error?.message}`, error?.stack);
+      this.logger.error(`getSystemMinusSummary ERROR: ${error?.message}`);
       return { black: 0, white: 0, red: 0, blue: 0, total: 0, totalCreated: 0, totalBalances: 0 };
     }
   }
 
-  // ──────────────────────────────────────────────
-  // SYSTEM LOSSES (Company + Account Shortages)
-  // ──────────────────────────────────────────────
-
   async getSystemLossesSummary() {
     try {
-      this.logger.log('getSystemLossesSummary: starting...');
-      
       const summary = { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
-      
-      // Get company losses
-      if ((this.prisma as any).companyLoss) {
-        const companyLosses = await (this.prisma as any).companyLoss.findMany();
-        summary.companyCount = companyLosses?.length || 0;
-        for (const loss of (companyLosses || [])) {
-          summary.total += loss.totalAmount || 0;
-          summary.black += loss.black || 0;
-          summary.white += loss.white || 0;
-          summary.red += loss.red || 0;
-          summary.blue += loss.blue || 0;
-        }
+
+      const companyLosses = await this.prisma.companyLoss.findMany({
+        select: { totalAmount: true, black: true, white: true, red: true, blue: true },
+      });
+      summary.companyCount = companyLosses.length;
+      for (const l of companyLosses) {
+        summary.total += l.totalAmount ?? 0;
+        summary.black += l.black ?? 0;
+        summary.white += l.white ?? 0;
+        summary.red += l.red ?? 0;
+        summary.blue += l.blue ?? 0;
       }
-      
-      // Get account shortages
-      if ((this.prisma as any).shortage) {
-        const shortages = await (this.prisma as any).shortage.findMany();
-        summary.shortageCount = shortages?.length || 0;
-        for (const s of (shortages || [])) {
-          summary.total += s.totalAmount || 0;
-          summary.black += s.black || 0;
-          summary.white += s.white || 0;
-          summary.red += s.red || 0;
-          summary.blue += s.blue || 0;
-        }
+
+      const shortages = await this.prisma.shortage.findMany({
+        select: { totalAmount: true, black: true, white: true, red: true, blue: true },
+      });
+      summary.shortageCount = shortages.length;
+      for (const s of shortages) {
+        summary.total += s.totalAmount ?? 0;
+        summary.black += s.black ?? 0;
+        summary.white += s.white ?? 0;
+        summary.red += s.red ?? 0;
+        summary.blue += s.blue ?? 0;
       }
-      
-      this.logger.log(`getSystemLossesSummary: companyLosses=${summary.companyCount}, shortages=${summary.shortageCount}, total=${summary.total}`);
+
       return summary;
     } catch (error: any) {
-      this.logger.error(`getSystemLossesSummary ERROR: ${error?.message}`, error?.stack);
+      this.logger.error(`getSystemLossesSummary ERROR: ${error?.message}`);
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
-    }
-  }
-
-  async getSystemLosses(params: { page?: number; limit?: number }) {
-    const { page = 1, limit = 20 } = params;
-    
-    try {
-      this.logger.log(`getSystemLosses: page=${page}, limit=${limit}`);
-      
-      const all: any[] = [];
-      
-      // Get company losses
-      if ((this.prisma as any).companyLoss) {
-        const companyLosses = await (this.prisma as any).companyLoss.findMany({
-          include: {
-            transfer: { select: { id: true } },
-            resolver: { select: { displayName: true, username: true } },
-          },
-          orderBy: { resolvedAt: 'desc' },
-        });
-        
-        for (const cl of (companyLosses || [])) {
-          all.push({
-            id: cl.id,
-            type: 'COMPANY',
-            entityName: 'Компания (IMPREZA)',
-            entityType: 'COMPANY',
-            transferId: cl.transferId,
-            senderName: cl.senderName,
-            receiverName: cl.receiverName,
-            black: cl.black,
-            white: cl.white,
-            red: cl.red,
-            blue: cl.blue,
-            totalAmount: cl.totalAmount,
-            resolutionType: cl.resolutionType,
-            resolvedBy: cl.resolver?.displayName || cl.resolver?.username || 'Unknown',
-            createdAt: cl.resolvedAt,
-          });
-        }
-      }
-      
-      // Get account shortages
-      if ((this.prisma as any).shortage) {
-        const shortages = await (this.prisma as any).shortage.findMany({
-          include: {
-            transfer: {
-              select: {
-                id: true,
-                senderCity: { select: { name: true } },
-                senderCountry: { select: { name: true } },
-                senderOffice: { select: { name: true } },
-                receiverCity: { select: { name: true } },
-                receiverCountry: { select: { name: true } },
-                receiverOffice: { select: { name: true } },
-              },
-            },
-            office: { select: { name: true } },
-            country: { select: { name: true } },
-            city: { select: { name: true } },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-        
-        for (const s of (shortages || [])) {
-          const entityName = s.city?.name || s.country?.name || s.office?.name || s.entityType;
-          const senderName = s.transfer?.senderCity?.name || s.transfer?.senderCountry?.name || s.transfer?.senderOffice?.name || 'Admin';
-          const receiverName = s.transfer?.receiverCity?.name || s.transfer?.receiverCountry?.name || s.transfer?.receiverOffice?.name || 'Unknown';
-          
-          all.push({
-            id: s.id,
-            type: 'SHORTAGE',
-            entityName,
-            entityType: s.entityType,
-            entityId: s.cityId || s.countryId || s.officeId,
-            transferId: s.transferId,
-            senderName,
-            receiverName,
-            black: s.black,
-            white: s.white,
-            red: s.red,
-            blue: s.blue,
-            totalAmount: s.totalAmount,
-            resolutionType: s.resolutionType,
-            reason: s.reason,
-            notes: s.notes,
-            createdAt: s.createdAt,
-          });
-        }
-      }
-      
-      // Sort by date desc
-      all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      const total = all.length;
-      const start = (page - 1) * limit;
-      const data = all.slice(start, start + limit);
-      
-      this.logger.log(`getSystemLosses: total=${total}, returning ${data.length} items`);
-      return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
-    } catch (error: any) {
-      this.logger.error(`getSystemLosses ERROR: ${error?.message}`, error?.stack);
-      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
-    }
-  }
-
-  async getAccountLosses(entityType: string, entityId: string) {
-    try {
-      this.logger.log(`getAccountLosses: ${entityType}/${entityId}`);
-      
-      if (!(this.prisma as any).shortage) {
-        return { data: [], summary: { total: 0, black: 0, white: 0, red: 0, blue: 0 } };
-      }
-      
-      const where: any = { entityType };
-      if (entityType === 'OFFICE') where.officeId = entityId;
-      else if (entityType === 'COUNTRY') where.countryId = entityId;
-      else if (entityType === 'CITY') where.cityId = entityId;
-      
-      const shortages = await (this.prisma as any).shortage.findMany({
-        where,
-        include: {
-          transfer: { select: { id: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-      
-      const summary = { total: 0, black: 0, white: 0, red: 0, blue: 0 };
-      for (const s of (shortages || [])) {
-        summary.total += s.totalAmount || 0;
-        summary.black += s.black || 0;
-        summary.white += s.white || 0;
-        summary.red += s.red || 0;
-        summary.blue += s.blue || 0;
-      }
-      
-      this.logger.log(`getAccountLosses: found ${shortages?.length || 0} shortages`);
-      return { data: shortages, summary };
-    } catch (error: any) {
-      this.logger.error(`getAccountLosses ERROR: ${error?.message}`, error?.stack);
-      return { data: [], summary: { total: 0, black: 0, white: 0, red: 0, blue: 0 } };
     }
   }
 }

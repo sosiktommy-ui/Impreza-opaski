@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ItemType, EntityType, TransferStatus, ScopeType } from '@prisma/client';
+﻿import { PrismaClient, Role, ScopeType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -173,106 +173,68 @@ const COUNTRIES: CountryData[] = [
 
 // ─────────────── Main seed ───────────────
 async function main() {
-  console.log('🌱 Seeding IMPREZA v2 database...\n');
-
-  // ── Idempotency check: skip if new-style accounts already exist ──
-  const polzovatel1 = await prisma.user.findUnique({ where: { username: 'polzovatel1' } });
-  if (polzovatel1) {
-    console.log('✅ Seed already applied (polzovatel1 exists). Skipping.');
-    return;
-  }
-  console.log('ℹ️  New accounts not found — running full reseed.\n');
+  console.log('\uD83C\uDF31 Seeding IMPREZA database (USER-centric)...\n');
 
   // ───── 1. Clean all tables ─────
-  console.log('🗑️  Cleaning existing data...');
-  const targetTables = [
-    'domain_events',
-    'audit_logs',
-    'notifications',
-    'adjustments',
-    'expenses',
-    'transfer_rejections',
-    'transfer_items',
-    'transfers',
-    'acceptance_records',
-    'inventory',
-    'refresh_tokens',
-    'user_access',
-    'users',
-    'cities',
-    'countries',
-    'offices',
+  console.log('\uD83D\uDDD1\uFE0F  Cleaning existing data...');
+  const tableOrder = [
+    'domain_events', 'audit_logs', 'notifications',
+    'company_losses', 'shortages', 'adjustments', 'expenses',
+    'acceptance_records', 'transfer_rejections', 'transfer_items', 'transfers',
+    'warehouse_creations', 'refresh_tokens', 'user_access', 'users',
+    'cities', 'countries', 'offices',
   ];
   const existing = await prisma.$queryRawUnsafe<Array<{ tablename: string }>>(
     `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`,
   );
-  const existingSet = new Set(existing.map((r) => r.tablename));
-  const existingTargets = targetTables.filter((t) => existingSet.has(t));
+  const existingSet = new Set(existing.map((r: any) => r.tablename));
+  const existingTargets = tableOrder.filter((t) => existingSet.has(t));
   if (existingTargets.length > 0) {
-    const sql = `TRUNCATE TABLE ${existingTargets.map((t) => `"${t}"`).join(', ')} CASCADE;`;
-    await prisma.$executeRawUnsafe(sql);
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE TABLE ${existingTargets.map((t) => `"${t}"`).join(', ')} CASCADE`,
+    );
   }
+  console.log('   \u2705 Done\n');
 
-  // ───── 2. Create countries ─────
-  console.log('🌍 Creating countries...');
-  const countryMap: Record<string, string> = {}; // code → id
+  // ───── 2. Office ─────
+  console.log('\uD83C\uDFE2 Creating office...');
+  const office = await prisma.office.create({ data: { name: '\u041E\u0444\u0438\u0441 \u0415\u0432\u0440\u043E\u043F\u0430', code: 'eu' } });
+  console.log('   \u2705 \u041E\u0444\u0438\u0441 \u0415\u0432\u0440\u043E\u043F\u0430\n');
+
+  // ───── 3. Countries + Cities ─────
+  console.log('\uD83C\uDF0D Creating countries and cities...');
+  const countryMap: Record<string, string> = {};
+  const cityMap: Record<string, string> = {};
 
   for (const c of COUNTRIES) {
     const country = await prisma.country.create({
-      data: {
-        name: c.name,
-        code: c.code,
-        latitude: c.lat,
-        longitude: c.lng,
-      },
+      data: { name: c.name, code: c.code, latitude: c.lat, longitude: c.lng, officeId: office.id },
     });
     countryMap[c.code] = country.id;
-    console.log(`   ✅ ${c.name} (${c.code})`);
-  }
-
-  // ───── 3. Create cities ─────
-  console.log('\n🏙️  Creating cities...');
-  const cityMap: Record<string, string> = {}; // slug → id
-
-  for (const c of COUNTRIES) {
     for (const city of c.cities) {
       const created = await prisma.city.create({
-        data: {
-          name: city.name,
-          slug: city.slug,
-          latitude: city.lat,
-          longitude: city.lng,
-          countryId: countryMap[c.code],
-        },
+        data: { name: city.name, slug: city.slug, latitude: city.lat, longitude: city.lng, countryId: country.id },
       });
       cityMap[city.slug] = created.id;
     }
-    console.log(`   ✅ ${c.name}: ${c.cities.length} cities`);
+    console.log(`   \u2705 ${c.name}: ${c.cities.length} cities`);
   }
+  console.log(`   Total cities: ${Object.keys(cityMap).length}\n`);
 
-  const totalCities = Object.keys(cityMap).length;
-  console.log(`   Total: ${totalCities} cities\n`);
-
-  // ───── 4. Create Admin accounts ─────
-  console.log('👤 Creating admin accounts...');
+  // ───── 4. Admin accounts ─────
+  console.log('\uD83D\uDC64 Creating admin accounts...');
   const adminDmitry = await prisma.user.create({
     data: {
       email: 'dmitryganj@impreza.io',
       username: 'dmitryganj',
-      passwordHash: hashPw('dmitryganj1995'),
-      passwordVisible: 'dmitryganj1995',
+      passwordHash: hashPw('Impreza@Admin2026!'),
+      passwordVisible: 'Impreza@Admin2026!',
       role: Role.ADMIN,
       displayName: 'Dmitry Ganj',
     },
   });
   await prisma.userAccess.create({
-    data: {
-      userId: adminDmitry.id,
-      scopeType: ScopeType.GLOBAL,
-      scopeId: null,
-      grantedById: adminDmitry.id,
-      notes: 'seed: admin global access',
-    },
+    data: { userId: adminDmitry.id, scopeType: ScopeType.GLOBAL, grantedById: adminDmitry.id, notes: 'seed' },
   });
 
   const adminSerdar = await prisma.user.create({
@@ -286,88 +248,42 @@ async function main() {
     },
   });
   await prisma.userAccess.create({
+    data: { userId: adminSerdar.id, scopeType: ScopeType.GLOBAL, grantedById: adminDmitry.id, notes: 'seed' },
+  });
+  console.log('   \u2705 dmitryganj (ADMIN)');
+  console.log('   \u2705 serdar (ADMIN)\n');
+
+  // ───── 5. Office account ─────
+  console.log('\uD83C\uDFE2 Creating office account...');
+  const officeUser = await prisma.user.create({
     data: {
-      userId: adminSerdar.id,
-      scopeType: ScopeType.GLOBAL,
-      scopeId: null,
-      grantedById: adminDmitry.id,
-      notes: 'seed: admin global access',
+      email: 'office_mariana@impreza.io',
+      username: 'office_mariana',
+      passwordHash: hashPw('OfficeMariana@2026!'),
+      passwordVisible: 'OfficeMariana@2026!',
+      role: Role.OFFICE,
+      displayName: 'Office Mariana',
+      officeId: office.id,
     },
   });
-  console.log('   ✅ dmitryganj / dmitryganj1995 (ADMIN)');
-  console.log('   ✅ serdar / Impreza@Serdar2026! (ADMIN)\n');
-
-  // ───── 4b. Create Office ─────
-  console.log('🏢 Creating office...');
-  const OFFICES = [
-    { name: 'Офис Европа', code: 'eu' },
-  ];
-  const officeMap: Record<string, string> = {};
-
-  for (const o of OFFICES) {
-    const office = await prisma.office.create({
-      data: { name: o.name, code: o.code },
-    });
-    officeMap[o.code] = office.id;
-    console.log(`   ✅ ${o.name} (${o.code})`);
-  }
-
-  // Assign all countries to office_eu
-  console.log('\n🔗 Linking countries to office...');
-  await prisma.country.updateMany({
-    data: { officeId: officeMap['eu'] },
+  await prisma.userAccess.create({
+    data: { userId: officeUser.id, scopeType: ScopeType.OFFICE, scopeId: office.id, grantedById: adminDmitry.id, notes: 'seed' },
   });
-  console.log(`   ✅ All ${COUNTRIES.length} countries → Офис Европа`);
+  console.log('   \u2705 office_mariana (OFFICE)\n');
 
-  // ───── 4c. Create Office account ─────
-  console.log('\n👤 Creating office account...');
-  const officeAccounts = [
-    { username: 'office_mariana', displayName: 'Office Mariana', officeCode: 'eu', password: 'OfficeMariana@2026!' },
-  ];
-  for (const oa of officeAccounts) {
-    const u = await prisma.user.create({
-      data: {
-        email: `${oa.username}@impreza.io`,
-        username: oa.username,
-        passwordHash: hashPw(oa.password),
-        passwordVisible: oa.password,
-        role: Role.OFFICE,
-        displayName: oa.displayName,
-        officeId: officeMap[oa.officeCode],
-      },
-    });
-    await prisma.userAccess.create({
-      data: {
-        userId: u.id,
-        scopeType: ScopeType.OFFICE,
-        scopeId: officeMap[oa.officeCode],
-        grantedById: adminDmitry.id,
-        notes: 'seed: office access',
-      },
-    });
-    console.log(`   ✅ ${oa.username} / ${oa.password} → ${oa.displayName}`);
-  }
-
-  // ───── 5. Create regular user accounts (no city-named/country-named accounts) ─────
-  console.log('\n👥 Creating regular user accounts...');
+  // ───── 6. Regular USER accounts with personal balances ─────
+  console.log('\uD83D\uDC65 Creating USER accounts...');
   const regularUsers = [
-    { username: 'polzovatel1', displayName: 'Пользователь Один', citySlug: 'berlin', password: 'UserOne@2026!' },
-    { username: 'polzovatel2', displayName: 'Пользователь Два', citySlug: 'warsaw', password: 'UserTwo@2026!' },
-    { username: 'polzovatel3', displayName: 'Пользователь Три', citySlug: 'amsterdam', password: 'UserThree@2026!' },
-    { username: 'polzovatel4', displayName: 'Пользователь Четыре', citySlug: 'vienna', password: 'UserFour@2026!' },
-    { username: 'polzovatel5', displayName: 'Пользователь Пять', citySlug: 'paris', password: 'UserFive@2026!' },
+    { username: 'polzovatel1', displayName: '\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u041E\u0434\u0438\u043D', citySlug: 'berlin',    password: 'UserOne@2026!' },
+    { username: 'polzovatel2', displayName: '\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0414\u0432\u0430',   citySlug: 'warsaw',    password: 'UserTwo@2026!' },
+    { username: 'polzovatel3', displayName: '\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0422\u0440\u0438',   citySlug: 'amsterdam', password: 'UserThree@2026!' },
+    { username: 'polzovatel4', displayName: '\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0427\u0435\u0442\u044B\u0440\u0435', citySlug: 'vienna',    password: 'UserFour@2026!' },
+    { username: 'polzovatel5', displayName: '\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u041F\u044F\u0442\u044C',  citySlug: 'paris',     password: 'UserFive@2026!' },
   ];
 
   for (const ru of regularUsers) {
     const cityId = cityMap[ru.citySlug];
-    if (!cityId) {
-      throw new Error(`Seed city not found for user ${ru.username}: ${ru.citySlug}`);
-    }
-
-    const city = await prisma.city.findUnique({ where: { id: cityId }, select: { countryId: true } });
-    if (!city) {
-      throw new Error(`Seed city entity missing for user ${ru.username}: ${ru.citySlug}`);
-    }
+    if (!cityId) throw new Error(`City not found: ${ru.citySlug}`);
 
     const user = await prisma.user.create({
       data: {
@@ -375,103 +291,50 @@ async function main() {
         username: ru.username,
         passwordHash: hashPw(ru.password),
         passwordVisible: ru.password,
-        role: Role.CITY,
+        role: Role.USER,
         displayName: ru.displayName,
-        countryId: city.countryId,
-        cityId,
+        primaryCityId: cityId,
       },
     });
-
     await prisma.userAccess.create({
       data: {
         userId: user.id,
         scopeType: ScopeType.CITY,
         scopeId: cityId,
         grantedById: adminDmitry.id,
-        notes: `seed: user city access (${ru.citySlug})`,
+        notes: `seed: ${ru.citySlug}`,
       },
     });
-
-    console.log(`   ✅ ${ru.username} / ${ru.password} → ${ru.displayName} (${ru.citySlug})`);
+    console.log(`   \u2705 ${ru.username} (USER) \u2192 ${ru.citySlug}`);
   }
 
-  // ───── 7. Initialize empty inventory for offices, countries and cities ─────
-  console.log('\n📋 Initializing office/country/city inventories (all at 0)...');
-  const itemTypes: ItemType[] = [ItemType.BLACK, ItemType.WHITE, ItemType.RED, ItemType.BLUE];
+  // ───── 7. Summary ─────
+  const [userCount, countryCount, cityCount, officeCount] = await Promise.all([
+    prisma.user.count(), prisma.country.count(), prisma.city.count(), prisma.office.count(),
+  ]);
 
-  // Office inventory
-  for (const o of OFFICES) {
-    for (const it of itemTypes) {
-      await prisma.inventory.create({
-        data: {
-          entityType: EntityType.OFFICE,
-          officeId: officeMap[o.code],
-          itemType: it,
-          quantity: 0,
-        },
-      });
-    }
-    console.log(`   ✅ Office ${o.name}: inventory initialized`);
-  }
-
-  for (const c of COUNTRIES) {
-    // Country inventory
-    for (const it of itemTypes) {
-      await prisma.inventory.create({
-        data: {
-          entityType: EntityType.COUNTRY,
-          countryId: countryMap[c.code],
-          itemType: it,
-          quantity: 0,
-        },
-      });
-    }
-    // City inventories
-    for (const city of c.cities) {
-      for (const it of itemTypes) {
-        await prisma.inventory.create({
-          data: {
-            entityType: EntityType.CITY,
-            cityId: cityMap[city.slug],
-            itemType: it,
-            quantity: 0,
-          },
-        });
-      }
-    }
-  }
-  console.log(`   ✅ All ${COUNTRIES.length} countries + ${totalCities} cities initialized at 0`);
-
-  // ───── 8. Summary ─────
-  const userCount = await prisma.user.count();
-  const countryCount = await prisma.country.count();
-  const cityCount = await prisma.city.count();
-  const officeCount = await prisma.office.count();
-
-  console.log('\n' + '═'.repeat(60));
-  console.log('🎉 Seed complete!');
-  console.log('═'.repeat(60));
-  console.log(`   Users:      ${userCount} (2 admins + 1 office + 5 regular users)`);
-  console.log(`   Offices:    ${officeCount}`);
-  console.log(`   Countries:  ${countryCount}`);
-  console.log(`   Cities:     ${cityCount}`);
-  console.log(`\n   🔐 Admin login: dmitryganj / dmitryganj1995`);
-  console.log(`   🔐 Admin login: serdar / Impreza@Serdar2026!`);
-  console.log(`   🔐 Office login: office_mariana / OfficeMariana@2026!`);
-  console.log(`   🔐 User login: polzovatel1 / UserOne@2026!`);
-  console.log(`   🔐 User login: polzovatel2 / UserTwo@2026!`);
-  console.log(`   🔐 User login: polzovatel3 / UserThree@2026!`);
-  console.log(`   🔐 User login: polzovatel4 / UserFour@2026!`);
-  console.log(`   🔐 User login: polzovatel5 / UserFive@2026!`);
-  console.log('═'.repeat(60));
+  console.log('\n' + '\u2550'.repeat(60));
+  console.log('\uD83C\uDF89 Seed complete!');
+  console.log('\u2550'.repeat(60));
+  console.log(`   Users:     ${userCount} (2 admin + 1 office + 5 users)`);
+  console.log(`   Offices:   ${officeCount}`);
+  console.log(`   Countries: ${countryCount}`);
+  console.log(`   Cities:    ${cityCount}`);
+  console.log('\n   \uD83D\uDD10 dmitryganj / Impreza@Admin2026! (ADMIN)');
+  console.log('   \uD83D\uDD10 serdar / Impreza@Serdar2026! (ADMIN)');
+  console.log('   \uD83D\uDD10 office_mariana / OfficeMariana@2026! (OFFICE)');
+  console.log('   \uD83D\uDD10 polzovatel1 / UserOne@2026! (USER - Berlin)');
+  console.log('   \uD83D\uDD10 polzovatel2 / UserTwo@2026! (USER - Warsaw)');
+  console.log('   \uD83D\uDD10 polzovatel3 / UserThree@2026! (USER - Amsterdam)');
+  console.log('   \uD83D\uDD10 polzovatel4 / UserFour@2026! (USER - Vienna)');
+  console.log('   \uD83D\uDD10 polzovatel5 / UserFive@2026! (USER - Paris)');
+  console.log('\u2550'.repeat(60));
 }
 
 main()
-  .then(async () => {
-    await prisma.$disconnect();
-  })
+  .then(async () => { await prisma.$disconnect(); })
   .catch(async (e) => {
-    console.error('❌ Seed failed:', e);
+    console.error('\u274C Seed failed:', e);
     await prisma.$disconnect();
     process.exit(1);
   });

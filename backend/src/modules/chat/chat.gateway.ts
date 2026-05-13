@@ -52,7 +52,7 @@ export class ChatGateway
         select: {
           id: true, username: true, email: true, role: true,
           displayName: true, avatarUrl: true,
-          officeId: true, countryId: true, cityId: true,
+          officeId: true, primaryCityId: true,
         },
       });
       if (!dbUser) {

@@ -78,9 +78,9 @@ export class NotificationsService {
     const userIds: string[] = [];
 
     if (entityType === 'CITY') {
-      // Notify city user + country user
+      // Notify users in this city
       const cityUsers = await this.prisma.user.findMany({
-        where: { cityId: entityId, isActive: true },
+        where: { primaryCityId: entityId, isActive: true },
         select: { id: true },
       });
       userIds.push(...cityUsers.map((u) => u.id));
@@ -91,16 +91,6 @@ export class NotificationsService {
         select: { countryId: true, country: { select: { officeId: true } } },
       });
       if (city) {
-        const countryUsers = await this.prisma.user.findMany({
-          where: {
-            countryId: city.countryId,
-            role: 'COUNTRY',
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        userIds.push(...countryUsers.map((u) => u.id));
-
         // Notify office users managing this country
         if (city.country?.officeId) {
           const officeUsers = await this.prisma.user.findMany({
@@ -115,10 +105,10 @@ export class NotificationsService {
         }
       }
     } else if (entityType === 'COUNTRY') {
+      // Notify users in any city of this country
       const countryUsers = await this.prisma.user.findMany({
         where: {
-          countryId: entityId,
-          role: 'COUNTRY',
+          primaryCity: { countryId: entityId },
           isActive: true,
         },
         select: { id: true },

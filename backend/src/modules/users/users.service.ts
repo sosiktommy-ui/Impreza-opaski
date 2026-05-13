@@ -12,17 +12,19 @@ export class UsersService {
   async findAll(params: {
     role?: Role;
     countryId?: string;
+    cityId?: string;
     search?: string;
     page?: number;
     limit?: number;
   }) {
-    const { role, countryId, search, page = 1, limit = 50 } = params;
+    const { role, countryId, cityId, search, page = 1, limit = 50 } = params;
     const skip = (page - 1) * limit;
 
     const where: Prisma.UserWhereInput = {};
 
     if (role) where.role = role;
-    if (countryId) where.countryId = countryId;
+    if (cityId) where.primaryCityId = cityId;
+    else if (countryId) where.primaryCity = { countryId };
     if (search) {
       where.OR = [
         { username: { contains: search, mode: 'insensitive' } },
@@ -42,11 +44,16 @@ export class UsersService {
           displayName: true,
           isActive: true,
           officeId: true,
-          countryId: true,
-          cityId: true,
+          primaryCityId: true,
           office: { select: { id: true, name: true, code: true } },
-          country: { select: { id: true, name: true, code: true } },
-          city: { select: { id: true, name: true, slug: true } },
+          primaryCity: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              country: { select: { id: true, name: true, code: true } },
+            },
+          },
           balanceBlack: true,
           balanceWhite: true,
           balanceRed: true,
@@ -83,11 +90,20 @@ export class UsersService {
         displayName: true,
         isActive: true,
         officeId: true,
-        countryId: true,
-        cityId: true,
+        primaryCityId: true,
         office: { select: { id: true, name: true, code: true } },
-        country: { select: { id: true, name: true, code: true } },
-        city: { select: { id: true, name: true, slug: true } },
+        primaryCity: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            country: { select: { id: true, name: true, code: true } },
+          },
+        },
+        balanceBlack: true,
+        balanceWhite: true,
+        balanceRed: true,
+        balanceBlue: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -119,8 +135,7 @@ export class UsersService {
         displayName: true,
         isActive: true,
         officeId: true,
-        countryId: true,
-        cityId: true,
+        primaryCityId: true,
       },
     });
   }
@@ -128,11 +143,8 @@ export class UsersService {
   async getCountries(params?: { role?: Role; countryId?: string; cityId?: string }) {
     const where: Prisma.CountryWhereInput = {};
 
-    if (params?.role === Role.COUNTRY && params.countryId) {
-      where.id = params.countryId;
-    }
-    // ADMIN / OFFICE / CITY — no filter, return all
-    // (CITY needs full list to pick a destination country/city for transfers)
+    // ADMIN / OFFICE / USER — no filter, return all countries
+    // (users need full list to pick destination city for transfers)
 
     return this.prisma.country.findMany({
       where,
@@ -296,16 +308,18 @@ export class UsersService {
     }
   }
 
-  async createUser(data: {
-    username: string;
-    password: string;
-    email?: string;
-    role: Role;
-    displayName: string;
-    officeId?: string;
-    countryId?: string;
-    cityId?: string;
-  }) {
+  async createUser(
+    data: {
+      username: string;
+      password: string;
+      email?: string;
+      role: Role;
+      displayName: string;
+      officeId?: string;
+      primaryCityId?: string;
+    },
+    createdById?: string,
+  ) {
     // Check username uniqueness
     const existingUsername = await this.prisma.user.findUnique({
       where: { username: data.username },
@@ -324,32 +338,51 @@ export class UsersService {
       throw new BadRequestException('Password must be at least 6 characters');
     }
 
+    if (data.role === Role.USER && !data.primaryCityId) {
+      throw new BadRequestException('primaryCityId is required for USER role');
+    }
+
     const passwordHash = await bcrypt.hash(data.password, 12);
 
-    const user = await this.prisma.user.create({
-      data: {
-        username: data.username,
-        passwordHash,
-        passwordVisible: data.password,
-        email: data.email || null,
-        role: data.role,
-        displayName: data.displayName,
-        officeId: data.officeId || null,
-        countryId: data.countryId || null,
-        cityId: data.cityId || null,
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role: true,
-        displayName: true,
-        isActive: true,
-        officeId: true,
-        countryId: true,
-        cityId: true,
-        createdAt: true,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username: data.username,
+          passwordHash,
+          passwordVisible: data.password,
+          email: data.email || null,
+          role: data.role,
+          displayName: data.displayName,
+          officeId: data.officeId || null,
+          primaryCityId: data.primaryCityId || null,
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          role: true,
+          displayName: true,
+          isActive: true,
+          officeId: true,
+          primaryCityId: true,
+          createdAt: true,
+        },
+      });
+
+      // Auto-create UserAccess for USER role (CITY scope)
+      if (data.role === Role.USER && data.primaryCityId) {
+        await tx.userAccess.create({
+          data: {
+            userId: created.id,
+            scopeType: 'CITY',
+            accessType: 'FULL',
+            scopeId: data.primaryCityId,
+            grantedById: createdById ?? created.id,
+          },
+        });
+      }
+
+      return created;
     });
 
     this.logger.log(`User created: ${user.username} (${user.role})`);

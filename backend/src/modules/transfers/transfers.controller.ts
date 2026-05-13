@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -19,7 +19,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AllowAccessTypes } from '../auth/decorators/allow-access-types.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
-import { AccessType, Role, TransferStatus, EntityType, ItemType } from '@prisma/client';
+import { AccessType, Role, TransferStatus, ItemType } from '@prisma/client';
 import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
 import { EditTransferDto } from './dto/edit-transfer.dto';
 import {
@@ -44,35 +44,13 @@ class TransferItemDto {
 }
 
 class CreateTransferDto {
-  @IsEnum(EntityType)
-  senderType!: EntityType;
+  @IsString()
+  @IsNotEmpty()
+  fromUserId!: string;
 
   @IsString()
-  @IsOptional()
-  senderOfficeId?: string;
-
-  @IsString()
-  @IsOptional()
-  senderCountryId?: string;
-
-  @IsString()
-  @IsOptional()
-  senderCityId?: string;
-
-  @IsEnum(EntityType)
-  receiverType!: EntityType;
-
-  @IsString()
-  @IsOptional()
-  receiverOfficeId?: string;
-
-  @IsString()
-  @IsOptional()
-  receiverCountryId?: string;
-
-  @IsString()
-  @IsOptional()
-  receiverCityId?: string;
+  @IsNotEmpty()
+  toUserId!: string;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -116,20 +94,27 @@ export class TransfersController {
 
   @Post()
   @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   sendTransfer(
     @Body() dto: CreateTransferDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    // USER can only send from themselves
+    if (user.role === Role.USER && dto.fromUserId !== user.id) {
+      throw new ForbiddenException('Пользователь может отправить перевод только от себя');
+    }
     return this.transfersService.sendTransfer({
-      ...dto,
+      fromUserId: dto.fromUserId,
+      toUserId: dto.toUserId,
+      items: dto.items,
+      notes: dto.notes,
       createdBy: user.id,
     });
   }
 
   @Patch(':id/accept')
   @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   acceptTransfer(
     @Param('id') id: string,
     @Body() dto: AcceptTransferDto,
@@ -140,7 +125,7 @@ export class TransfersController {
 
   @Patch(':id/reject')
   @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   rejectTransfer(
     @Param('id') id: string,
     @Body() dto: RejectTransferDto,
@@ -151,17 +136,15 @@ export class TransfersController {
 
   @Patch(':id/cancel')
   @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   async cancelTransfer(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // COUNTRY can only cancel transfers where they are the sender
-    if (user.role === Role.COUNTRY && user.countryId) {
+    // USER can only cancel their own outgoing transfers
+    if (user.role === Role.USER) {
       const transfer = await this.transfersService.findById(id);
-      const isSender = transfer.senderType === 'COUNTRY' && transfer.senderCountryId === user.countryId;
-      const isSenderCity = transfer.senderType === 'CITY' && (transfer.senderCity as any)?.country?.id === user.countryId;
-      if (!isSender && !isSenderCity) {
+      if (transfer.fromUserId !== user.id) {
         throw new ForbiddenException('Вы можете отменить только свои отправки');
       }
     }
@@ -176,7 +159,6 @@ export class TransfersController {
     @Body() dto: ResolveDiscrepancyDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // Verify password for 2FA
     const isValid = await this.authService.verifyPassword(user.id, dto.password);
     if (!isValid) {
       throw new BadRequestException('Неверный пароль');
@@ -200,7 +182,7 @@ export class TransfersController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   findAll(
     @Query('status') status: TransferStatus | undefined,
     @Query('page') page?: number,
@@ -219,44 +201,22 @@ export class TransfersController {
       cityId,
       userRole: user?.role,
       userId: user?.id,
-      userCountryId: user?.countryId ?? undefined,
-      userCityId: user?.cityId ?? undefined,
-      userOfficeId: (user as any)?.officeId ?? undefined,
+      userPrimaryCityId: (user as any)?.primaryCityId ?? undefined,
     });
   }
 
   // Static routes MUST come before parameterised :id route
   @Get('pending')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   getPendingIncoming(@CurrentUser() user: AuthenticatedUser) {
-    let entityType: EntityType;
-    let entityId: string;
-
-    if (user.role === Role.ADMIN) {
-      entityType = EntityType.ADMIN;
-      entityId = user.id;
-    } else if (user.role === Role.OFFICE) {
-      entityType = EntityType.OFFICE;
-      entityId = (user as any).officeId || user.id;
-    } else if (user.role === Role.CITY && user.cityId) {
-      entityType = EntityType.CITY;
-      entityId = user.cityId;
-    } else if (user.role === Role.COUNTRY && user.countryId) {
-      entityType = EntityType.COUNTRY;
-      entityId = user.countryId;
-    } else {
-      return [];
-    }
-
     return this.transfersService.getPendingIncoming({
-      entityType,
-      entityId,
+      userId: user.id,
       userRole: user.role,
     });
   }
 
   @Get('problematic')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE)
   findProblematic(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -270,14 +230,12 @@ export class TransfersController {
       countryId,
       cityId,
       userRole: user?.role,
-      userCountryId: user?.countryId ?? undefined,
-      userCityId: user?.cityId ?? undefined,
-      userOfficeId: (user as any)?.officeId ?? undefined,
+      userPrimaryCityId: (user as any)?.primaryCityId ?? undefined,
     });
   }
 
   @Get('stats')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE)
   getStats(
     @Query('period') period: 'week' | 'month' | 'quarter' | 'year' = 'month',
     @Query('countryId') countryId?: string,
@@ -289,15 +247,13 @@ export class TransfersController {
       countryId,
       cityId,
       userRole: user?.role,
-      userCountryId: user?.countryId ?? undefined,
-      userCityId: user?.cityId ?? undefined,
-      userOfficeId: (user as any)?.officeId ?? undefined,
+      userPrimaryCityId: (user as any)?.primaryCityId ?? undefined,
     });
   }
 
   // Parameterised route MUST be last
   @Get(':id')
-  @Roles(Role.ADMIN, Role.OFFICE, Role.COUNTRY, Role.CITY)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   findById(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -305,3 +261,4 @@ export class TransfersController {
     return this.transfersService.findById(id, user);
   }
 }
+
