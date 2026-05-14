@@ -1,6 +1,5 @@
 [deploy]
-preDeployCommand = "npx prisma generate && npx ts-node prisma/pre-migrate.ts && npx prisma db push --accept-data-loss"
-startCommand = "node dist/main.js"
+startCommand = "npx prisma generate && node dist/main.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
