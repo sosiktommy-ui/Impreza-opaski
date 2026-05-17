@@ -69,6 +69,9 @@ export default function Inventory() {
   // Accordion state for countries
   const [expandedCountries, setExpandedCountries] = useState({});
 
+  // Warehouse history filter (ADMIN only): all | ADMIN_SELF | OFFICE
+  const [historyFilter, setHistoryFilter] = useState('all');
+
   useEffect(() => {
     init();
   }, [globalCountryId, globalCityId]);
@@ -78,7 +81,7 @@ export default function Inventory() {
     if (activeTab === 'my' && isAdminOrOffice) {
       loadWarehouseData();
     }
-  }, [activeTab]);
+  }, [activeTab, historyFilter]);
 
   const init = async () => {
     if (isAdminOrOffice) {
@@ -389,10 +392,18 @@ export default function Inventory() {
     setWarehouseLoading(true);
     try {
       const officeId = user.role === 'OFFICE' ? user.officeId : undefined;
-      
+      const historyParams = { limit: 50 };
+      if (user.role === 'OFFICE') {
+        historyParams.recipientOfficeId = officeId;
+        historyParams.recipientKind = 'OFFICE';
+      } else if (user.role === 'ADMIN') {
+        if (historyFilter === 'ADMIN_SELF') historyParams.recipientKind = 'ADMIN_SELF';
+        else if (historyFilter === 'OFFICE') historyParams.recipientKind = 'OFFICE';
+      }
+
       const [balanceRes, historyRes, transfersRes, expensesRes] = await Promise.all([
         inventoryApi.getWarehouseBalance(officeId),
-        inventoryApi.getWarehouseCreationHistory({ officeId, take: 50 }),
+        inventoryApi.getWarehouseCreationHistory(historyParams),
         transfersApi.getAll({ limit: 50 }).catch(() => ({ data: { data: [] } })),
         inventoryApi.getExpenses({ limit: 50 }).catch(() => ({ data: { data: [] } })),
       ]);
@@ -527,12 +538,17 @@ export default function Inventory() {
 
     // Warehouse creations (already filtered by backend for ADMIN)
     warehouseHistory.forEach((item) => {
+      const recipientLabel = item.recipientKind === 'OFFICE'
+        ? `в офис: ${item.recipientOffice?.name || item.office?.name || '—'}`
+        : item.recipientKind === 'ADMIN_SELF'
+          ? `на свой склад (${item.recipientUser?.displayName || item.recipientUser?.username || 'админ'})`
+          : (item.createdByUser?.displayName || item.createdByUser?.username || item.office?.name || '');
       ops.push({
         id: `creation-${item.id}`,
         type: 'creation',
         date: new Date(item.createdAt),
         label: 'Создание браслетов',
-        sublabel: item.createdByUser?.displayName || item.createdByUser?.username || item.office?.name || '',
+        sublabel: recipientLabel,
         notes: item.notes,
         amount: item.totalAmount || 0,
         sign: '+',
@@ -697,6 +713,29 @@ export default function Inventory() {
 
           {/* Operations History */}
           <Card title={<span className="flex items-center gap-2"><History size={18} /> История операций</span>}>
+            {user.role === 'ADMIN' && (
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <span className="text-xs text-content-muted">Фильтр создания:</span>
+                {[
+                  { key: 'all', label: 'Все' },
+                  { key: 'ADMIN_SELF', label: 'На свой склад' },
+                  { key: 'OFFICE', label: 'В офисы' },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setHistoryFilter(f.key)}
+                    className={`px-2.5 py-1 rounded-[var(--radius-sm)] text-xs font-medium border transition-colors ${
+                      historyFilter === f.key
+                        ? 'bg-brand-500/10 border-brand-500 text-brand-500'
+                        : 'border-edge text-content-secondary hover:bg-surface-card-hover'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {warehouseLoading ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin h-6 w-6 border-2 border-brand-200 border-t-brand-600 rounded-full" />

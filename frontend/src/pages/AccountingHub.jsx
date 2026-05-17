@@ -1,15 +1,17 @@
 import { useSearchParams } from 'react-router-dom';
-import { Warehouse, Receipt, TrendingDown } from 'lucide-react';
+import { Warehouse, Receipt, TrendingDown, Network } from 'lucide-react';
 import Inventory from './Inventory';
 import Expenses from './Expenses';
 import CompanyLosses from './CompanyLosses';
+import BalancesOverview from './BalancesOverview';
 import { useBadgeStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
 
-const TABS = [
-  { key: 'balance',  label: 'Баланс',    Icon: Warehouse,   badgeKey: null },
-  { key: 'expenses', label: 'Расходы',   Icon: Receipt,     badgeKey: null },
-  { key: 'losses',   label: 'Потери',    Icon: TrendingDown, badgeKey: 'companyLoss', badgeColor: 'bg-red-500' },
+const BASE_TABS = [
+  { key: 'balance',  label: 'Баланс',     Icon: Warehouse,   badgeKey: null },
+  { key: 'overview', label: 'Общий вид', Icon: Network,     badgeKey: null, adminOnly: true },
+  { key: 'expenses', label: 'Расходы',    Icon: Receipt,     badgeKey: null },
+  { key: 'losses',   label: 'Потери',     Icon: TrendingDown, badgeKey: 'companyLoss', badgeColor: 'bg-red-500' },
 ];
 
 const LOSS_LABEL = { ADMIN: 'Потери', OFFICE: 'Потери', COUNTRY: 'Потери страны', CITY: 'Мои потери' };
@@ -20,7 +22,10 @@ export default function AccountingHub() {
   const { companyLossCount } = useBadgeStore();
   const { user } = useAuthStore();
 
-  const tabs = TABS.map(t => t.key === 'losses' ? { ...t, label: LOSS_LABEL[user?.role] || t.label } : t);
+  const isAdminOrOffice = user?.role === 'ADMIN' || user?.role === 'OFFICE';
+  const tabs = BASE_TABS
+    .filter(t => !t.adminOnly || isAdminOrOffice)
+    .map(t => t.key === 'losses' ? { ...t, label: LOSS_LABEL[user?.role] || t.label } : t);
 
   const getBadge = (key) => {
     if (key === 'companyLoss') return companyLossCount > 0 ? companyLossCount : null;
@@ -61,6 +66,7 @@ export default function AccountingHub() {
       {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {tab === 'balance'  && <Inventory />}
+        {tab === 'overview' && isAdminOrOffice && <BalancesOverview />}
         {tab === 'expenses' && <Expenses />}
         {tab === 'losses'   && <CompanyLosses />}
       </div>

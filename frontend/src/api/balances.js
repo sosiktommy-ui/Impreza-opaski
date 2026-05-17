@@ -5,6 +5,9 @@ export const balancesApi = {
   /** Caller's own balance. CITY/COUNTRY only — returns null for ADMIN/OFFICE. */
   getMine: () => api.get('/balances/me'),
 
+  /** Full balances tree: admins + offices→countries→cities→users. Admin/office only. */
+  getOverview: () => api.get('/balances/overview'),
+
   /** Specific user's balance — admin/office/country. */
   getForUser: (userId) => api.get(`/balances/users/${userId}`),
 

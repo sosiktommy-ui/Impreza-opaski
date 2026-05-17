@@ -10,6 +10,7 @@ const TYPE_STYLES = {
   DISCREPANCY_ALERT: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800',
   LOW_STOCK: 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800',
   ZERO_STOCK: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800',
+  OFFICE_SELF_MINT: 'bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800',
 };
 
 const TYPE_ICONS = {
@@ -19,6 +20,7 @@ const TYPE_ICONS = {
   DISCREPANCY_ALERT: '⚠️',
   LOW_STOCK: '📦',
   ZERO_STOCK: '🚨',
+  OFFICE_SELF_MINT: '🏢',
 };
 
 function timeAgo(dateStr) {
