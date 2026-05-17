@@ -1,14 +1,23 @@
 ﻿import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { CityStatus, Prisma, Role } from '@prisma/client';
+import {
+  CityStatus,
+  ExpenseType,
+  NotificationType,
+  Prisma,
+  Role,
+  WarehouseTargetKind,
+} from '@prisma/client';
 import { BalancesService } from '../balances/balances.service';
+import { AccessService } from '../access/access.service';
 
 @Injectable()
 export class InventoryService {
@@ -19,6 +28,7 @@ export class InventoryService {
     private readonly redis: RedisService,
     private readonly eventEmitter: EventEmitter2,
     private readonly balances: BalancesService,
+    private readonly access: AccessService,
   ) {}
 
   // ────────────────────────────────────────────────
@@ -43,7 +53,6 @@ export class InventoryService {
     eventName: string;
     eventDate?: string;
     location?: string;
-    type?: string;
     black: number;
     white: number;
     red: number;
@@ -53,7 +62,6 @@ export class InventoryService {
   }) {
     const {
       cityId, userId, eventName, eventDate, location,
-      type = 'INTERNAL',
       black, white, red, blue, notes, actorId,
     } = params;
 
@@ -67,7 +75,7 @@ export class InventoryService {
     const creator = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
-        id: true, role: true,
+        id: true, role: true, primaryCityId: true,
         balanceBlack: true, balanceWhite: true,
         balanceRed: true, balanceBlue: true, balanceVersion: true,
       },
@@ -75,6 +83,20 @@ export class InventoryService {
     if (!creator) throw new NotFoundException(`User ${userId} not found`);
     if (creator.role !== Role.USER) {
       throw new BadRequestException('Only USER-role accounts can have expenses deducted');
+    }
+
+    // Auto-compute expense kind from primary city vs target city.
+    const isInternal = creator.primaryCityId === cityId;
+    const expenseType: ExpenseType = isInternal ? ExpenseType.INTERNAL : ExpenseType.EXTERNAL;
+
+    // For EXTERNAL expense, the creator must have explicit access to that city.
+    if (!isInternal) {
+      const allowed = await this.access.hasAccessToCity(userId, cityId);
+      if (!allowed) {
+        throw new ForbiddenException(
+          `User has no access to city ${city.name} — external expense not allowed`,
+        );
+      }
     }
 
     if (creator.balanceBlack < black) throw new BadRequestException(`Insufficient BLACK balance: have ${creator.balanceBlack}, need ${black}`);
@@ -112,7 +134,7 @@ export class InventoryService {
           eventName,
           eventDate: eventDate && !isNaN(new Date(eventDate).getTime()) ? new Date(eventDate) : new Date(),
           location: location || null,
-          type: (type as any) ?? 'INTERNAL',
+          type: expenseType,
           black,
           white,
           red,
@@ -134,11 +156,11 @@ export class InventoryService {
           entityType: 'Expense',
           entityId: expense.id,
           actorId,
-          metadata: { eventName, cityId, userId, black, white, red, blue },
+          metadata: { eventName, cityId, userId, kind: expenseType, black, white, red, blue },
         },
       });
 
-      this.logger.log(`Expense: ${eventName} in ${city.name} by user ${userId} — B:${black} W:${white} R:${red} BL:${blue}`);
+      this.logger.log(`Expense (${expenseType}): ${eventName} in ${city.name} by user ${userId} — B:${black} W:${white} R:${red} BL:${blue}`);
       await this.redis.del(`balance:user:${userId}`);
       return expense;
     });
@@ -224,81 +246,183 @@ export class InventoryService {
   }
 
   // ────────────────────────────────────────────────
-  // WAREHOUSE — create bracelets → credit to a recipient USER
+  // WAREHOUSE — create bracelets (mint into ADMIN or OFFICE pool)
   // ────────────────────────────────────────────────
 
   async createBracelets(params: {
-    recipientUserId: string;
+    targetKind: 'ADMIN_SELF' | 'OFFICE';
+    officeId?: string;
     black: number;
     white: number;
     red: number;
     blue: number;
     notes?: string;
-    actorId: string;
+    actor: { id: string; role: Role; officeId: string | null };
   }) {
-    const { recipientUserId, black, white, red, blue, notes, actorId } = params;
+    const { targetKind, officeId, black, white, red, blue, notes, actor } = params;
 
     if (black <= 0 && white <= 0 && red <= 0 && blue <= 0) {
       throw new BadRequestException('At least one bracelet color must have quantity > 0');
     }
 
-    const recipient = await this.prisma.user.findUnique({
-      where: { id: recipientUserId },
-      select: { id: true, role: true, displayName: true },
-    });
-    if (!recipient) throw new NotFoundException(`Recipient user ${recipientUserId} not found`);
-    if (recipient.role !== Role.USER) {
-      throw new BadRequestException('Bracelets can only be assigned to USER-role accounts');
+    // Authorize
+    if (actor.role === Role.ADMIN) {
+      // ADMIN can mint into self OR any office
+      if (targetKind === 'OFFICE' && !officeId) {
+        throw new BadRequestException('officeId is required for OFFICE target');
+      }
+    } else if (actor.role === Role.OFFICE) {
+      // OFFICE may only mint into their own office
+      if (targetKind !== 'OFFICE') {
+        throw new ForbiddenException('OFFICE role may only mint into its own office');
+      }
+      if (!actor.officeId) {
+        throw new ForbiddenException('OFFICE user has no office assigned');
+      }
+      if (officeId && officeId !== actor.officeId) {
+        throw new ForbiddenException('OFFICE user may only mint into its own office');
+      }
+    } else {
+      throw new ForbiddenException('Only ADMIN or OFFICE may mint bracelets');
     }
 
+    const effectiveOfficeId =
+      targetKind === 'OFFICE'
+        ? (actor.role === Role.OFFICE ? (actor.officeId as string) : (officeId as string))
+        : null;
+
+    const totalAmount = black + white + red + blue;
+
     return this.prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: recipientUserId },
-        data: {
-          balanceBlack: { increment: black },
-          balanceWhite: { increment: white },
-          balanceRed: { increment: red },
-          balanceBlue: { increment: blue },
-          balanceVersion: { increment: 1 },
-        },
-      });
+      let recipientUserId: string | null = null;
+      let recipientOfficeName: string | null = null;
+
+      if (targetKind === 'ADMIN_SELF') {
+        // Credit the acting admin's own User row.
+        await tx.user.update({
+          where: { id: actor.id },
+          data: {
+            balanceBlack: { increment: black },
+            balanceWhite: { increment: white },
+            balanceRed: { increment: red },
+            balanceBlue: { increment: blue },
+            balanceVersion: { increment: 1 },
+          },
+        });
+        recipientUserId = actor.id;
+      } else {
+        // OFFICE target — credit the Office balance pool with optimistic lock.
+        const office = await tx.office.findUnique({
+          where: { id: effectiveOfficeId! },
+          select: { id: true, name: true, balanceVersion: true },
+        });
+        if (!office) throw new NotFoundException('Office not found');
+        const ok = await tx.office.updateMany({
+          where: { id: office.id, balanceVersion: office.balanceVersion },
+          data: {
+            balanceBlack: { increment: black },
+            balanceWhite: { increment: white },
+            balanceRed: { increment: red },
+            balanceBlue: { increment: blue },
+            balanceVersion: { increment: 1 },
+          },
+        });
+        if (ok.count === 0) {
+          throw new BadRequestException('Office balance changed, please retry');
+        }
+        recipientOfficeName = office.name;
+      }
 
       const creation = await tx.warehouseCreation.create({
         data: {
-          recipientUserId,
-          black, white, red, blue,
-          totalAmount: black + white + red + blue,
-          createdBy: actorId,
+          recipientKind:
+            targetKind === 'ADMIN_SELF'
+              ? WarehouseTargetKind.ADMIN_SELF
+              : WarehouseTargetKind.OFFICE,
+          recipientUserId: recipientUserId ?? undefined,
+          recipientOfficeId: effectiveOfficeId ?? undefined,
+          black,
+          white,
+          red,
+          blue,
+          totalAmount,
+          createdBy: actor.id,
           notes: notes || null,
         },
       });
 
+      // Audit log
+      const isOfficeSelfMint = actor.role === Role.OFFICE && targetKind === 'OFFICE';
       await tx.auditLog.create({
         data: {
-          action: 'BALANCE_TOPUP',
-          entityType: 'User',
-          entityId: recipientUserId,
-          actorId,
-          metadata: { black, white, red, blue, totalAmount: black + white + red + blue, notes, recipientUserId },
+          action: isOfficeSelfMint
+            ? 'OFFICE_SELF_MINT'
+            : 'WAREHOUSE_MINT',
+          entityType: targetKind === 'ADMIN_SELF' ? 'User' : 'Office',
+          entityId: (targetKind === 'ADMIN_SELF' ? actor.id : effectiveOfficeId) as string,
+          actorId: actor.id,
+          metadata: {
+            targetKind,
+            officeId: effectiveOfficeId,
+            black, white, red, blue, totalAmount,
+            notes,
+          },
         },
       });
 
-      this.logger.log(`Bracelets created for ${recipient.displayName} — B:${black} W:${white} R:${red} BL:${blue} by ${actorId}`);
-      await this.redis.del(`balance:user:${recipientUserId}`);
+      // Notify all active admins when an OFFICE user self-mints.
+      if (isOfficeSelfMint) {
+        const admins = await tx.user.findMany({
+          where: { role: Role.ADMIN, isActive: true },
+          select: { id: true },
+        });
+        if (admins.length > 0) {
+          await tx.notification.createMany({
+            data: admins.map((a) => ({
+              userId: a.id,
+              type: NotificationType.OFFICE_SELF_MINT,
+              title: 'Офис создал опаски',
+              message: `Офис ${recipientOfficeName ?? ''} пополнил баланс: Ч:${black} Б:${white} К:${red} С:${blue}`,
+              metadata: {
+                officeId: effectiveOfficeId,
+                actorId: actor.id,
+                black, white, red, blue, totalAmount,
+              },
+            })),
+          });
+        }
+      }
+
+      this.logger.log(
+        `Bracelets minted (${targetKind}${effectiveOfficeId ? ` office=${effectiveOfficeId}` : ''}) — B:${black} W:${white} R:${red} BL:${blue} by ${actor.id}`,
+      );
+
+      if (recipientUserId) {
+        await this.redis.del(`balance:user:${recipientUserId}`);
+      }
       return creation;
     });
   }
 
   async getWarehouseCreationHistory(params: {
     recipientUserId?: string;
+    recipientOfficeId?: string;
+    recipientKind?: 'ADMIN_SELF' | 'OFFICE';
     page?: number;
     limit?: number;
   }) {
-    const { recipientUserId, page = 1, limit = 20 } = params;
+    const { recipientUserId, recipientOfficeId, recipientKind, page = 1, limit = 20 } = params;
     const skip = (page - 1) * limit;
 
     const where: Prisma.WarehouseCreationWhereInput = {};
     if (recipientUserId) where.recipientUserId = recipientUserId;
+    if (recipientOfficeId) where.recipientOfficeId = recipientOfficeId;
+    if (recipientKind) {
+      where.recipientKind =
+        recipientKind === 'ADMIN_SELF'
+          ? WarehouseTargetKind.ADMIN_SELF
+          : WarehouseTargetKind.OFFICE;
+    }
 
     const [creations, total] = await Promise.all([
       this.prisma.warehouseCreation.findMany({
@@ -306,9 +430,12 @@ export class InventoryService {
         include: {
           recipientUser: {
             select: {
-              id: true, username: true, displayName: true,
+              id: true, username: true, displayName: true, role: true,
               primaryCity: { select: { id: true, name: true, slug: true } },
             },
+          },
+          recipientOffice: {
+            select: { id: true, name: true, code: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -588,11 +715,30 @@ export class InventoryService {
         where: { role: Role.USER, isActive: true },
         _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
       });
+      const adminAgg = await this.prisma.user.aggregate({
+        where: { role: Role.ADMIN, isActive: true },
+        _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+      });
+      const officeAgg = await this.prisma.office.aggregate({
+        _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+      });
       const bals = {
-        black: userAgg._sum.balanceBlack ?? 0,
-        white: userAgg._sum.balanceWhite ?? 0,
-        red: userAgg._sum.balanceRed ?? 0,
-        blue: userAgg._sum.balanceBlue ?? 0,
+        black:
+          (userAgg._sum.balanceBlack ?? 0) +
+          (adminAgg._sum.balanceBlack ?? 0) +
+          (officeAgg._sum.balanceBlack ?? 0),
+        white:
+          (userAgg._sum.balanceWhite ?? 0) +
+          (adminAgg._sum.balanceWhite ?? 0) +
+          (officeAgg._sum.balanceWhite ?? 0),
+        red:
+          (userAgg._sum.balanceRed ?? 0) +
+          (adminAgg._sum.balanceRed ?? 0) +
+          (officeAgg._sum.balanceRed ?? 0),
+        blue:
+          (userAgg._sum.balanceBlue ?? 0) +
+          (adminAgg._sum.balanceBlue ?? 0) +
+          (officeAgg._sum.balanceBlue ?? 0),
       };
 
       const diff = {

@@ -8,3 +8,7 @@ coverage/
 *.tsbuildinfo
 
 PASSWORDS.txt
+
+backend/_snapshot*.json
+backend/_snapshot.cjs
+

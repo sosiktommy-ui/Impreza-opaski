@@ -20,7 +20,7 @@ import { AllowAccessTypes } from '../auth/decorators/allow-access-types.decorato
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.service';
 import { AccessType, Role } from '@prisma/client';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Min, IsIn } from 'class-validator';
 
 class CreateExpenseDto {
   @IsString()
@@ -28,8 +28,8 @@ class CreateExpenseDto {
   cityId!: string;
 
   @IsString()
-  @IsNotEmpty()
-  userId!: string; // creator — balance deducted from this person
+  @IsOptional()
+  userId?: string; // optional; defaults to caller when caller is USER
 
   @IsString()
   @IsNotEmpty()
@@ -42,10 +42,6 @@ class CreateExpenseDto {
   @IsString()
   @IsOptional()
   location?: string;
-
-  @IsString()
-  @IsOptional()
-  type?: string;
 
   @IsInt()
   @Min(0)
@@ -70,8 +66,12 @@ class CreateExpenseDto {
 
 class CreateBraceletsDto {
   @IsString()
-  @IsNotEmpty()
-  recipientUserId!: string; // USER whose balance receives the bracelets
+  @IsIn(['ADMIN_SELF', 'OFFICE'])
+  targetKind!: 'ADMIN_SELF' | 'OFFICE';
+
+  @IsString()
+  @IsOptional()
+  officeId?: string; // required when targetKind=OFFICE
 
   @IsInt()
   @Min(0)
@@ -176,21 +176,21 @@ export class InventoryController {
 
   @Post('expense')
   @AllowAccessTypes(AccessType.FULL, AccessType.PARTIAL)
-  @Roles(Role.ADMIN, Role.OFFICE)
+  @Roles(Role.ADMIN, Role.OFFICE, Role.USER)
   async createExpense(
     @Body() dto: CreateExpenseDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!dto.cityId) throw new BadRequestException('cityId is required');
-    if (!dto.userId) throw new BadRequestException('userId is required');
+    // USER always spends from their own balance regardless of payload
+    const targetUserId = user.role === Role.USER ? user.id : (dto.userId ?? user.id);
 
     return this.inventoryService.createExpense({
       cityId: dto.cityId,
-      userId: dto.userId,
+      userId: targetUserId,
       eventName: dto.eventName,
       eventDate: dto.eventDate,
       location: dto.location,
-      type: dto.type,
       black: dto.black,
       white: dto.white,
       red: dto.red,
@@ -211,22 +211,6 @@ export class InventoryController {
   // WAREHOUSE
   // ──────────────────────────────────────────────
 
-  @Get('warehouse/creation-history')
-  @AllowAccessTypes(AccessType.FULL)
-  @Roles(Role.ADMIN, Role.OFFICE)
-  async getWarehouseHistory(
-    @Query('recipientUserId') recipientUserId?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-  ) {
-    try {
-      return await this.inventoryService.getWarehouseCreationHistory({ recipientUserId, page, limit });
-    } catch (error: any) {
-      this.logger.error(`getWarehouseHistory error: ${error?.message}`, error?.stack);
-      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
-    }
-  }
-
   @Post('warehouse/create-bracelets')
   @AllowAccessTypes(AccessType.FULL)
   @Roles(Role.ADMIN, Role.OFFICE)
@@ -234,21 +218,45 @@ export class InventoryController {
     @Body() dto: CreateBraceletsDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // Optional 2FA password check
     if (dto.password) {
       const isValid = await this.authService.verifyPassword(user.id, dto.password);
       if (!isValid) throw new BadRequestException('Неверный пароль');
     }
 
     return this.inventoryService.createBracelets({
-      recipientUserId: dto.recipientUserId,
+      targetKind: dto.targetKind,
+      officeId: dto.officeId,
       black: dto.black,
       white: dto.white,
       red: dto.red,
       blue: dto.blue,
       notes: dto.notes,
-      actorId: user.id,
+      actor: { id: user.id, role: user.role, officeId: user.officeId ?? null },
     });
+  }
+
+  @Get('warehouse/creation-history')
+  @AllowAccessTypes(AccessType.FULL)
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getWarehouseHistoryAlt(
+    @Query('recipientUserId') recipientUserId?: string,
+    @Query('recipientOfficeId') recipientOfficeId?: string,
+    @Query('recipientKind') recipientKind?: 'ADMIN_SELF' | 'OFFICE',
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    try {
+      return await this.inventoryService.getWarehouseCreationHistory({
+        recipientUserId,
+        recipientOfficeId,
+        recipientKind,
+        page,
+        limit,
+      });
+    } catch (error: any) {
+      this.logger.error(`getWarehouseHistory error: ${error?.message}`, error?.stack);
+      return { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
+    }
   }
 
   // ──────────────────────────────────────────────

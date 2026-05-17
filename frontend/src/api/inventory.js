@@ -26,10 +26,10 @@ export const inventoryApi = {
   // Warehouse (ADMIN/OFFICE) - создание браслетов на складе
   // ─────────────────────────────────────────────────────────────────
   createBracelets: (data) => api.post('/inventory/warehouse/create-bracelets', data),
-  // data: { officeId, black, white, red, blue, notes }
+  // data: { targetKind: 'ADMIN_SELF'|'OFFICE', officeId?, black, white, red, blue, notes?, password? }
 
   getWarehouseCreationHistory: (params) => api.get('/inventory/warehouse/creation-history', { params }),
-  // params: { officeId, skip, take }
+  // params: { recipientUserId?, recipientOfficeId?, recipientKind?, page, limit }
 
   getWarehouseBalance: (officeId) => api.get('/inventory/warehouse/balance', { params: { officeId } }),
 

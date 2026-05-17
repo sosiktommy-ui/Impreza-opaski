@@ -65,6 +65,151 @@ export class BalancesService {
     };
   }
 
+  /**
+   * GET /balances/overview — hierarchical drill-down used by Admin UI.
+   * Returns: { admins[], offices: [{ ... countries: [{ cities: [{ users: [...] }] }] }] }
+   * ADMIN/OFFICE only — restricted by controller guard.
+   */
+  async getOverview() {
+    const [admins, offices, countries, cities, users] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { role: Role.ADMIN, isActive: true },
+        select: {
+          id: true, username: true, displayName: true,
+          balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true,
+          balanceVersion: true,
+        },
+        orderBy: { displayName: 'asc' },
+      }),
+      this.prisma.office.findMany({
+        select: {
+          id: true, name: true, code: true,
+          balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true,
+          balanceVersion: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.country.findMany({
+        select: { id: true, name: true, code: true, officeId: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.city.findMany({
+        select: { id: true, name: true, slug: true, countryId: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.user.findMany({
+        where: { role: Role.USER, isActive: true },
+        select: {
+          id: true, username: true, displayName: true, primaryCityId: true,
+          balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true,
+        },
+        orderBy: { displayName: 'asc' },
+      }),
+    ]);
+
+    const fmt = (b: {
+      balanceBlack: number; balanceWhite: number; balanceRed: number; balanceBlue: number;
+    }) => ({
+      black: b.balanceBlack,
+      white: b.balanceWhite,
+      red: b.balanceRed,
+      blue: b.balanceBlue,
+      total: b.balanceBlack + b.balanceWhite + b.balanceRed + b.balanceBlue,
+    });
+
+    const usersByCity = new Map<string, typeof users>();
+    for (const u of users) {
+      if (!u.primaryCityId) continue;
+      const arr = usersByCity.get(u.primaryCityId) ?? [];
+      arr.push(u);
+      usersByCity.set(u.primaryCityId, arr);
+    }
+
+    const citiesByCountry = new Map<string, typeof cities>();
+    for (const c of cities) {
+      const arr = citiesByCountry.get(c.countryId) ?? [];
+      arr.push(c);
+      citiesByCountry.set(c.countryId, arr);
+    }
+
+    const countriesByOffice = new Map<string, typeof countries>();
+    for (const co of countries) {
+      if (!co.officeId) continue;
+      const arr = countriesByOffice.get(co.officeId) ?? [];
+      arr.push(co);
+      countriesByOffice.set(co.officeId, arr);
+    }
+
+    const addBal = (
+      acc: { black: number; white: number; red: number; blue: number; total: number },
+      v: { black: number; white: number; red: number; blue: number; total: number },
+    ) => {
+      acc.black += v.black; acc.white += v.white; acc.red += v.red; acc.blue += v.blue; acc.total += v.total;
+    };
+
+    const officeNodes = offices.map((o) => {
+      const officeBalance = fmt(o);
+      const countryNodes = (countriesByOffice.get(o.id) ?? []).map((co) => {
+        const cityNodes = (citiesByCountry.get(co.id) ?? []).map((ct) => {
+          const userNodes = (usersByCity.get(ct.id) ?? []).map((u) => ({
+            id: u.id,
+            username: u.username,
+            displayName: u.displayName,
+            ...fmt(u),
+          }));
+          const agg = { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+          for (const un of userNodes) addBal(agg, un);
+          return {
+            id: ct.id,
+            name: ct.name,
+            slug: ct.slug,
+            ...agg,
+            users: userNodes,
+          };
+        });
+        const agg = { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+        for (const cn of cityNodes) addBal(agg, cn);
+        return {
+          id: co.id,
+          name: co.name,
+          code: co.code,
+          ...agg,
+          cities: cityNodes,
+        };
+      });
+      const usersAgg = { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+      for (const cn of countryNodes) addBal(usersAgg, cn);
+      return {
+        id: o.id,
+        name: o.name,
+        code: o.code,
+        // office's own warehouse balance
+        warehouse: officeBalance,
+        // sum of all users in its countries
+        usersTotal: usersAgg,
+        // grand total = warehouse + downstream users
+        grandTotal: {
+          black: officeBalance.black + usersAgg.black,
+          white: officeBalance.white + usersAgg.white,
+          red: officeBalance.red + usersAgg.red,
+          blue: officeBalance.blue + usersAgg.blue,
+          total: officeBalance.total + usersAgg.total,
+        },
+        countries: countryNodes,
+      };
+    });
+
+    return {
+      admins: admins.map((a) => ({
+        id: a.id,
+        username: a.username,
+        displayName: a.displayName,
+        ...fmt(a),
+      })),
+      offices: officeNodes,
+    };
+  }
+
   /** GET /balances/me вЂ” caller's own balance. USER role. */
   async getMine(userId: string) {
     const user = await this.prisma.user.findUnique({

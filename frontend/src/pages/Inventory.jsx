@@ -421,14 +421,31 @@ export default function Inventory() {
     e.preventDefault();
     setCreateError('');
     setCreateSuccess('');
-    const officeId = user.role === 'ADMIN' ? selectedOfficeId : user.officeId;
-    
-    
-    // ADMIN doesn't need officeId, OFFICE does
-    if (user.role === 'OFFICE' && !officeId) {
-      setCreateError('Выберите офис');
+
+    // Decide target: ADMIN -> ADMIN_SELF if no office selected, else OFFICE.
+    // OFFICE -> always OFFICE with own officeId.
+    let targetKind;
+    let officeId;
+    if (user.role === 'ADMIN') {
+      if (selectedOfficeId) {
+        targetKind = 'OFFICE';
+        officeId = selectedOfficeId;
+      } else {
+        targetKind = 'ADMIN_SELF';
+        officeId = undefined;
+      }
+    } else if (user.role === 'OFFICE') {
+      targetKind = 'OFFICE';
+      officeId = user.officeId;
+      if (!officeId) {
+        setCreateError('У вашего аккаунта не привязан офис');
+        return;
+      }
+    } else {
+      setCreateError('Недостаточно прав');
       return;
     }
+
     const black = parseInt(createForm.black) || 0;
     const white = parseInt(createForm.white) || 0;
     const red = parseInt(createForm.red) || 0;
@@ -438,7 +455,12 @@ export default function Inventory() {
       return;
     }
     // Store data and show 2FA confirmation
-    setPendingCreateData({ officeId: officeId || undefined, black, white, red, blue, notes: createForm.notes.trim() || undefined });
+    setPendingCreateData({
+      targetKind,
+      officeId,
+      black, white, red, blue,
+      notes: createForm.notes.trim() || undefined,
+    });
     setShowCreate(false);
     setShow2FA(true);
   };

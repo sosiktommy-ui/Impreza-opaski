@@ -185,4 +185,57 @@ export class AccessService {
       if (!city) throw new BadRequestException('City not found');
     }
   }
+
+  /**
+   * Returns true if `userId` is allowed to act on `cityId` via any
+   * non-revoked, non-expired UserAccess (GLOBAL, OFFICE covering the city,
+   * or CITY=cityId). Used to authorize external expenses, etc.
+   */
+  async hasAccessToCity(userId: string, cityId: string): Promise<boolean> {
+    const now = new Date();
+
+    const global = await this.prisma.userAccess.findFirst({
+      where: {
+        userId,
+        scopeType: ScopeType.GLOBAL,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: { id: true },
+    });
+    if (global) return true;
+
+    const direct = await this.prisma.userAccess.findFirst({
+      where: {
+        userId,
+        scopeType: ScopeType.CITY,
+        scopeId: cityId,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: { id: true },
+    });
+    if (direct) return true;
+
+    const city = await this.prisma.city.findUnique({
+      where: { id: cityId },
+      select: { country: { select: { officeId: true } } },
+    });
+    const officeId = city?.country?.officeId;
+    if (officeId) {
+      const officeAccess = await this.prisma.userAccess.findFirst({
+        where: {
+          userId,
+          scopeType: ScopeType.OFFICE,
+          scopeId: officeId,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        select: { id: true },
+      });
+      if (officeAccess) return true;
+    }
+
+    return false;
+  }
 }

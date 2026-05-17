@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -69,22 +69,22 @@ export class TransfersService {
     private readonly inventoryService: InventoryService,
   ) {}
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // SEND
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async sendTransfer(input: SendTransferInput) {
     const { fromUserId, toUserId, items, notes, createdBy } = input;
 
     if (fromUserId === toUserId) {
-      throw new BadRequestException('Нельзя отправить перевод самому себе');
+      throw new BadRequestException('������ ��������� ������� ������ ����');
     }
     if (!items || items.length === 0) {
-      throw new BadRequestException('Список предметов не может быть пустым');
+      throw new BadRequestException('������ ��������� �� ����� ���� ������');
     }
     for (const item of items) {
       if (item.quantity <= 0) {
-        throw new BadRequestException('Количество должно быть больше 0');
+        throw new BadRequestException('���������� ������ ���� ������ 0');
       }
     }
 
@@ -102,21 +102,21 @@ export class TransfersService {
         balanceVersion: true,
       },
     });
-    if (!fromUser) throw new NotFoundException('Отправитель не найден');
-    if (!fromUser.isActive) throw new ForbiddenException('Аккаунт отправителя неактивен');
+    if (!fromUser) throw new NotFoundException('����������� �� ������');
+    if (!fromUser.isActive) throw new ForbiddenException('������� ����������� ���������');
 
     const toUser = await this.prisma.user.findUnique({
       where: { id: toUserId },
       select: { id: true, isActive: true, primaryCityId: true },
     });
-    if (!toUser) throw new NotFoundException('Получатель не найден');
-    if (!toUser.isActive) throw new ForbiddenException('Аккаунт получателя неактивен');
+    if (!toUser) throw new NotFoundException('���������� �� ������');
+    if (!toUser.isActive) throw new ForbiddenException('������� ���������� ���������');
 
     // Build per-color totals from items
     const colorTotals: Partial<Record<BalanceColor, number>> = {};
     for (const item of items) {
       const color = ITEM_TO_COLOR[item.itemType];
-      if (!color) throw new BadRequestException(`Неизвестный тип предмета: ${item.itemType}`);
+      if (!color) throw new BadRequestException(`����������� ��� ��������: ${item.itemType}`);
       colorTotals[color] = (colorTotals[color] ?? 0) + item.quantity;
     }
 
@@ -124,7 +124,7 @@ export class TransfersService {
     for (const [color, qty] of Object.entries(colorTotals) as [BalanceColor, number][]) {
       const field = balanceField(color);
       if ((fromUser[field] as number) < qty) {
-        throw new BadRequestException(`Недостаточно браслетов (${color.toLowerCase()}): нужно ${qty}, есть ${fromUser[field]}`);
+        throw new BadRequestException(`������������ ��������� (${color.toLowerCase()}): ����� ${qty}, ���� ${fromUser[field]}`);
       }
     }
 
@@ -147,7 +147,7 @@ export class TransfersService {
         data: decrementData,
       });
       if (updateCount.count === 0) {
-        throw new ConflictException('Баланс изменился, повторите попытку');
+        throw new ConflictException('������ ���������, ��������� �������');
       }
 
       const newTransfer = await tx.transfer.create({
@@ -183,9 +183,9 @@ export class TransfersService {
     return transfer;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // ACCEPT
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async acceptTransfer(transferId: string, receivedItems: AcceptanceItem[], actorId: string) {
     const transfer = await this.prisma.transfer.findUnique({
@@ -196,15 +196,15 @@ export class TransfersService {
         toUser: { select: { id: true, primaryCityId: true } },
       },
     });
-    if (!transfer) throw new NotFoundException('Перевод не найден');
+    if (!transfer) throw new NotFoundException('������� �� ������');
     if (transfer.status !== TransferStatus.SENT) {
-      throw new BadRequestException(`Нельзя принять перевод со статусом ${transfer.status}`);
+      throw new BadRequestException(`������ ������� ������� �� �������� ${transfer.status}`);
     }
-    if (transfer.toUserId !== actorId) {
+    if (transfer.toUserId! !== actorId) {
       // Only ADMIN can accept on behalf of receiver
       const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { role: true } });
       if (!actor || actor.role !== Role.ADMIN) {
-        throw new ForbiddenException('Только получатель или администратор может принять перевод');
+        throw new ForbiddenException('������ ���������� ��� ������������� ����� ������� �������');
       }
     }
 
@@ -217,10 +217,10 @@ export class TransfersService {
     // Validate received items
     for (const ri of receivedItems) {
       if (!sentMap.has(ri.itemType)) {
-        throw new BadRequestException(`Тип предмета ${ri.itemType} не был отправлен`);
+        throw new BadRequestException(`��� �������� ${ri.itemType} �� ��� ���������`);
       }
       if (ri.receivedQuantity < 0) {
-        throw new BadRequestException('Полученное количество не может быть отрицательным');
+        throw new BadRequestException('���������� ���������� �� ����� ���� �������������');
       }
     }
 
@@ -234,8 +234,8 @@ export class TransfersService {
     const totalReceived = Array.from(receivedMap.values()).reduce((a, b) => a + b, 0);
 
     if (totalReceived === 0) {
-      // Nothing received → cancel
-      return this._cancelAndRestoreTransfer(transferId, transfer, actorId, 'Получатель не получил ничего');
+      // Nothing received > cancel
+      return this._cancelAndRestoreTransfer(transferId, transfer, actorId, '���������� �� ������� ������');
     }
 
     for (const [itemType, sentQty] of sentMap) {
@@ -255,7 +255,7 @@ export class TransfersService {
         data: { status: newStatus, acceptedBy: actorId, acceptedAt: new Date() },
       });
       if (updated.count === 0) {
-        throw new ConflictException('Статус перевода изменился, повторите попытку');
+        throw new ConflictException('������ �������� ���������, ��������� �������');
       }
 
       if (newStatus === TransferStatus.ACCEPTED) {
@@ -265,7 +265,7 @@ export class TransfersService {
           const color = ITEM_TO_COLOR[itemType];
           if (color) creditData[balanceField(color)] = { increment: sentQty };
         }
-        await tx.user.update({ where: { id: transfer.toUserId }, data: creditData });
+        await tx.user.update({ where: { id: transfer.toUserId! }, data: creditData });
 
         // Store acceptance records
         for (const item of transfer.items) {
@@ -292,7 +292,7 @@ export class TransfersService {
           await this.inventoryService.updateCityStatus(tx, transfer.toUser.primaryCityId);
         }
       } else {
-        // DISCREPANCY_FOUND — store acceptance records for review
+        // DISCREPANCY_FOUND � store acceptance records for review
         for (const item of transfer.items) {
           await tx.acceptanceRecord.create({
             data: {
@@ -317,26 +317,26 @@ export class TransfersService {
       });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-    await this.redis.del(`balance:user:${transfer.fromUserId}`);
-    await this.redis.del(`balance:user:${transfer.toUserId}`);
+    await this.redis.del(`balance:user:${transfer.fromUserId!}`);
+    await this.redis.del(`balance:user:${transfer.toUserId!}`);
 
     this.eventEmitter.emit('transfer.accepted', { transferId, actorId });
 
     return result;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // REJECT
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async rejectTransfer(transferId: string, reason: string, actorId: string) {
     const transfer = await this.prisma.transfer.findUnique({
       where: { id: transferId },
       include: { items: true },
     });
-    if (!transfer) throw new NotFoundException('Перевод не найден');
+    if (!transfer) throw new NotFoundException('������� �� ������');
     if (transfer.status !== TransferStatus.SENT) {
-      throw new BadRequestException(`Нельзя отклонить перевод со статусом ${transfer.status}`);
+      throw new BadRequestException(`������ ��������� ������� �� �������� ${transfer.status}`);
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -346,7 +346,7 @@ export class TransfersService {
         const color = ITEM_TO_COLOR[item.itemType];
         if (color) restoreData[balanceField(color)] = { increment: item.quantity };
       }
-      await tx.user.update({ where: { id: transfer.fromUserId }, data: restoreData });
+      await tx.user.update({ where: { id: transfer.fromUserId! }, data: restoreData });
 
       await tx.transfer.update({
         where: { id: transferId },
@@ -365,23 +365,23 @@ export class TransfersService {
       });
     });
 
-    await this.redis.del(`balance:user:${transfer.fromUserId}`);
+    await this.redis.del(`balance:user:${transfer.fromUserId!}`);
 
     this.eventEmitter.emit('transfer.rejected', { transferId, actorId });
 
     return result;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // CANCEL
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async cancelTransfer(transferId: string, actorId: string) {
     const transfer = await this.prisma.transfer.findUnique({
       where: { id: transferId },
       include: { items: true },
     });
-    if (!transfer) throw new NotFoundException('Перевод не найден');
+    if (!transfer) throw new NotFoundException('������� �� ������');
 
     const nonCancellableStatuses = [
       TransferStatus.ACCEPTED,
@@ -390,10 +390,10 @@ export class TransfersService {
       TransferStatus.CANCELLED,
     ];
     if ((nonCancellableStatuses as TransferStatus[]).includes(transfer.status)) {
-      throw new BadRequestException(`Нельзя отменить перевод со статусом ${transfer.status}`);
+      throw new BadRequestException(`������ �������� ������� �� �������� ${transfer.status}`);
     }
 
-    return this._cancelAndRestoreTransfer(transferId, transfer, actorId, 'Отменено');
+    return this._cancelAndRestoreTransfer(transferId, transfer, actorId, '��������');
   }
 
   private async _cancelAndRestoreTransfer(
@@ -408,7 +408,7 @@ export class TransfersService {
         const color = ITEM_TO_COLOR[item.itemType];
         if (color) restoreData[balanceField(color)] = { increment: item.quantity };
       }
-      await tx.user.update({ where: { id: transfer.fromUserId }, data: restoreData });
+      await tx.user.update({ where: { id: transfer.fromUserId! }, data: restoreData });
 
       await tx.transfer.update({
         where: { id: transferId },
@@ -423,16 +423,16 @@ export class TransfersService {
       });
     });
 
-    await this.redis.del(`balance:user:${transfer.fromUserId}`);
+    await this.redis.del(`balance:user:${transfer.fromUserId!}`);
 
     this.eventEmitter.emit('transfer.cancelled', { transferId, actorId });
 
     return result;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // RESOLVE DISCREPANCY
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async resolveDiscrepancy(transferId: string, dto: ResolveDiscrepancyDto, actorId: string) {
     const transfer = await this.prisma.transfer.findUnique({
@@ -444,9 +444,9 @@ export class TransfersService {
         toUser: { select: { id: true, primaryCityId: true, displayName: true } },
       },
     });
-    if (!transfer) throw new NotFoundException('Перевод не найден');
+    if (!transfer) throw new NotFoundException('������� �� ������');
     if (transfer.status !== TransferStatus.DISCREPANCY_FOUND) {
-      throw new BadRequestException('Перевод не находится в статусе расхождения');
+      throw new BadRequestException('������� �� ��������� � ������� �����������');
     }
 
     const { resolutionType, compromiseValues, notes } = dto;
@@ -480,15 +480,15 @@ export class TransfersService {
           const color = ITEM_TO_COLOR[item.itemType];
           if (color) restoreData[balanceField(color)] = { increment: item.quantity };
         }
-        await tx.user.update({ where: { id: transfer.fromUserId }, data: restoreData });
+        await tx.user.update({ where: { id: transfer.fromUserId! }, data: restoreData });
 
         // Record as company loss
         await tx.companyLoss.create({
           data: {
             transferId,
             resolutionType: resolutionType as any,
-            senderName: transfer.fromUser?.displayName || '—',
-            receiverName: transfer.toUser?.displayName || '—',
+            senderName: transfer.fromUser?.displayName || '�',
+            receiverName: transfer.toUser?.displayName || '�',
             originalSent: transfer.items.reduce((s, i) => s + i.quantity, 0),
             originalReceived: transfer.acceptanceRecords.reduce((s, r) => s + r.receivedQuantity, 0),
             black: sentByColor['Black'] ?? 0,
@@ -517,7 +517,7 @@ export class TransfersService {
           for (const [color, qty] of Object.entries(finalByColor) as [BalanceColor, number][]) {
             if (qty > 0) creditData[balanceField(color)] = { increment: qty };
           }
-          await tx.user.update({ where: { id: transfer.toUserId }, data: creditData });
+          await tx.user.update({ where: { id: transfer.toUserId! }, data: creditData });
         }
 
         // Compute shortage per-user
@@ -534,7 +534,7 @@ export class TransfersService {
             // Receiver blamed
             await tx.shortage.create({
               data: {
-                userId: transfer.toUserId,
+                userId: transfer.toUserId!,
                 transferId,
                 black: shortageByColor['Black'] ?? 0,
                 white: shortageByColor['White'] ?? 0,
@@ -551,7 +551,7 @@ export class TransfersService {
             // Sender blamed
             await tx.shortage.create({
               data: {
-                userId: transfer.fromUserId,
+                userId: transfer.fromUserId!,
                 transferId,
                 black: shortageByColor['Black'] ?? 0,
                 white: shortageByColor['White'] ?? 0,
@@ -570,7 +570,7 @@ export class TransfersService {
             await tx.shortage.createMany({
               data: [
                 {
-                  userId: transfer.fromUserId,
+                  userId: transfer.fromUserId!,
                   transferId,
                   black: Math.floor((shortageByColor['Black'] ?? 0) / 2),
                   white: Math.floor((shortageByColor['White'] ?? 0) / 2),
@@ -583,7 +583,7 @@ export class TransfersService {
                   notes,
                 },
                 {
-                  userId: transfer.toUserId,
+                  userId: transfer.toUserId!,
                   transferId,
                   black: (shortageByColor['Black'] ?? 0) - Math.floor((shortageByColor['Black'] ?? 0) / 2),
                   white: (shortageByColor['White'] ?? 0) - Math.floor((shortageByColor['White'] ?? 0) / 2),
@@ -598,13 +598,13 @@ export class TransfersService {
               ],
             });
           } else {
-            // ACCEPT_AS_IS → company loss
+            // ACCEPT_AS_IS > company loss
             await tx.companyLoss.create({
               data: {
                 transferId,
                 resolutionType: resolutionType as any,
-                senderName: transfer.fromUser?.displayName || '—',
-                receiverName: transfer.toUser?.displayName || '—',
+                senderName: transfer.fromUser?.displayName || '�',
+                receiverName: transfer.toUser?.displayName || '�',
                 originalSent: transfer.items.reduce((s, i) => s + i.quantity, 0),
                 originalReceived: transfer.acceptanceRecords.reduce((s, r) => s + r.receivedQuantity, 0),
                 black: shortageByColor['Black'] ?? 0,
@@ -648,15 +648,15 @@ export class TransfersService {
       });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-    await this.redis.del(`balance:user:${transfer.fromUserId}`);
-    await this.redis.del(`balance:user:${transfer.toUserId}`);
+    await this.redis.del(`balance:user:${transfer.fromUserId!}`);
+    await this.redis.del(`balance:user:${transfer.toUserId!}`);
 
     return result;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // EDIT TRANSFER (ADMIN only, SENT transfers)
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async editTransfer(
     transferId: string,
@@ -668,13 +668,13 @@ export class TransfersService {
       where: { id: transferId },
       include: { items: true },
     });
-    if (!transfer) throw new NotFoundException('Перевод не найден');
+    if (!transfer) throw new NotFoundException('������� �� ������');
     if (transfer.status !== TransferStatus.SENT) {
-      throw new BadRequestException('Редактировать можно только переводы в статусе SENT');
+      throw new BadRequestException('������������� ����� ������ �������� � ������� SENT');
     }
 
     const fromUser = await this.prisma.user.findUnique({
-      where: { id: transfer.fromUserId },
+      where: { id: transfer.fromUserId! },
       select: {
         balanceBlack: true,
         balanceWhite: true,
@@ -683,7 +683,7 @@ export class TransfersService {
         balanceVersion: true,
       },
     });
-    if (!fromUser) throw new NotFoundException('Отправитель не найден');
+    if (!fromUser) throw new NotFoundException('����������� �� ������');
 
     // Compute delta per color: positive = need to deduct more, negative = can restore
     const oldColorTotals: Partial<Record<BalanceColor, number>> = {};
@@ -695,7 +695,7 @@ export class TransfersService {
     const newColorTotals: Partial<Record<BalanceColor, number>> = {};
     for (const item of newItems) {
       const color = ITEM_TO_COLOR[item.itemType];
-      if (!color) throw new BadRequestException(`Неизвестный тип: ${item.itemType}`);
+      if (!color) throw new BadRequestException(`����������� ���: ${item.itemType}`);
       newColorTotals[color] = (newColorTotals[color] ?? 0) + item.quantity;
     }
 
@@ -708,7 +708,7 @@ export class TransfersService {
       if (delta > 0) {
         const field = balanceField(color);
         if ((fromUser[field] as number) < delta) {
-          throw new BadRequestException(`Недостаточно баланса для увеличения (${color})`);
+          throw new BadRequestException(`������������ ������� ��� ���������� (${color})`);
         }
       }
     }
@@ -724,7 +724,7 @@ export class TransfersService {
           adjustData[balanceField(color)] = delta > 0 ? { decrement: delta } : { increment: -delta };
         }
       }
-      await tx.user.update({ where: { id: transfer.fromUserId }, data: adjustData });
+      await tx.user.update({ where: { id: transfer.fromUserId! }, data: adjustData });
 
       // Replace items
       await tx.transferItem.deleteMany({ where: { transferId } });
@@ -742,14 +742,14 @@ export class TransfersService {
       });
     });
 
-    await this.redis.del(`balance:user:${transfer.fromUserId}`);
+    await this.redis.del(`balance:user:${transfer.fromUserId!}`);
 
     return result;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // QUERIES
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   async findAll(params: {
     status?: TransferStatus;
@@ -852,15 +852,15 @@ export class TransfersService {
         rejection: true,
       },
     });
-    if (!transfer) throw new NotFoundException('Перевод не найден');
+    if (!transfer) throw new NotFoundException('������� �� ������');
 
     // USER can only view their own transfers
     if (currentUser?.role === Role.USER) {
-      if (transfer.fromUserId !== currentUser.id && transfer.toUserId !== currentUser.id) {
-        throw new ForbiddenException('Нет доступа к этому переводу');
+      if (transfer.fromUserId! !== currentUser.id && transfer.toUserId! !== currentUser.id) {
+        throw new ForbiddenException('��� ������� � ����� ��������');
       }
       // Blind acceptance: hide sent quantities from receiver when status=SENT
-      if (transfer.status === TransferStatus.SENT && transfer.toUserId === currentUser.id) {
+      if (transfer.status === TransferStatus.SENT && transfer.toUserId! === currentUser.id) {
         return {
           ...transfer,
           items: (transfer.items as any[]).map((i: any) => ({ ...i, quantity: null })),
@@ -1079,9 +1079,9 @@ export class TransfersService {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // PRIVATE HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   private async writeTransferAudit(
     tx: Prisma.TransactionClient,

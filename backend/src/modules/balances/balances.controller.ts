@@ -27,6 +27,14 @@ export class BalancesController {
     return this.balancesService.getMine(user.id);
   }
 
+  /** Hierarchical drill-down: admins + offices→countries→cities→users. */
+  @Get('overview')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.OFFICE)
+  getOverview() {
+    return this.balancesService.getOverview();
+  }
+
   /** Caller's own balance history. */
   @Get('me/history')
   getMyHistory(
