@@ -61,20 +61,27 @@ async function runBootstrapMigration(): Promise<void> {
     }
 
     // 6. SAFETY NET — apply 20270517_balances_redesign idempotently
-    //    (in case prisma migrate deploy is out of sync on a live DB)
-    logger.log('Applying balances_redesign safety-net SQL...');
+    //    Each statement is individually caught so one failure never skips the rest.
+    logger.log('SN: starting balances_redesign safety-net...');
 
-    // Enums — create if missing, add values if missing
+    // 6a. Create enum types (each in its own DO $$ so one failure doesn't block the other)
     await prisma.$executeRawUnsafe(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TransferKind') THEN
           CREATE TYPE "TransferKind" AS ENUM ('PEER', 'DISTRIBUTION', 'ALLOCATION');
         END IF;
+      END $$;
+    `).catch((e: any) => logger.warn(`SN TransferKind: ${e?.message}`));
+
+    await prisma.$executeRawUnsafe(`
+      DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'WarehouseTargetKind') THEN
           CREATE TYPE "WarehouseTargetKind" AS ENUM ('ADMIN_SELF', 'OFFICE');
         END IF;
       END $$;
-    `);
+    `).catch((e: any) => logger.warn(`SN WarehouseTargetKind: ${e?.message}`));
+
+    // 6b. Enum value additions (each individually caught)
     const enumAdds: Array<[string, string]> = [
       ['NotificationType', 'OFFICE_SELF_MINT'],
       ['NotificationType', 'DISTRIBUTION_RECEIVED'],
@@ -85,83 +92,69 @@ async function runBootstrapMigration(): Promise<void> {
       ['AuditAction', 'ALLOCATION_CREATED'],
     ];
     for (const [type, val] of enumAdds) {
-      try {
-        await prisma.$executeRawUnsafe(`ALTER TYPE "${type}" ADD VALUE IF NOT EXISTS '${val}'`);
-      } catch (e: any) {
-        if (!String(e?.message).includes('already exists')) {
-          logger.warn(`Enum add ${type}.${val} skipped: ${e?.message}`);
-        }
-      }
+      await prisma.$executeRawUnsafe(`ALTER TYPE "${type}" ADD VALUE IF NOT EXISTS '${val}'`)
+        .catch((e: any) => logger.warn(`SN enum ${type}.${val}: ${e?.message}`));
     }
 
-    // Office balance pool columns
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "offices"
-        ADD COLUMN IF NOT EXISTS "balance_black"   INTEGER NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "balance_white"   INTEGER NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "balance_red"     INTEGER NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "balance_blue"    INTEGER NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "balance_version" INTEGER NOT NULL DEFAULT 0
-    `);
+    // 6c. Office balance columns
+    await prisma.$executeRawUnsafe(`ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_black"   INTEGER NOT NULL DEFAULT 0`).catch((e: any) => logger.warn(`SN offices.balance_black: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_white"   INTEGER NOT NULL DEFAULT 0`).catch((e: any) => logger.warn(`SN offices.balance_white: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_red"     INTEGER NOT NULL DEFAULT 0`).catch((e: any) => logger.warn(`SN offices.balance_red: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_blue"    INTEGER NOT NULL DEFAULT 0`).catch((e: any) => logger.warn(`SN offices.balance_blue: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_version" INTEGER NOT NULL DEFAULT 0`).catch((e: any) => logger.warn(`SN offices.balance_version: ${e?.message}`));
 
-    // Transfer kind + office endpoints + nullable user endpoints
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "transfers"
-        ADD COLUMN IF NOT EXISTS "kind"           "TransferKind" NOT NULL DEFAULT 'PEER',
-        ADD COLUMN IF NOT EXISTS "from_office_id" TEXT,
-        ADD COLUMN IF NOT EXISTS "to_office_id"   TEXT
-    `);
+    // 6d. Transfer columns (one by one so enum failure doesn't block text columns)
+    await prisma.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "kind" "TransferKind" NOT NULL DEFAULT 'PEER'`).catch((e: any) => logger.warn(`SN transfers.kind: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "from_office_id" TEXT`).catch((e: any) => logger.warn(`SN transfers.from_office_id: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_office_id" TEXT`).catch((e: any) => logger.warn(`SN transfers.to_office_id: ${e?.message}`));
     await prisma.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "from_user_id" DROP NOT NULL`).catch(() => {});
     await prisma.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "to_user_id"   DROP NOT NULL`).catch(() => {});
     await prisma.$executeRawUnsafe(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_from_office_id_fkey') THEN
-          ALTER TABLE "transfers"
-            ADD CONSTRAINT "transfers_from_office_id_fkey"
+          ALTER TABLE "transfers" ADD CONSTRAINT "transfers_from_office_id_fkey"
             FOREIGN KEY ("from_office_id") REFERENCES "offices"("id") ON DELETE SET NULL;
         END IF;
+      END $$;
+    `).catch((e: any) => logger.warn(`SN transfers_from_office_id_fkey: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`
+      DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_to_office_id_fkey') THEN
-          ALTER TABLE "transfers"
-            ADD CONSTRAINT "transfers_to_office_id_fkey"
+          ALTER TABLE "transfers" ADD CONSTRAINT "transfers_to_office_id_fkey"
             FOREIGN KEY ("to_office_id") REFERENCES "offices"("id") ON DELETE SET NULL;
         END IF;
       END $$;
-    `);
-    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_kind_idx"           ON "transfers" ("kind")`);
-    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_from_office_id_idx" ON "transfers" ("from_office_id")`);
-    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_to_office_id_idx"   ON "transfers" ("to_office_id")`);
+    `).catch((e: any) => logger.warn(`SN transfers_to_office_id_fkey: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_kind_idx"           ON "transfers" ("kind")`).catch((e: any) => logger.warn(`SN idx transfers_kind: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_from_office_id_idx" ON "transfers" ("from_office_id")`).catch((e: any) => logger.warn(`SN idx transfers_from_office_id: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_to_office_id_idx"   ON "transfers" ("to_office_id")`).catch((e: any) => logger.warn(`SN idx transfers_to_office_id: ${e?.message}`));
 
-    // WarehouseCreation: recipient kind + office target + nullable user
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "warehouse_creations"
-        ADD COLUMN IF NOT EXISTS "recipient_kind"      "WarehouseTargetKind" NOT NULL DEFAULT 'ADMIN_SELF',
-        ADD COLUMN IF NOT EXISTS "recipient_office_id" TEXT
-    `);
+    // 6e. WarehouseCreation columns — this is the critical fix for "recipient_kind does not exist"
+    logger.log('SN: adding warehouse_creations columns...');
+    await prisma.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_kind" "WarehouseTargetKind" NOT NULL DEFAULT 'ADMIN_SELF'`).catch((e: any) => logger.warn(`SN warehouse_creations.recipient_kind: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_office_id" TEXT`).catch((e: any) => logger.warn(`SN warehouse_creations.recipient_office_id: ${e?.message}`));
     await prisma.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ALTER COLUMN "recipient_user_id" DROP NOT NULL`).catch(() => {});
     await prisma.$executeRawUnsafe(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'warehouse_creations_recipient_office_id_fkey') THEN
-          ALTER TABLE "warehouse_creations"
-            ADD CONSTRAINT "warehouse_creations_recipient_office_id_fkey"
+          ALTER TABLE "warehouse_creations" ADD CONSTRAINT "warehouse_creations_recipient_office_id_fkey"
             FOREIGN KEY ("recipient_office_id") REFERENCES "offices"("id") ON DELETE SET NULL;
         END IF;
       END $$;
-    `);
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "warehouse_creations_recipient_office_id_idx"
-        ON "warehouse_creations" ("recipient_office_id")
-    `);
+    `).catch((e: any) => logger.warn(`SN warehouse_creations_recipient_office_id_fkey: ${e?.message}`));
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "warehouse_creations_recipient_office_id_idx" ON "warehouse_creations" ("recipient_office_id")`).catch((e: any) => logger.warn(`SN idx warehouse_creations_recipient_office_id: ${e?.message}`));
+    logger.log('SN: warehouse_creations columns done');
 
-    // Mark migration as applied in _prisma_migrations so prisma stops trying to run it
+    // 6f. Mark migration as applied so prisma migrate deploy skips it
     await prisma.$executeRawUnsafe(`
       INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
       SELECT gen_random_uuid()::text, 'safety-net', NOW(), '20270517000000_balances_redesign', NULL, NULL, NOW(), 1
       WHERE NOT EXISTS (
         SELECT 1 FROM "_prisma_migrations" WHERE migration_name = '20270517000000_balances_redesign' AND finished_at IS NOT NULL
       )
-    `).catch((e: any) => logger.warn(`Marking migration applied skipped: ${e?.message}`));
+    `).catch((e: any) => logger.warn(`SN mark migration: ${e?.message}`));
 
-    logger.log('balances_redesign safety-net SQL complete');
+    logger.log('SN: balances_redesign safety-net complete');
 
     logger.log('Pre-migration data transform complete');
   } catch (err: any) {
