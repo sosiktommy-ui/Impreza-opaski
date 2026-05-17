@@ -32,6 +32,17 @@ enum TransferStatus {
   CANCELLED
 }
 
+enum TransferKind {
+  PEER         // USER -> USER (blind acceptance)
+  DISTRIBUTION // ADMIN/OFFICE -> USER (instant)
+  ALLOCATION   // ADMIN -> OFFICE (instant)
+}
+
+enum WarehouseTargetKind {
+  ADMIN_SELF
+  OFFICE
+}
+
 enum CityStatus {
   ACTIVE
   LOW
@@ -64,6 +75,9 @@ enum NotificationType {
   DISCREPANCY_ALERT
   LOW_STOCK
   ZERO_STOCK
+  OFFICE_SELF_MINT
+  DISTRIBUTION_RECEIVED
+  ALLOCATION_RECEIVED
 }
 
 enum AuditAction {
@@ -98,6 +112,10 @@ enum AuditAction {
   EVENT_REOPENED
   EXPENSE_REVERSED
   LOGIN_DISABLED_TOGGLED
+  WAREHOUSE_MINT
+  OFFICE_SELF_MINT
+  DISTRIBUTION_CREATED
+  ALLOCATION_CREATED
 }
 
 enum ResolutionType {
@@ -222,8 +240,19 @@ model Office {
   code      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Office warehouse — pool of bracelets held by the office before distribution
+  // to USER-role accounts. Replenished by admin allocation or office self-mint.
+  balanceBlack   Int @default(0) @map("balance_black")
+  balanceWhite   Int @default(0) @map("balance_white")
+  balanceRed     Int @default(0) @map("balance_red")
+  balanceBlue    Int @default(0) @map("balance_blue")
+  balanceVersion Int @default(0) @map("balance_version")
+
   users     User[]
   countries Country[]
+  transfersFrom Transfer[] @relation("TransferFromOffice")
+  transfersTo   Transfer[] @relation("TransferToOffice")
+  warehouseCreations WarehouseCreation[] @relation("WarehouseRecipientOffice")
 
   @@map("offices")
 }
@@ -273,10 +302,19 @@ model City {
 model Transfer {
   id String @id @default(uuid())
 
-  fromUserId String @map("from_user_id")
-  toUserId   String @map("to_user_id")
-  fromUser   User   @relation("TransferFromUser", fields: [fromUserId], references: [id])
-  toUser     User   @relation("TransferToUser", fields: [toUserId], references: [id])
+  kind TransferKind @default(PEER)
+
+  // For PEER: fromUserId+toUserId.
+  // For DISTRIBUTION: (fromUserId OR fromOfficeId) + toUserId.
+  // For ALLOCATION: fromUserId + toOfficeId.
+  fromUserId   String? @map("from_user_id")
+  toUserId     String? @map("to_user_id")
+  fromOfficeId String? @map("from_office_id")
+  toOfficeId   String? @map("to_office_id")
+  fromUser     User?   @relation("TransferFromUser", fields: [fromUserId], references: [id])
+  toUser       User?   @relation("TransferToUser", fields: [toUserId], references: [id])
+  fromOffice   Office? @relation("TransferFromOffice", fields: [fromOfficeId], references: [id])
+  toOffice     Office? @relation("TransferToOffice", fields: [toOfficeId], references: [id])
 
   status  TransferStatus @default(SENT)
   version Int            @default(0)
@@ -303,8 +341,11 @@ model Transfer {
   shortages         Shortage[]
 
   @@index([status])
+  @@index([kind])
   @@index([fromUserId])
   @@index([toUserId])
+  @@index([fromOfficeId])
+  @@index([toOfficeId])
   @@index([createdBy])
   @@map("transfers")
 }
@@ -551,9 +592,15 @@ model Shortage {
 // ──────────────────────────────────────────────
 
 model WarehouseCreation {
-  id              String @id @default(uuid())
-  recipientUserId String @map("recipient_user_id")
-  recipientUser   User   @relation("WarehouseRecipient", fields: [recipientUserId], references: [id])
+  id String @id @default(uuid())
+
+  // Mint target: either an admin's own user balance (ADMIN_SELF)
+  // or an office warehouse (OFFICE).
+  recipientKind     WarehouseTargetKind @default(ADMIN_SELF) @map("recipient_kind")
+  recipientUserId   String?             @map("recipient_user_id")
+  recipientUser     User?               @relation("WarehouseRecipient", fields: [recipientUserId], references: [id])
+  recipientOfficeId String?             @map("recipient_office_id")
+  recipientOffice   Office?             @relation("WarehouseRecipientOffice", fields: [recipientOfficeId], references: [id])
 
   black       Int @default(0)
   white       Int @default(0)
@@ -566,6 +613,7 @@ model WarehouseCreation {
   notes     String?
 
   @@index([recipientUserId])
+  @@index([recipientOfficeId])
   @@index([createdBy])
   @@index([createdAt])
   @@map("warehouse_creations")

@@ -6,7 +6,7 @@
 -- ============================================================
 
 -- ── Step 1: Add primary_city_id to users ──────────────────
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "primary_city_id" UUID;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "primary_city_id" TEXT;
 
 -- Migrate CITY-role users: their city_id becomes primary_city_id
 UPDATE "users"
@@ -14,8 +14,7 @@ SET "primary_city_id" = "city_id"
 WHERE "role"::text = 'CITY' AND "city_id" IS NOT NULL;
 
 -- ── Step 2: Migrate CITY → USER role ──────────────────────
--- Create new Role enum value 'USER' first
-ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'USER';
+-- (Enum value 'USER' added in prior migration 20260999999999_add_user_role_enum_value)
 
 -- Update CITY role users to USER
 UPDATE "users" SET "role" = 'USER' WHERE "role"::text = 'CITY';
@@ -62,11 +61,11 @@ ALTER TABLE "transfers"
 
 -- Add new user-based columns
 ALTER TABLE "transfers"
-  ADD COLUMN IF NOT EXISTS "from_user_id" UUID,
-  ADD COLUMN IF NOT EXISTS "to_user_id" UUID;
+  ADD COLUMN IF NOT EXISTS "from_user_id" TEXT,
+  ADD COLUMN IF NOT EXISTS "to_user_id" TEXT;
 
 -- Set from_user_id = created_by (sender is whoever created the transfer)
-UPDATE "transfers" SET "from_user_id" = "created_by"::uuid WHERE "from_user_id" IS NULL;
+UPDATE "transfers" SET "from_user_id" = "created_by" WHERE "from_user_id" IS NULL;
 
 -- For any remaining nulls (orphaned) — remove them
 DELETE FROM "transfers" WHERE "from_user_id" IS NULL OR "to_user_id" IS NULL;
@@ -95,7 +94,7 @@ ALTER TABLE "adjustments"
   DROP COLUMN IF EXISTS "city_id";
 
 ALTER TABLE "adjustments"
-  ADD COLUMN IF NOT EXISTS "user_id" UUID;
+  ADD COLUMN IF NOT EXISTS "user_id" TEXT;
 
 ALTER TABLE "adjustments"
   DROP CONSTRAINT IF EXISTS "adjustments_user_id_fkey";
@@ -113,7 +112,7 @@ ALTER TABLE "warehouse_creations"
   DROP COLUMN IF EXISTS "office_id";
 
 ALTER TABLE "warehouse_creations"
-  ADD COLUMN IF NOT EXISTS "recipient_user_id" UUID;
+  ADD COLUMN IF NOT EXISTS "recipient_user_id" TEXT;
 
 ALTER TABLE "warehouse_creations"
   DROP CONSTRAINT IF EXISTS "warehouse_creations_office_id_fkey",
@@ -134,7 +133,7 @@ ALTER TABLE "shortages"
   DROP COLUMN IF EXISTS "city_id";
 
 ALTER TABLE "shortages"
-  ADD COLUMN IF NOT EXISTS "user_id" UUID;
+  ADD COLUMN IF NOT EXISTS "user_id" TEXT;
 
 ALTER TABLE "shortages"
   DROP CONSTRAINT IF EXISTS "shortages_office_id_fkey",
