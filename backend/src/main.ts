@@ -97,6 +97,59 @@ async function runBootstrapMigration(): Promise<void> {
   try {
     logger.log('SN: post-migration safety-net starting...');
 
+    // ── Drop obsolete columns that block INSERTs (entity_type NOT NULL etc.) ──
+    // warehouse_creations: drop old entity-based columns
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" DROP CONSTRAINT IF EXISTS "warehouse_creations_office_id_fkey"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" DROP COLUMN IF EXISTS "entity_type"`).catch((e: any) => logger.warn(`SN drop entity_type: ${e?.message}`));
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" DROP COLUMN IF EXISTS "office_id"`).catch((e: any) => logger.warn(`SN drop wc.office_id: ${e?.message}`));
+
+    // transfers: drop old entity-based columns that conflict with new schema
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_type"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_office_id"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_country_id"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_city_id"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_type"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_office_id"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_country_id"`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_city_id"`).catch(() => {});
+
+    // transfers: add new user-based columns if missing
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "from_user_id" TEXT`).catch((e: any) => logger.warn(`SN: ${e?.message}`));
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_user_id" TEXT`).catch((e: any) => logger.warn(`SN: ${e?.message}`));
+    // Remove NOT NULL after adding (safe if already nullable)
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "from_user_id" DROP NOT NULL`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "to_user_id" DROP NOT NULL`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_from_user_id_fkey') THEN
+          ALTER TABLE "transfers" ADD CONSTRAINT "transfers_from_user_id_fkey"
+            FOREIGN KEY ("from_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+        END IF;
+      END $$;
+    `).catch((e: any) => logger.warn(`SN: ${e?.message}`));
+    await prisma2.$executeRawUnsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_to_user_id_fkey') THEN
+          ALTER TABLE "transfers" ADD CONSTRAINT "transfers_to_user_id_fkey"
+            FOREIGN KEY ("to_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+        END IF;
+      END $$;
+    `).catch((e: any) => logger.warn(`SN: ${e?.message}`));
+    await prisma2.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_from_user_id_idx" ON "transfers" ("from_user_id")`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "transfers_to_user_id_idx" ON "transfers" ("to_user_id")`).catch(() => {});
+
+    // expenses: add user_id if missing (from 20260902000000_phase5_expense_user_id)
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "user_id" TEXT`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'expenses_user_id_fkey') THEN
+          ALTER TABLE "expenses" ADD CONSTRAINT "expenses_user_id_fkey"
+            FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await prisma2.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "expenses_user_id_idx" ON "expenses" ("user_id")`).catch(() => {});
+
     await prisma2.$executeRawUnsafe(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TransferKind') THEN

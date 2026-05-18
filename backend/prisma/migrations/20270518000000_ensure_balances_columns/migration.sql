@@ -1,6 +1,50 @@
 -- Ensure balances_redesign columns exist (idempotent patch)
--- This migration exists in case 20270517000000_balances_redesign was already
--- registered in _prisma_migrations but failed partially on the live DB.
+-- This migration exists in case earlier migrations failed partially on the live DB.
+-- All statements use IF NOT EXISTS / DROP IF EXISTS so safe to run multiple times.
+
+-- ── Drop obsolete columns that block INSERTs ──────────────────────────
+ALTER TABLE "warehouse_creations" DROP CONSTRAINT IF EXISTS "warehouse_creations_office_id_fkey";
+ALTER TABLE "warehouse_creations" DROP COLUMN IF EXISTS "entity_type";
+ALTER TABLE "warehouse_creations" DROP COLUMN IF EXISTS "office_id";
+
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_type";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_office_id";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_country_id";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "sender_city_id";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_type";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_office_id";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_country_id";
+ALTER TABLE "transfers" DROP COLUMN IF EXISTS "receiver_city_id";
+
+-- ── Add user-based columns to transfers ──────────────────────────────
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "from_user_id" TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_user_id" TEXT;
+ALTER TABLE "transfers" ALTER COLUMN "from_user_id" DROP NOT NULL;
+ALTER TABLE "transfers" ALTER COLUMN "to_user_id" DROP NOT NULL;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_from_user_id_fkey') THEN
+    ALTER TABLE "transfers" ADD CONSTRAINT "transfers_from_user_id_fkey"
+      FOREIGN KEY ("from_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_to_user_id_fkey') THEN
+    ALTER TABLE "transfers" ADD CONSTRAINT "transfers_to_user_id_fkey"
+      FOREIGN KEY ("to_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "transfers_from_user_id_idx" ON "transfers" ("from_user_id");
+CREATE INDEX IF NOT EXISTS "transfers_to_user_id_idx"   ON "transfers" ("to_user_id");
+
+-- ── expenses.user_id ─────────────────────────────────────────────────
+ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "user_id" TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'expenses_user_id_fkey') THEN
+    ALTER TABLE "expenses" ADD CONSTRAINT "expenses_user_id_fkey"
+      FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "expenses_user_id_idx" ON "expenses" ("user_id");
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TransferKind') THEN
