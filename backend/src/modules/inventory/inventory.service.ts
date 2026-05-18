@@ -800,23 +800,93 @@ export class InventoryService {
   async getInventoryOverview(params: { countryId?: string; cityId?: string }) {
     try {
       const { countryId, cityId } = params;
-      const where: Prisma.UserWhereInput = { role: Role.USER, isActive: true };
-      if (cityId) where.primaryCityId = cityId;
-      if (countryId) where.primaryCity = { countryId };
 
-      const agg = await this.prisma.user.aggregate({
-        where,
-        _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+      // ── 1. Per-city USER balance aggregation ────────────────────────
+      const userWhere: Prisma.UserWhereInput = { role: Role.USER, isActive: true };
+      if (cityId) userWhere.primaryCityId = cityId;
+      else if (countryId) userWhere.primaryCity = { countryId };
+
+      const users = await this.prisma.user.findMany({
+        where: userWhere,
+        select: {
+          primaryCityId: true,
+          primaryCity: { select: { id: true, name: true, countryId: true } },
+          balanceBlack: true,
+          balanceWhite: true,
+          balanceRed: true,
+          balanceBlue: true,
+        },
       });
 
-      return {
-        data: [
-          { itemType: 'BLACK', quantity: agg._sum.balanceBlack ?? 0 },
-          { itemType: 'WHITE', quantity: agg._sum.balanceWhite ?? 0 },
-          { itemType: 'RED',   quantity: agg._sum.balanceRed ?? 0 },
-          { itemType: 'BLUE',  quantity: agg._sum.balanceBlue ?? 0 },
-        ],
-      };
+      // Aggregate by city
+      const cityMap = new Map<string, { city: { id: string; name: string; countryId: string }; BLACK: number; WHITE: number; RED: number; BLUE: number }>();
+      for (const u of users) {
+        if (!u.primaryCityId || !u.primaryCity) continue;
+        const cid = u.primaryCityId;
+        if (!cityMap.has(cid)) {
+          cityMap.set(cid, { city: u.primaryCity, BLACK: 0, WHITE: 0, RED: 0, BLUE: 0 });
+        }
+        const entry = cityMap.get(cid)!;
+        entry.BLACK += u.balanceBlack;
+        entry.WHITE += u.balanceWhite;
+        entry.RED   += u.balanceRed;
+        entry.BLUE  += u.balanceBlue;
+      }
+
+      const cityRows: any[] = [];
+      for (const [, entry] of cityMap) {
+        for (const itemType of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+          cityRows.push({
+            entityType: 'CITY',
+            city: entry.city,
+            itemType,
+            quantity: entry[itemType],
+          });
+        }
+      }
+
+      // ── 2. ADMIN balance rows ────────────────────────────────────────
+      const adminWhere: Prisma.UserWhereInput = { role: Role.ADMIN, isActive: true };
+      if (countryId || cityId) {
+        // For filtered views don't include admin global pool
+      } else {
+        const adminAgg = await this.prisma.user.aggregate({
+          where: adminWhere,
+          _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+        });
+        const adminQty: Record<string, number> = {
+          BLACK: adminAgg._sum.balanceBlack ?? 0,
+          WHITE: adminAgg._sum.balanceWhite ?? 0,
+          RED:   adminAgg._sum.balanceRed   ?? 0,
+          BLUE:  adminAgg._sum.balanceBlue  ?? 0,
+        };
+        for (const itemType of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+          cityRows.push({
+            entityType: 'ADMIN',
+            itemType,
+            quantity: adminQty[itemType],
+          });
+        }
+
+        // ── 3. OFFICE balance rows ─────────────────────────────────────
+        const offices = await this.prisma.office.findMany({
+          select: { id: true, name: true, balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+        });
+        for (const office of offices) {
+          for (const itemType of ['BLACK', 'WHITE', 'RED', 'BLUE'] as const) {
+            const key = `balance${itemType.charAt(0) + itemType.slice(1).toLowerCase()}` as keyof typeof office;
+            cityRows.push({
+              entityType: 'OFFICE',
+              officeId: office.id,
+              office: { name: office.name },
+              itemType,
+              quantity: (office[key] as number) ?? 0,
+            });
+          }
+        }
+      }
+
+      return { data: cityRows };
     } catch (error: any) {
       this.logger.error(`getInventoryOverview ERROR: ${error?.message}`);
       return { data: [] };
