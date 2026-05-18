@@ -1,10 +1,6 @@
--- Balances redesign migration
--- 1) Office gets its own warehouse balance pool
--- 2) Transfer gains kind + optional Office endpoints (peer / distribution / allocation)
--- 3) WarehouseCreation can target either a USER (admin self) or an OFFICE
--- 4) New NotificationType + AuditAction values
-
--- ─── ENUMS ─────────────────────────────────────────────────────────────
+-- Ensure balances_redesign columns exist (idempotent patch)
+-- This migration exists in case 20270517000000_balances_redesign was already
+-- registered in _prisma_migrations but failed partially on the live DB.
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TransferKind') THEN
@@ -20,28 +16,22 @@ END $$;
 ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'OFFICE_SELF_MINT';
 ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'DISTRIBUTION_RECEIVED';
 ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ALLOCATION_RECEIVED';
-
 ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'WAREHOUSE_MINT';
 ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'OFFICE_SELF_MINT';
 ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'DISTRIBUTION_CREATED';
 ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'ALLOCATION_CREATED';
 
--- ─── OFFICE BALANCE POOL ───────────────────────────────────────────────
+ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_black"   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_white"   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_red"     INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_blue"    INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "offices" ADD COLUMN IF NOT EXISTS "balance_version" INTEGER NOT NULL DEFAULT 0;
 
-ALTER TABLE "offices"
-  ADD COLUMN IF NOT EXISTS "balance_black"   INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "balance_white"   INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "balance_red"     INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "balance_blue"    INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "balance_version" INTEGER NOT NULL DEFAULT 0;
-
--- ─── TRANSFER: kind + optional office endpoints ───────────────────────
-
-ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "kind" "TransferKind" NOT NULL DEFAULT 'PEER';
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "kind"           "TransferKind" NOT NULL DEFAULT 'PEER';
 ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "from_office_id" TEXT;
-ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_office_id" TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_office_id"   TEXT;
 ALTER TABLE "transfers" ALTER COLUMN "from_user_id" DROP NOT NULL;
-ALTER TABLE "transfers" ALTER COLUMN "to_user_id" DROP NOT NULL;
+ALTER TABLE "transfers" ALTER COLUMN "to_user_id"   DROP NOT NULL;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_from_office_id_fkey') THEN
@@ -60,9 +50,7 @@ CREATE INDEX IF NOT EXISTS "transfers_kind_idx"           ON "transfers" ("kind"
 CREATE INDEX IF NOT EXISTS "transfers_from_office_id_idx" ON "transfers" ("from_office_id");
 CREATE INDEX IF NOT EXISTS "transfers_to_office_id_idx"   ON "transfers" ("to_office_id");
 
--- ─── WAREHOUSE CREATION: support office target ────────────────────────
-
-ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_kind" "WarehouseTargetKind" NOT NULL DEFAULT 'ADMIN_SELF';
+ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_kind"      "WarehouseTargetKind" NOT NULL DEFAULT 'ADMIN_SELF';
 ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_office_id" TEXT;
 ALTER TABLE "warehouse_creations" ALTER COLUMN "recipient_user_id" DROP NOT NULL;
 
