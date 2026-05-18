@@ -140,6 +140,16 @@ async function runBootstrapMigration(): Promise<void> {
     await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "to_user_id"   DROP NOT NULL`).catch(() => {});
 
     logger.log('SN: adding warehouse_creations.recipient_kind...');
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_user_id" TEXT`).catch((e: any) => logger.warn(`SN: ${e?.message}`));
+    await prisma2.$executeRawUnsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'warehouse_creations_recipient_user_id_fkey') THEN
+          ALTER TABLE "warehouse_creations" ADD CONSTRAINT "warehouse_creations_recipient_user_id_fkey"
+            FOREIGN KEY ("recipient_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+        END IF;
+      END $$;
+    `).catch((e: any) => logger.warn(`SN: ${e?.message}`));
+    await prisma2.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "warehouse_creations_recipient_user_id_idx" ON "warehouse_creations" ("recipient_user_id")`).catch((e: any) => logger.warn(`SN: ${e?.message}`));
     await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_kind" "WarehouseTargetKind" NOT NULL DEFAULT 'ADMIN_SELF'`).catch((e: any) => logger.warn(`SN recipient_kind: ${e?.message}`));
     await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_office_id" TEXT`).catch((e: any) => logger.warn(`SN: ${e?.message}`));
     await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ALTER COLUMN "recipient_user_id" DROP NOT NULL`).catch(() => {});

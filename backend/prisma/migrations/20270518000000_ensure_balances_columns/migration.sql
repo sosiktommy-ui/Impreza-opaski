@@ -50,6 +50,15 @@ CREATE INDEX IF NOT EXISTS "transfers_kind_idx"           ON "transfers" ("kind"
 CREATE INDEX IF NOT EXISTS "transfers_from_office_id_idx" ON "transfers" ("from_office_id");
 CREATE INDEX IF NOT EXISTS "transfers_to_office_id_idx"   ON "transfers" ("to_office_id");
 
+ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_user_id" TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'warehouse_creations_recipient_user_id_fkey') THEN
+    ALTER TABLE "warehouse_creations" ADD CONSTRAINT "warehouse_creations_recipient_user_id_fkey"
+      FOREIGN KEY ("recipient_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "warehouse_creations_recipient_user_id_idx" ON "warehouse_creations" ("recipient_user_id");
+
 ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_kind"      "WarehouseTargetKind" NOT NULL DEFAULT 'ADMIN_SELF';
 ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_office_id" TEXT;
 ALTER TABLE "warehouse_creations" ALTER COLUMN "recipient_user_id" DROP NOT NULL;
