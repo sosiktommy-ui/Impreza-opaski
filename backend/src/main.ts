@@ -60,6 +60,16 @@ async function runBootstrapMigration(): Promise<void> {
       await prisma.$executeRawUnsafe(`UPDATE "user_access" SET "scope_type" = 'CITY' WHERE "scope_type"::text = 'COUNTRY'`);
     }
 
+    // 5b. Clean up expenses with null user_id so migration 20261000 step-8 (SET NOT NULL) can succeed.
+    //     user_id column was added in 20260902 as nullable; old rows may have NULL.
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "user_id" TEXT
+    `).catch(() => {}); // no-op if column already exists
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM "expenses" WHERE "user_id" IS NULL
+    `).catch(() => {});
+    logger.log('Pre-migration: cleaned up null user_id expenses');
+
     // 6. Clean up any fake checksum entries we may have inserted previously.
     //    If _prisma_migrations has our row with checksum='safety-net', Prisma will
     //    throw "migration was modified" and refuse to apply ANY migrations at all.
@@ -191,6 +201,17 @@ async function runBootstrapMigration(): Promise<void> {
     await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_office_id"   TEXT`).catch((e: any) => logger.warn(`SN: ${e?.message}`));
     await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "from_user_id" DROP NOT NULL`).catch(() => {});
     await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ALTER COLUMN "to_user_id"   DROP NOT NULL`).catch(() => {});
+
+    // transfers: lifecycle tracking columns (migration 20261000 step 15 — may not have run)
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "notes"             TEXT`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "accepted_by"       TEXT`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "rejected_at"       TIMESTAMPTZ`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "rejected_by"       TEXT`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "cancelled_at"      TIMESTAMPTZ`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "cancelled_by"      TEXT`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "resolved_at"       TIMESTAMPTZ`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "resolved_by"       TEXT`).catch(() => {});
+    await prisma2.$executeRawUnsafe(`ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "discrepancy_notes" TEXT`).catch(() => {});
 
     logger.log('SN: adding warehouse_creations.recipient_kind...');
     await prisma2.$executeRawUnsafe(`ALTER TABLE "warehouse_creations" ADD COLUMN IF NOT EXISTS "recipient_user_id" TEXT`).catch((e: any) => logger.warn(`SN: ${e?.message}`));

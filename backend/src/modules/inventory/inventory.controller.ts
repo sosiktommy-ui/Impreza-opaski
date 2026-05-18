@@ -108,6 +108,21 @@ export class InventoryController {
     private readonly authService: AuthService,
   ) {}
 
+  @Get()
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getInventoryOverview(
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
+  ) {
+    return this.inventoryService.getInventoryOverview({ countryId, cityId });
+  }
+
+  @Get('warehouse/balance')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getWarehouseBalance(@Query('officeId') officeId?: string) {
+    return this.inventoryService.getWarehouseBalance(officeId);
+  }
+
   @Get('map')
   getMapData(@CurrentUser() user: AuthenticatedUser) {
     return this.inventoryService.getMapData({
@@ -318,6 +333,18 @@ export class InventoryController {
       this.logger.error(`getSystemLossesSummary error: ${error?.message}`, error?.stack);
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
     }
+  }
+
+  @Get('system-losses')
+  @Roles(Role.ADMIN, Role.OFFICE)
+  async getSystemLossesList(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.inventoryService.getSystemLossesList({ page, limit, countryId, cityId, search });
   }
 }
 

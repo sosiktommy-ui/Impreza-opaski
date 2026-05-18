@@ -792,4 +792,118 @@ export class InventoryService {
       return { total: 0, black: 0, white: 0, red: 0, blue: 0, companyCount: 0, shortageCount: 0 };
     }
   }
+
+  // ────────────────────────────────────────────────
+  // INVENTORY OVERVIEW  (sum of all user balances, formatted as old itemType rows)
+  // ────────────────────────────────────────────────
+
+  async getInventoryOverview(params: { countryId?: string; cityId?: string }) {
+    try {
+      const { countryId, cityId } = params;
+      const where: Prisma.UserWhereInput = { role: Role.USER, isActive: true };
+      if (cityId) where.primaryCityId = cityId;
+      if (countryId) where.primaryCity = { countryId };
+
+      const agg = await this.prisma.user.aggregate({
+        where,
+        _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+      });
+
+      return {
+        data: [
+          { itemType: 'BLACK', quantity: agg._sum.balanceBlack ?? 0 },
+          { itemType: 'WHITE', quantity: agg._sum.balanceWhite ?? 0 },
+          { itemType: 'RED',   quantity: agg._sum.balanceRed ?? 0 },
+          { itemType: 'BLUE',  quantity: agg._sum.balanceBlue ?? 0 },
+        ],
+      };
+    } catch (error: any) {
+      this.logger.error(`getInventoryOverview ERROR: ${error?.message}`);
+      return { data: [] };
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // WAREHOUSE BALANCE  (admin pool or office pool)
+  // ────────────────────────────────────────────────
+
+  async getWarehouseBalance(officeId?: string) {
+    try {
+      if (officeId) {
+        const office = await this.prisma.office.findUnique({
+          where: { id: officeId },
+          select: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+        });
+        if (!office) return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+        const total = office.balanceBlack + office.balanceWhite + office.balanceRed + office.balanceBlue;
+        return { black: office.balanceBlack, white: office.balanceWhite, red: office.balanceRed, blue: office.balanceBlue, total };
+      }
+
+      // No officeId: total of all admin balances + all office balances
+      const [adminAgg, officeAgg] = await Promise.all([
+        this.prisma.user.aggregate({
+          where: { role: Role.ADMIN, isActive: true },
+          _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+        }),
+        this.prisma.office.aggregate({
+          _sum: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+        }),
+      ]);
+
+      const black = (adminAgg._sum.balanceBlack ?? 0) + (officeAgg._sum.balanceBlack ?? 0);
+      const white = (adminAgg._sum.balanceWhite ?? 0) + (officeAgg._sum.balanceWhite ?? 0);
+      const red   = (adminAgg._sum.balanceRed ?? 0)   + (officeAgg._sum.balanceRed ?? 0);
+      const blue  = (adminAgg._sum.balanceBlue ?? 0)  + (officeAgg._sum.balanceBlue ?? 0);
+      return { black, white, red, blue, total: black + white + red + blue };
+    } catch (error: any) {
+      this.logger.error(`getWarehouseBalance ERROR: ${error?.message}`);
+      return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // SYSTEM LOSSES  (paginated company losses list)
+  // ────────────────────────────────────────────────
+
+  async getSystemLossesList(params: {
+    page?: number; limit?: number; countryId?: string; cityId?: string; search?: string;
+  }) {
+    const { page = 1, limit = 20, search } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.CompanyLossWhereInput = {};
+    if (search) {
+      where.OR = [
+        { senderName: { contains: search, mode: 'insensitive' } },
+        { receiverName: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    try {
+      const [losses, total] = await Promise.all([
+        this.prisma.companyLoss.findMany({
+          where,
+          include: {
+            transfer: {
+              select: {
+                id: true, status: true,
+                fromUser: { select: { id: true, displayName: true } },
+                toUser:   { select: { id: true, displayName: true } },
+              },
+            },
+            resolver: { select: { id: true, displayName: true, username: true } },
+          },
+          orderBy: { resolvedAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.companyLoss.count({ where }),
+      ]);
+
+      return { data: losses, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    } catch (error: any) {
+      this.logger.error(`getSystemLossesList ERROR: ${error?.message}`);
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
+  }
 }

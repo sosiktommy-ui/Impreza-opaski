@@ -77,6 +77,17 @@ ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "to_office_id"   TEXT;
 ALTER TABLE "transfers" ALTER COLUMN "from_user_id" DROP NOT NULL;
 ALTER TABLE "transfers" ALTER COLUMN "to_user_id"   DROP NOT NULL;
 
+-- transfers: lifecycle tracking columns (migration 20261000 step 15 — may not have run)
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "notes"             TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "accepted_by"       TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "rejected_at"       TIMESTAMPTZ;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "rejected_by"       TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "cancelled_at"      TIMESTAMPTZ;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "cancelled_by"      TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "resolved_at"       TIMESTAMPTZ;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "resolved_by"       TEXT;
+ALTER TABLE "transfers" ADD COLUMN IF NOT EXISTS "discrepancy_notes" TEXT;
+
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfers_from_office_id_fkey') THEN
     ALTER TABLE "transfers" ADD CONSTRAINT "transfers_from_office_id_fkey"
