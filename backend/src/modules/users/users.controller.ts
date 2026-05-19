@@ -126,11 +126,12 @@ export class UsersController {
   findAll(
     @Query('role') role?: Role,
     @Query('countryId') countryId?: string,
+    @Query('cityId') cityId?: string,
     @Query('search') search?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.usersService.findAll({ role, countryId, search, page, limit });
+    return this.usersService.findAll({ role, countryId, cityId, search, page, limit });
   }
 
   @Get('countries')

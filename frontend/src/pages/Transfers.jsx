@@ -49,6 +49,11 @@ export default function Transfers() {
   const [officesLoading, setOfficesLoading] = useState(false);
   const [toOfficeId, setToOfficeId] = useState('');
 
+  // Recipient user picker (new user-based transfer model)
+  const [toUserId, setToUserId] = useState('');
+  const [recipientUsers, setRecipientUsers] = useState([]);
+  const [recipientUsersLoading, setRecipientUsersLoading] = useState(false);
+
   // Confirmation step
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
@@ -148,7 +153,7 @@ export default function Transfers() {
       setBalanceLoading(false);
     }
 
-    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') {
+    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY' || user.role === 'USER') {
       try {
         const { data } = await usersApi.getCountries();
         const result = data.data || data;
@@ -208,12 +213,29 @@ export default function Transfers() {
     }
   };
 
-  // Cascading: when country selected → load its cities
+  const loadRecipientUsers = async (params) => {
+    setRecipientUsersLoading(true);
+    setRecipientUsers([]);
+    try {
+      const { data } = await usersApi.getAll({ ...params, limit: 500 });
+      const list = data?.data || (Array.isArray(data) ? data : []);
+      setRecipientUsers((Array.isArray(list) ? list : []).filter((u) => u.id !== user.id && u.isActive !== false));
+    } catch (err) {
+      console.error('loadRecipientUsers error:', err);
+      setRecipientUsers([]);
+    } finally {
+      setRecipientUsersLoading(false);
+    }
+  };
+
+  // Cascading: when country selected → load its cities + users
   const handleCountryChange = async (e) => {
     const cId = e.target.value;
     setToCountryId(cId);
     setToCityId('');
     setCities([]);
+    setToUserId('');
+    setRecipientUsers([]);
 
     if (cId) {
       setCitiesLoading(true);
@@ -225,6 +247,20 @@ export default function Transfers() {
       } finally {
         setCitiesLoading(false);
       }
+      loadRecipientUsers({ role: 'USER', countryId: cId });
+    }
+  };
+
+  const handleCityChange = async (e) => {
+    const cId = e.target.value;
+    setToCityId(cId);
+    setToUserId('');
+    if (cId) {
+      loadRecipientUsers({ role: 'USER', cityId: cId });
+    } else if (toCountryId) {
+      loadRecipientUsers({ role: 'USER', countryId: toCountryId });
+    } else {
+      setRecipientUsers([]);
     }
   };
 
@@ -241,53 +277,14 @@ export default function Transfers() {
       return;
     }
 
-    let receiverType, receiverCountryId, receiverCityId, receiverOfficeId;
-
-    if ((user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'office') {
-      if (!toOfficeId) {
-        setError('Выберите офис-получатель');
-        return;
-      }
-      if (user.role === 'OFFICE' && toOfficeId === user.officeId) {
-        setError('Нельзя отправлять в свой же офис');
-        return;
-      }
-      receiverType = 'OFFICE';
-      receiverOfficeId = toOfficeId;
-    } else if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') {
-      if (!toCountryId) {
-        setError('Выберите страну-получателя');
-        return;
-      }
-      if (toCityId) {
-        if (user.role === 'CITY' && toCityId === user.cityId) {
-          setError('Нельзя отправлять в свой же город');
-          return;
-        }
-        receiverType = 'CITY';
-        receiverCityId = toCityId;
-      } else {
-        receiverType = 'COUNTRY';
-        receiverCountryId = toCountryId;
-      }
-    } else if (user.role === 'COUNTRY') {
-      if (!toCityId) {
-        setError('Выберите город-получатель');
-        return;
-      }
-      receiverType = 'CITY';
-      receiverCityId = toCityId;
+    if (!toUserId) {
+      setError('Выберите получателя');
+      return;
     }
 
     const payload = {
-      senderType: user.role === 'ADMIN' ? 'ADMIN' : user.role,
-      senderOfficeId: user.role === 'OFFICE' ? user.officeId : undefined,
-      senderCountryId: user.role === 'COUNTRY' ? user.countryId : undefined,
-      senderCityId: user.role === 'CITY' ? user.cityId : undefined,
-      receiverType,
-      receiverOfficeId,
-      receiverCountryId,
-      receiverCityId,
+      fromUserId: user.id,
+      toUserId,
       items,
       notes: notes || undefined,
     };
@@ -329,6 +326,8 @@ export default function Transfers() {
     setToCountryId('');
     setToCityId('');
     setToOfficeId('');
+    setToUserId('');
+    setRecipientUsers([]);
     setReceiverMode('location');
     setCities([]);
     setQuantities({ BLACK: '', WHITE: '', RED: '', BLUE: '' });
@@ -339,23 +338,15 @@ export default function Transfers() {
 
   // Receiver label for the summary hint
   const receiverLabel = useMemo(() => {
-    if ((user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'office') {
-      const office = offices.find((o) => o.id === toOfficeId);
-      if (office) return `Офис: ${office.name}`;
-      return null;
-    }
-    if (user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') {
-      const country = countries.find((c) => c.id === toCountryId);
-      const city = cities.find((c) => c.id === toCityId);
-      if (city && country) return `${city.name} (${country.name})`;
-      if (country) return country.name;
-    }
-    if (user.role === 'COUNTRY') {
-      const city = cities.find((c) => c.id === toCityId);
-      if (city) return city.name;
-    }
-    return null;
-  }, [user.role, receiverMode, toCountryId, toCityId, toOfficeId, countries, cities, offices]);
+    if (!toUserId) return null;
+    const u = recipientUsers.find((ru) => ru.id === toUserId);
+    if (!u) return null;
+    const parts = [u.displayName || u.username];
+    if (u.primaryCity?.name) parts.push(u.primaryCity.name);
+    if (u.primaryCity?.country?.name) parts.push(u.primaryCity.country.name);
+    else if (u.office?.name) parts.push(`Офис: ${u.office.name}`);
+    return parts.join(' · ');
+  }, [toUserId, recipientUsers]);
 
   // Check if any quantity exceeds available balance
   const exceedsBalance = useMemo(() => {
@@ -401,9 +392,9 @@ export default function Transfers() {
             {user.role === 'CITY' ? 'Отправка браслетов в страну или другой город' : 'Отправки от вашего аккаунта'}
           </p>
         </div>
-        {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY'].includes(user.role) && (
+        {['ADMIN', 'OFFICE', 'COUNTRY', 'CITY', 'USER'].includes(user.role) && (
           <Button onClick={openCreate} size="sm">
-            <Plus size={18} /> {user.role === 'CITY' ? 'Отправить' : 'Новая'}
+            <Plus size={18} /> {(user.role === 'CITY' || user.role === 'USER') ? 'Отправить' : 'Новая'}
           </Button>
         )}
       </div>
@@ -556,7 +547,7 @@ export default function Transfers() {
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => { setReceiverMode(tab.key); setToCountryId(''); setToCityId(''); setToOfficeId(''); setCities([]); if (tab.key === 'office' && offices.length === 0) loadOffices(); }}
+                  onClick={() => { setReceiverMode(tab.key); setToCountryId(''); setToCityId(''); setToOfficeId(''); setToUserId(''); setRecipientUsers([]); setCities([]); if (tab.key === 'office') loadRecipientUsers({ role: 'OFFICE' }); }}
                   title={tab.tooltip}
                   className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                     receiverMode === tab.key
@@ -570,8 +561,8 @@ export default function Transfers() {
             </div>
           )}
 
-          {/* ADMIN/OFFICE/CITY: country → city (cascading) */}
-          {(user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY') && receiverMode === 'location' && (
+          {/* ADMIN/OFFICE/CITY/USER: country → city → user (cascading) */}
+          {(user.role === 'ADMIN' || user.role === 'OFFICE' || user.role === 'CITY' || user.role === 'USER') && receiverMode === 'location' && (
             <>
               <Select
                 label="Страна-получатель"
@@ -584,52 +575,75 @@ export default function Transfers() {
               />
 
               {toCountryId && (
-                <div>
-                  <Select
-                    label="Город (необязательно)"
-                    value={toCityId}
-                    onChange={(e) => setToCityId(e.target.value)}
-                    options={[
-                      { value: '', label: citiesLoading ? 'Загрузка...' : '— Вся страна —' },
-                      ...cities.map((c) => ({ value: c.id, label: c.name })),
-                    ]}
-                  />
-                  <p className="text-[11px] text-content-muted mt-1">
-                    {toCityId
-                      ? 'Отправка будет адресована выбранному городу'
-                      : 'Если город не выбран — отправка пойдёт на уровень страны'}
-                  </p>
-                </div>
+                <Select
+                  label="Город (необязательно)"
+                  value={toCityId}
+                  onChange={handleCityChange}
+                  options={[
+                    { value: '', label: citiesLoading ? 'Загрузка...' : '— Вся страна —' },
+                    ...cities.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                />
+              )}
+
+              {/* Recipient user picker */}
+              {(recipientUsersLoading || recipientUsers.length > 0) && (
+                <Select
+                  label={recipientUsersLoading ? 'Загрузка пользователей...' : 'Получатель'}
+                  value={toUserId}
+                  onChange={(e) => setToUserId(e.target.value)}
+                  options={[
+                    { value: '', label: recipientUsersLoading ? 'Загрузка...' : '— Выберите получателя —' },
+                    ...recipientUsers.map((u) => ({
+                      value: u.id,
+                      label: `${u.displayName || u.username}${u.primaryCity ? ` · ${u.primaryCity.name}` : ''}`,
+                    })),
+                  ]}
+                />
               )}
             </>
           )}
 
-          {/* ADMIN/OFFICE: office receiver */}
+          {/* ADMIN/OFFICE: office receiver — pick an OFFICE user */}
           {(user.role === 'ADMIN' || user.role === 'OFFICE') && receiverMode === 'office' && (
             <Select
-              label="Офис-получатель"
-              value={toOfficeId}
-              onChange={(e) => setToOfficeId(e.target.value)}
+              label={recipientUsersLoading ? 'Загрузка офисов...' : 'Офис-получатель'}
+              value={toUserId}
+              onChange={(e) => setToUserId(e.target.value)}
               options={[
-                { value: '', label: officesLoading ? 'Загрузка...' : offices.length === 0 ? 'Нет офисов' : '— Выберите офис —' },
-                ...offices
-                  .filter((o) => !(user.role === 'OFFICE' && o.id === user.officeId))
-                  .map((o) => ({ value: o.id, label: o.name })),
+                { value: '', label: recipientUsersLoading ? 'Загрузка...' : recipientUsers.length === 0 ? 'Нет офисов' : '— Выберите офис —' },
+                ...recipientUsers.map((u) => ({ value: u.id, label: u.displayName || u.username })),
               ]}
             />
           )}
 
-          {/* COUNTRY: just city selector */}
+          {/* COUNTRY: city → user picker */}
           {user.role === 'COUNTRY' && (
-            <Select
-              label="Город-получатель"
-              value={toCityId}
-              onChange={(e) => setToCityId(e.target.value)}
-              options={[
-                { value: '', label: '— Выберите город —' },
-                ...cities.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
+            <>
+              <Select
+                label="Город-получатель"
+                value={toCityId}
+                onChange={handleCityChange}
+                options={[
+                  { value: '', label: '— Выберите город —' },
+                  ...cities.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+              {(recipientUsersLoading || recipientUsers.length > 0) && (
+                <Select
+                  label={recipientUsersLoading ? 'Загрузка пользователей...' : 'Получатель'}
+                  value={toUserId}
+                  onChange={(e) => setToUserId(e.target.value)}
+                  options={[
+                    { value: '', label: recipientUsersLoading ? 'Загрузка...' : '— Выберите получателя —' },
+                    ...recipientUsers.map((u) => ({
+                      value: u.id,
+                      label: `${u.displayName || u.username}${u.primaryCity ? ` · ${u.primaryCity.name}` : ''}`,
+                    })),
+                  ]}
+                />
+              )}
+            </>
           )}
 
           {/* CITY: now uses the same country→city selector as ADMIN/OFFICE above */}

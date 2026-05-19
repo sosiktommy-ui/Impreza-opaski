@@ -35,6 +35,16 @@ export class InventoryService {
   // CITY BALANCE  (aggregate of all USER balances in city)
   // ────────────────────────────────────────────────
 
+  async getUserBalance(userId: string) {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { balanceBlack: true, balanceWhite: true, balanceRed: true, balanceBlue: true },
+    });
+    if (!u) return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+    const total = u.balanceBlack + u.balanceWhite + u.balanceRed + u.balanceBlue;
+    return { black: u.balanceBlack, white: u.balanceWhite, red: u.balanceRed, blue: u.balanceBlue, total };
+  }
+
   async getBalance(cityId: string) {
     return this.balances.getCityBalance(cityId);
   }

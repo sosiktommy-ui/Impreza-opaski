@@ -134,13 +134,8 @@ export class InventoryController {
 
   @Get('my')
   async getMyBalance(@CurrentUser() user: AuthenticatedUser) {
-    if (user.role === Role.USER) {
-      const primaryCityId = (user as any).primaryCityId;
-      if (primaryCityId) return this.inventoryService.getBalance(primaryCityId);
-      return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
-    }
-    // ADMIN/OFFICE: no personal balance — return empty
-    return { black: 0, white: 0, red: 0, blue: 0, total: 0 };
+    const u = await this.inventoryService.getUserBalance(user.id);
+    return u;
   }
 
   @Get('city/:cityId')
